@@ -1137,6 +1137,7 @@ open class OpenAPSBoostV3Plugin @Inject constructor(
 
     override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
         if (requiredKey != null &&
+            requiredKey != "openapsboostv3_settings" &&
             requiredKey != "absorption_smb_advanced" &&
             requiredKey != "boost_settings" &&
             requiredKey != "boost_default_aaps_settings" &&
@@ -1149,12 +1150,11 @@ open class OpenAPSBoostV3Plugin @Inject constructor(
             requiredKey != "boost_night_mode_settings" &&
             requiredKey != "boost_safety_settings"
         ) return
-        val category = PreferenceCategory(context)
-        parent.addPreference(category)
-        category.apply {
-            key = "openapsboostv3_settings"
-            title = rh.gs(R.string.openaps_boost_v3)
-            initialExpandedChildrenCount = 0
+        val boostScreen = preferenceManager.createPreferenceScreen(context)
+        boostScreen.key = "openapsboostv3_settings"
+        boostScreen.title = rh.gs(R.string.openaps_boost_v3)
+        parent.addPreference(boostScreen)
+        boostScreen.apply {
 
             // ── 1. Default AAPS Settings ────────────────────────────────
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
