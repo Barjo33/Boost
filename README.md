@@ -217,6 +217,64 @@ Because TDD is squared in the V2 formula, ISF is **much more responsive to TDD c
 
 ---
 
+## What's different in Boost V3?
+
+Boost V3 uses the same ISF formula as V1 (`1800 / (TDD × ln(BG / insulinDivisor + 1))`) but changes **how TDD is calculated** and **removes BG Impact dampening**.
+
+### TDD: 7-day average only
+
+V1 and V2 compute a blended TDD from three sources weighted equally:
+
+```
+TDD_blended = (WeightedLast8H × 0.33) + (7D_average × 0.34) + (1D_average × 0.33)
+```
+
+The `WeightedLast8H` component is `(1.4 × last4H + 0.6 × last8-4H) × 3`, which extrapolates recent insulin delivery to a daily rate. During a rollercoaster day — repeated spikes treated with large SMBs — this 4-hour window inflates the blended TDD far above the 7-day average. A higher TDD produces a lower ISF, making the algorithm more aggressive, which stacks more insulin, which crashes BG further, which requires rescue carbs, which starts the next spike.
+
+V3 eliminates this feedback loop by using the **7-day average only**:
+
+```
+TDD_v3 = 7D_average × adjustment_factor
+```
+
+The safety check is retained: when the weighted 8-hour TDD falls below 75% of the 7-day average (indicating significantly reduced insulin delivery, e.g. overnight or during fasting), the 7-day value is pulled down toward recent reality to avoid overdosing:
+
+```
+if WeightedLast8H < 0.75 × 7D:
+    TDD = WeightedLast8H + (WeightedLast8H / 7D) × (7D − WeightedLast8H)
+```
+
+### No BG Impact dampening
+
+V1 includes a **BG Impact on ISF** setting (velocity) that controls how much the current BG level affects the ISF calculation. At 50%, only half the BG-driven ISF change is applied — the ISF is dampened toward the normal-target ISF.
+
+V3 always applies the full BG effect (equivalent to velocity = 100%). This setting has been removed from the V3 preferences. The rationale: with the more stable 7-day TDD providing the base, the BG-driven ISF adjustment is already appropriately scaled and does not need artificial dampening.
+
+### Key differences at a glance
+
+| | Boost (V1) | Boost V2 | Boost V3 |
+|---|---|---|---|
+| **ISF formula** | 1800 / (TDD × ln) | 2300 / (ln × TDD² × 0.02) | 1800 / (TDD × ln) |
+| **TDD source** | Blended (8H + 7D + 1D) | Blended (8H + 7D + 1D) | 7D average only |
+| **BG impact dampening** | User-adjustable (velocity) | None | None |
+| **TDD sensitivity** | Reactive to recent boluses | Highly reactive (TDD²) | Stable — immune to short-term spikes |
+| **Best for** | General use | Users who want maximum TDD responsiveness | Users experiencing rollercoaster patterns |
+
+### When to use V3
+
+V3 is designed for users who experience repeated spike-crash-rebound cycles. If your Nightscout data shows:
+- Multiple high-low swings in a single day (>3 transitions between <70 and >180 within 24h)
+- The algorithm delivering large SMBs at BG 80-100 after a spike (overcorrection)
+- 4-hour TDD significantly higher than 7-day average during these events
+
+V3 will produce a more stable ISF that doesn't escalate during the spike, reducing the overcorrection that triggers the next cycle.
+
+If your control is generally stable and you're not experiencing rollercoaster patterns, V1 or V2 may be more responsive to genuine changes in insulin needs.
+
+> ⚠️ **Boost V3 is experimental.** Run it in parallel alongside V1 in Config Builder to compare outputs before switching. Start with a **TDD adjustment factor of 100%** and monitor for several days.
+
+---
+
 ## Boost Overview UI
 
 The Boost Overview UI is a redesigned home screen that replaces the standard AAPS Overview when enabled. It is purpose-built for Boost, giving you immediate visibility of the algorithm's decisions without needing to navigate to the Boost tab or read log output.
