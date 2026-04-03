@@ -465,6 +465,21 @@ For a detailed walkthrough of how each setting affects dosing across the Boost t
 
 To experiment with settings before applying them to your loop, use the **[Boost Simulator](https://tim2000s.github.io/Boost-in-AAPS_3.4/boost_simulator.html)**. The simulator models the full 8-tier decision tree and shows how each tier responds to your BG, delta, and IOB inputs. It can also connect to your Nightscout instance to replay real data.
 
+### Settings screen layout
+
+The settings screen is organised into expandable sections:
+
+- **Default AAPS Settings** — Max basal, max IOB, autosens, temp target sensitivity adjustments
+- **Boost Controls** — Insulin required %, bolus cap, percent scale factor, boost scale, Boost max IOB, active time window, percent scale and circadian ISF toggles
+- **Dynamic ISF Controls** — Enable TDD-based ISF, adjust sensitivity, normal target, BG impact on ISF (V1 only), BG cap, TDD adjustment factor
+- **Exercise Settings** — Parent section containing:
+  - *Step Count Settings* — Activity/inactivity step thresholds, sleep-in detection, profile percentage adjustments
+  - *Heart Rate Integration* — HR zone classification, HRmax/resting HR, stress detection
+  - *Post-Exercise Recovery* — Recovery window, target BG, SMB reduction, minimum exercise duration
+- **Night Mode** — Enable/disable, time window, BG offset, COB and low TT overrides
+- **Safety Settings** — SMB enables (always, with COB, with TT, after carbs), UAM, SMB frequency and size limits, carbs request threshold, BG source and version check bypasses
+- **Advanced Settings** — Safety multipliers, short delta preference, documentation links
+
 * *Boost insulin required percent* — Defaults to 50%. Can be increased, but increasing increases hypo risk.
 * *Boost Scale Value* — Defaults to 1.0. Only increase multiplier once you have trialled.
 * *Boost Bolus Cap* — Defaults to 0.1.
