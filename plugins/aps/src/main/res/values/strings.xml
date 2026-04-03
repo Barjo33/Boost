@@ -97,6 +97,12 @@
     <string name="boost_dynisf_adjust_factor_title">TDD adjustment factor (%)</string>
     <string name="boost_dynisf_adjust_factor_summary">Scale the calculated TDD by this percentage. Default: 100</string>
 
+    <!-- Boost Preference Screen Sections -->
+    <string name="boost_settings_default_aaps">Default AAPS Settings</string>
+    <string name="boost_settings_boost_controls">Boost Controls</string>
+    <string name="boost_settings_exercise">Exercise Settings</string>
+    <string name="boost_settings_safety">Safety Settings</string>
+
     <!-- Boost BG Source Safety -->
     <string name="boost_allow_all_bg_sources_title">Allow all BG sources for SMBs</string>
     <string name="boost_allow_all_bg_sources_summary">Bypass advanced filtering check. WARNING: Only use with reliable CGM data</string>
