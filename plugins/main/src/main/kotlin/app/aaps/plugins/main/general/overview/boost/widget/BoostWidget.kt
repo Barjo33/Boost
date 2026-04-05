@@ -63,6 +63,7 @@ class BoostWidget : AppWidgetProvider() {
 
         fun updateWidget(context: Context, from: String) {
             context.sendBroadcast(Intent().also {
+                it.component = ComponentName(context, BoostWidget::class.java)
                 it.putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, AppWidgetManager.getInstance(context)?.getAppWidgetIds(ComponentName(context, BoostWidget::class.java)))
                 it.putExtra("from", from)
                 it.action = AppWidgetManager.ACTION_APPWIDGET_UPDATE

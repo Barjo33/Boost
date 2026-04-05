@@ -83,6 +83,7 @@ class Widget : AppWidgetProvider() {
 
         fun updateWidget(context: Context, from: String) {
             context.sendBroadcast(Intent().also {
+                it.component = ComponentName(context, Widget::class.java)
                 it.putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, AppWidgetManager.getInstance(context)?.getAppWidgetIds(ComponentName(context, Widget::class.java)))
                 it.putExtra("from", from)
                 it.action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
