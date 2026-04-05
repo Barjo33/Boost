@@ -15,6 +15,7 @@ import android.widget.RemoteViews
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
@@ -36,6 +37,7 @@ import app.aaps.plugins.main.general.overview.boost.BoostOverviewHelper
 import dagger.android.HasAndroidInjector
 import java.util.Locale
 import javax.inject.Inject
+import kotlin.math.abs
 
 /**
  * Boost-specific home screen widget showing algorithm data:
@@ -50,6 +52,7 @@ class BoostWidget : AppWidgetProvider() {
     @Inject lateinit var trendCalculator: TrendCalculator
     @Inject lateinit var iobCobCalculator: IobCobCalculator
     @Inject lateinit var loop: Loop
+    @Inject lateinit var persistenceLayer: PersistenceLayer
     @Inject lateinit var uiInteraction: UiInteraction
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var dateUtil: DateUtil
@@ -80,8 +83,13 @@ class BoostWidget : AppWidgetProvider() {
     }
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
+        // Only update widget IDs that actually belong to BoostWidget
+        val myIds = AppWidgetManager.getInstance(context)?.getAppWidgetIds(ComponentName(context, BoostWidget::class.java)) ?: intArrayOf()
+        val myIdSet = myIds.toSet()
         for (appWidgetId in appWidgetIds) {
-            updateAppWidget(context, appWidgetManager, appWidgetId)
+            if (appWidgetId in myIdSet) {
+                updateAppWidget(context, appWidgetManager, appWidgetId)
+            }
         }
     }
 
@@ -103,6 +111,7 @@ class BoostWidget : AppWidgetProvider() {
         handler.post {
             if (config.appInitialized) {
                 updateBg(views)
+                updateTemporaryTarget(views)
                 updateBoostData(views)
                 updateProfile(views)
                 updateIob(views)
@@ -135,6 +144,30 @@ class BoostWidget : AppWidgetProvider() {
 
         // Time ago
         views.setTextViewText(R.id.time_ago, dateUtil.minOrSecAgo(rh, lastBgData.lastBg()?.timestamp))
+    }
+
+    /** Target display — matches the standard AAPS widget logic exactly. */
+    private fun updateTemporaryTarget(views: RemoteViews) {
+        val units = profileFunction.getUnits()
+        val tempTarget = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())
+        if (tempTarget != null) {
+            views.setTextColor(R.id.temp_target, rh.gc(app.aaps.core.ui.R.color.widget_ribbonWarning))
+            views.setTextViewText(
+                R.id.temp_target,
+                profileUtil.toTargetRangeString(tempTarget.lowTarget, tempTarget.highTarget, GlucoseUnit.MGDL, units) + " " + dateUtil.untilString(tempTarget.end, rh)
+            )
+        } else {
+            profileFunction.getProfile()?.let { profile ->
+                val targetUsed = loop.lastRun?.constraintsProcessed?.targetBG ?: 0.0
+                if (targetUsed != 0.0 && abs(profile.getTargetMgdl() - targetUsed) > 0.01) {
+                    views.setTextViewText(R.id.temp_target, profileUtil.toTargetRangeString(targetUsed, targetUsed, GlucoseUnit.MGDL, units))
+                    views.setTextColor(R.id.temp_target, rh.gc(app.aaps.core.ui.R.color.widget_ribbonWarning))
+                } else {
+                    views.setTextColor(R.id.temp_target, rh.gc(app.aaps.core.ui.R.color.widget_ribbonTextDefault))
+                    views.setTextViewText(R.id.temp_target, profileUtil.toTargetRangeString(profile.getTargetLowMgdl(), profile.getTargetHighMgdl(), GlucoseUnit.MGDL, units))
+                }
+            }
+        }
     }
 
     private fun updateBoostData(views: RemoteViews) {
@@ -192,25 +225,6 @@ class BoostWidget : AppWidgetProvider() {
             views.setViewVisibility(R.id.fast_carb_layout, View.VISIBLE)
         } else {
             views.setViewVisibility(R.id.fast_carb_layout, View.GONE)
-        }
-
-        // Target BG
-        val targetText = if (status.targetBgMgdl > 0) {
-            profileUtil.fromMgdlToStringInUnits(status.targetBgMgdl)
-        } else {
-            profileFunction.getProfile()?.let {
-                profileUtil.toTargetRangeString(it.getTargetLowMgdl(), it.getTargetHighMgdl(), GlucoseUnit.MGDL, units)
-            } ?: "--"
-        }
-        val tempTarget = loop.lastRun?.constraintsProcessed?.let { cp ->
-            val profileTarget = profileFunction.getProfile()?.getTargetMgdl() ?: 0.0
-            if (cp.targetBG != 0.0 && kotlin.math.abs(profileTarget - cp.targetBG) > 0.01) cp.targetBG else null
-        }
-        views.setTextViewText(R.id.temp_target, targetText)
-        if (tempTarget != null) {
-            views.setTextColor(R.id.temp_target, rh.gc(app.aaps.core.ui.R.color.widget_ribbonWarning))
-        } else {
-            views.setTextColor(R.id.temp_target, Color.WHITE)
         }
     }
 

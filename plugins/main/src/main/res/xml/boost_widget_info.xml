@@ -5,7 +5,7 @@
     android:initialKeyguardLayout="@layout/boost_widget_layout"
     android:initialLayout="@layout/boost_widget_layout"
     android:minWidth="250dp"
-    android:minHeight="140dp"
+    android:minHeight="110dp"
 
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="86400000"

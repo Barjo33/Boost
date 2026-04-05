@@ -100,9 +100,13 @@ class Widget : AppWidgetProvider() {
     }
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
-        // There may be multiple widgets active, so update all of them
+        // Only update widget IDs that belong to this provider (avoid cross-talk with BoostWidget)
+        val myIds = AppWidgetManager.getInstance(context)?.getAppWidgetIds(ComponentName(context, Widget::class.java)) ?: intArrayOf()
+        val myIdSet = myIds.toSet()
         for (appWidgetId in appWidgetIds) {
-            updateAppWidget(context, appWidgetManager, appWidgetId)
+            if (appWidgetId in myIdSet) {
+                updateAppWidget(context, appWidgetManager, appWidgetId)
+            }
         }
     }
 
