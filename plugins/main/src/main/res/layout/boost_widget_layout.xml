@@ -3,309 +3,267 @@
     android:id="@+id/boost_widget_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
+    android:orientation="horizontal"
     android:background="@color/black"
-    android:padding="4dp">
+    android:padding="4dp"
+    android:gravity="center_vertical">
 
-    <!-- Row 1: Profile | Target -->
+    <!-- LEFT: BG Bobble + time ago + tier -->
     <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal">
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="2"
+        android:gravity="center"
+        android:orientation="vertical">
+
+        <ImageView
+            android:id="@+id/bg_bobble"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:contentDescription="@string/trend_arrow"
+            android:scaleType="fitCenter"
+            android:adjustViewBounds="true" />
 
         <TextView
-            android:id="@+id/active_profile"
-            android:layout_width="0dp"
+            android:id="@+id/time_ago"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:layout_gravity="center_horizontal"
             android:gravity="center"
-            android:text="Profile"
+            android:text="--m"
             android:textColor="@color/white"
             android:textSize="12sp"
-            android:maxLines="1"
-            android:ellipsize="end"
             tools:ignore="HardcodedText" />
 
-        <TextView
-            android:id="@+id/temp_target"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:text="Target"
-            android:textColor="@color/white"
-            android:textSize="12sp"
-            android:maxLines="1"
-            tools:ignore="HardcodedText" />
-
-    </LinearLayout>
-
-    <!-- Row 2: BG Bobble | Tier -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
-
-        <!-- BG Bobble (rendered as bitmap) + time ago -->
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="3"
-            android:gravity="center"
-            android:orientation="vertical">
-
-            <ImageView
-                android:id="@+id/bg_bobble"
-                android:layout_width="80dp"
-                android:layout_height="80dp"
-                android:contentDescription="@string/trend_arrow"
-                android:scaleType="fitCenter" />
-
-            <TextView
-                android:id="@+id/time_ago"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:text="--m"
-                android:textColor="@color/white"
-                android:textSize="12sp"
-                android:layout_marginTop="-4dp"
-                tools:ignore="HardcodedText" />
-
-        </LinearLayout>
-
-        <!-- Tier label with tier-specific color -->
         <TextView
             android:id="@+id/tier_label"
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="2"
+            android:layout_gravity="center_horizontal"
             android:gravity="center"
             android:text="Tier"
             android:textColor="@color/white"
-            android:textSize="16sp"
+            android:textSize="14sp"
             android:textStyle="bold"
             android:maxLines="2"
+            android:ellipsize="end"
             tools:ignore="HardcodedText" />
 
     </LinearLayout>
 
-    <!-- Row 3: DynISF | TDD | Activity -->
+    <!-- RIGHT: 2-column x 3-row data table -->
     <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:baselineAligned="false"
-        android:orientation="horizontal">
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="3"
+        android:orientation="vertical"
+        android:gravity="center_vertical"
+        android:paddingStart="4dp"
+        android:paddingEnd="4dp">
 
+        <!-- Row 1: DynISF | TDD -->
         <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
             android:layout_weight="1"
-            android:gravity="center_horizontal"
-            android:orientation="vertical">
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:baselineAligned="false">
 
-            <TextView
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="DynISF"
-                android:textColor="#AAAAAA"
-                android:textSize="12sp"
-                tools:ignore="HardcodedText" />
-
-            <TextView
-                android:id="@+id/dynisf"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_weight="1"
                 android:gravity="center"
-                android:text="--"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                tools:ignore="HardcodedText" />
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="DynISF"
+                    android:textColor="#AAAAAA"
+                    android:textSize="12sp"
+                    tools:ignore="HardcodedText" />
+
+                <TextView
+                    android:id="@+id/dynisf"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:text="--"
+                    android:textColor="@color/white"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    tools:ignore="HardcodedText" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="TDD"
+                    android:textColor="#AAAAAA"
+                    android:textSize="12sp"
+                    tools:ignore="HardcodedText" />
+
+                <TextView
+                    android:id="@+id/tdd"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:text="--"
+                    android:textColor="@color/white"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    tools:ignore="HardcodedText" />
+
+            </LinearLayout>
 
         </LinearLayout>
 
+        <!-- Row 2: IOB | Activity -->
         <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
             android:layout_weight="1"
-            android:gravity="center_horizontal"
-            android:orientation="vertical">
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:baselineAligned="false">
 
-            <TextView
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="TDD"
-                android:textColor="#AAAAAA"
-                android:textSize="12sp"
-                tools:ignore="HardcodedText" />
-
-            <TextView
-                android:id="@+id/tdd"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_weight="1"
                 android:gravity="center"
-                android:text="--"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                tools:ignore="HardcodedText" />
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="IOB"
+                    android:textColor="#AAAAAA"
+                    android:textSize="12sp"
+                    tools:ignore="HardcodedText" />
+
+                <TextView
+                    android:id="@+id/iob"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:text="--"
+                    android:textColor="@color/white"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    tools:ignore="HardcodedText" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Activity"
+                    android:textColor="#AAAAAA"
+                    android:textSize="12sp"
+                    tools:ignore="HardcodedText" />
+
+                <TextView
+                    android:id="@+id/activity_mode"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:text="--"
+                    android:textColor="@color/white"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    tools:ignore="HardcodedText" />
+
+            </LinearLayout>
 
         </LinearLayout>
 
+        <!-- Row 3: Profile | Target -->
         <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
             android:layout_weight="1"
-            android:gravity="center_horizontal"
-            android:orientation="vertical">
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:baselineAligned="false">
 
-            <TextView
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="Activity"
-                android:textColor="#AAAAAA"
-                android:textSize="12sp"
-                tools:ignore="HardcodedText" />
-
-            <TextView
-                android:id="@+id/activity_mode"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_weight="1"
                 android:gravity="center"
-                android:text="--"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:maxLines="1"
-                android:ellipsize="end"
-                tools:ignore="HardcodedText" />
+                android:orientation="vertical">
 
-        </LinearLayout>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Profile"
+                    android:textColor="#AAAAAA"
+                    android:textSize="12sp"
+                    tools:ignore="HardcodedText" />
 
-    </LinearLayout>
+                <TextView
+                    android:id="@+id/profile_pct"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:text="100%"
+                    android:textColor="@color/white"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    tools:ignore="HardcodedText" />
 
-    <!-- Row 4: IOB | Profile % | Delta Accel | Fast Carb -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:baselineAligned="false"
-        android:orientation="horizontal">
+            </LinearLayout>
 
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:gravity="center_horizontal"
-            android:orientation="vertical">
-
-            <TextView
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="IOB"
-                android:textColor="#AAAAAA"
-                android:textSize="12sp"
-                tools:ignore="HardcodedText" />
-
-            <TextView
-                android:id="@+id/iob"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_weight="1"
                 android:gravity="center"
-                android:text="--"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                tools:ignore="HardcodedText" />
+                android:orientation="vertical">
 
-        </LinearLayout>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Target"
+                    android:textColor="#AAAAAA"
+                    android:textSize="12sp"
+                    tools:ignore="HardcodedText" />
 
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:gravity="center_horizontal"
-            android:orientation="vertical">
+                <TextView
+                    android:id="@+id/temp_target"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:text="--"
+                    android:textColor="@color/white"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    tools:ignore="HardcodedText" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Profile"
-                android:textColor="#AAAAAA"
-                android:textSize="12sp"
-                tools:ignore="HardcodedText" />
-
-            <TextView
-                android:id="@+id/profile_pct"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:text="100%"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                tools:ignore="HardcodedText" />
-
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:gravity="center_horizontal"
-            android:orientation="vertical">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Delta Accel"
-                android:textColor="#AAAAAA"
-                android:textSize="12sp"
-                tools:ignore="HardcodedText" />
-
-            <TextView
-                android:id="@+id/delta_accl"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:text="--"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                tools:ignore="HardcodedText" />
-
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/fast_carb_layout"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:gravity="center_horizontal"
-            android:orientation="vertical"
-            android:visibility="gone">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Fast Carb"
-                android:textColor="#AAAAAA"
-                android:textSize="12sp"
-                tools:ignore="HardcodedText" />
-
-            <TextView
-                android:id="@+id/fast_carb"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:text="ACTIVE"
-                android:textColor="#FFAB40"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                tools:ignore="HardcodedText" />
+            </LinearLayout>
 
         </LinearLayout>
 

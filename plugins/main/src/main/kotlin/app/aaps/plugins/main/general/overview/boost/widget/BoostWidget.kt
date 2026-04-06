@@ -13,10 +13,8 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.os.Handler
 import android.os.HandlerThread
-import android.view.View
 import android.widget.RemoteViews
 import app.aaps.core.data.model.GlucoseUnit
-import app.aaps.core.data.model.TrendArrow
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -34,7 +32,6 @@ import app.aaps.core.keys.BooleanComposedKey
 import app.aaps.core.keys.IntComposedKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.round
-import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.plugins.main.R
 import app.aaps.plugins.main.general.overview.boost.BgBobbleView
 import app.aaps.plugins.main.general.overview.boost.BoostOverviewHelper
@@ -46,8 +43,10 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Boost-specific home screen widget showing algorithm data:
- * BG bobble with trend, tier, DynISF, TDD, activity mode, IOB, profile %, delta accel, fast carb.
+ * Boost-specific home screen widget.
+ *
+ * Layout: BG bobble + tier on the left, 2x3 data table on the right
+ * (DynISF, TDD, IOB, Activity, Profile%, Target).
  */
 class BoostWidget : AppWidgetProvider() {
 
@@ -79,14 +78,13 @@ class BoostWidget : AppWidgetProvider() {
             })
         }
 
-        // Widget bobble colours (dark theme, matching BgBobbleView zone thresholds)
         private fun zoneColor(bgMgdl: Double): Int = when {
-            bgMgdl > 250 -> Color.parseColor("#FF1744")   // Very High — red
-            bgMgdl > 180 -> Color.parseColor("#FFEB3B")   // High — yellow
-            bgMgdl >= 70 -> Color.parseColor("#4CAF50")   // In Range — green
-            bgMgdl >= 54 -> Color.parseColor("#FF5722")   // Low — orange-red
-            bgMgdl > 0   -> Color.parseColor("#D50000")   // Very Low — dark red
-            else          -> Color.parseColor("#4CAF50")   // No reading — default green
+            bgMgdl > 250 -> Color.parseColor("#FF1744")
+            bgMgdl > 180 -> Color.parseColor("#FFEB3B")
+            bgMgdl >= 70 -> Color.parseColor("#4CAF50")
+            bgMgdl >= 54 -> Color.parseColor("#FF5722")
+            bgMgdl > 0   -> Color.parseColor("#D50000")
+            else          -> Color.parseColor("#4CAF50")
         }
     }
 
@@ -126,19 +124,19 @@ class BoostWidget : AppWidgetProvider() {
         handler.post {
             if (config.appInitialized) {
                 updateBgBobble(views, context)
-                updateTemporaryTarget(views)
                 updateBoostData(views)
-                updateProfile(views)
+                updateTarget(views)
                 updateIob(views)
                 appWidgetManager.updateAppWidget(appWidgetId, views)
             }
         }
     }
 
-    /** Render BG bobble as bitmap — ring + BG text + trend chevron badge. */
+    /** Render BG bobble as a high-res bitmap that fills the left panel. */
     private fun updateBgBobble(views: RemoteViews, context: Context) {
         val density = context.resources.displayMetrics.density
-        val sizePx = (80 * density).toInt()
+        // Render at 160dp — scales down smoothly via fitCenter in the ImageView
+        val sizePx = (160 * density).toInt()
         val bgMgdl = lastBgData.lastBg()?.recalculated ?: 0.0
         val bgText = lastBgData.lastBg()?.let { profileUtil.fromMgdlToStringInUnits(it.recalculated) } ?: "---"
         val isActual = lastBgData.isActualBg()
@@ -151,9 +149,9 @@ class BoostWidget : AppWidgetProvider() {
         val sz = sizePx.toFloat()
         val cx = sz / 2f
         val cy = sz / 2f
-        val sw = 5f * dp
-        val r = (sz - sw * 2 - 8 * dp) / 2f
-        val br = 10f * dp
+        val sw = 8f * dp
+        val r = (sz - sw * 2 - 16 * dp) / 2f
+        val br = 14f * dp
         val z = zoneColor(bgMgdl)
 
         // Ring background
@@ -174,13 +172,13 @@ class BoostWidget : AppWidgetProvider() {
             style = Paint.Style.FILL
             color = Color.argb(30, Color.red(z), Color.green(z), Color.blue(z))
         }
-        c.drawCircle(cx, cy, r - sw / 2f - 2f * dp, fillP)
+        c.drawCircle(cx, cy, r - sw / 2f - 4f * dp, fillP)
 
         // BG text
-        val ir = r - sw / 2f - 2f * dp
+        val ir = r - sw / 2f - 4f * dp
         val bgTxtP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             textAlign = Paint.Align.CENTER; isFakeBoldText = true
-            color = z; textSize = ir * 0.55f
+            color = z; textSize = ir * 0.58f
             if (!isActual) flags = flags or Paint.STRIKE_THRU_TEXT_FLAG
         }
         c.drawText(bgText, cx, cy + bgTxtP.textSize * 0.15f, bgTxtP)
@@ -199,18 +197,16 @@ class BoostWidget : AppWidgetProvider() {
         val bx = cx + r * cos(rad).toFloat()
         val by = cy + r * sin(rad).toFloat()
 
-        // Badge background
         val badgeP = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = Color.parseColor("#121212") }
         c.drawCircle(bx, by, br, badgeP)
         badgeP.color = Color.parseColor("#1E1E1E")
-        c.drawCircle(bx, by, br - 1.5f * dp, badgeP)
-        val badgeBdrP = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1.5f * dp; color = z }
-        c.drawCircle(bx, by, br - 1.5f * dp, badgeBdrP)
+        c.drawCircle(bx, by, br - 2f * dp, badgeP)
+        val badgeBdrP = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2.5f * dp; color = z }
+        c.drawCircle(bx, by, br - 2f * dp, badgeBdrP)
 
-        // Chevron arrow
         val cs = br * 0.45f
         val chevP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeWidth = 2f * dp; strokeCap = Paint.Cap.ROUND
+            style = Paint.Style.STROKE; strokeWidth = 3f * dp; strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND; color = z
         }
         val path = Path().apply {
@@ -228,33 +224,6 @@ class BoostWidget : AppWidgetProvider() {
 
         // Time ago
         views.setTextViewText(R.id.time_ago, dateUtil.minOrSecAgo(rh, lastBgData.lastBg()?.timestamp))
-    }
-
-    /** Target display — uses persistenceLayer for temp targets, matching the standard widget. */
-    private fun updateTemporaryTarget(views: RemoteViews) {
-        val units = profileFunction.getUnits()
-        val tempTarget = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())
-        if (tempTarget != null) {
-            views.setTextColor(R.id.temp_target, rh.gc(app.aaps.core.ui.R.color.widget_ribbonWarning))
-            views.setTextViewText(
-                R.id.temp_target,
-                profileUtil.toTargetRangeString(tempTarget.lowTarget, tempTarget.highTarget, GlucoseUnit.MGDL, units) + " " + dateUtil.untilString(tempTarget.end, rh)
-            )
-        } else {
-            profileFunction.getProfile()?.let { profile ->
-                val targetUsed = loop.lastRun?.constraintsProcessed?.targetBG ?: 0.0
-                if (targetUsed != 0.0 && abs(profile.getTargetMgdl() - targetUsed) > 0.01) {
-                    views.setTextViewText(R.id.temp_target, profileUtil.toTargetRangeString(targetUsed, targetUsed, GlucoseUnit.MGDL, units))
-                    views.setTextColor(R.id.temp_target, rh.gc(app.aaps.core.ui.R.color.widget_ribbonWarning))
-                } else {
-                    views.setTextColor(R.id.temp_target, rh.gc(app.aaps.core.ui.R.color.widget_ribbonTextDefault))
-                    views.setTextViewText(R.id.temp_target, profileUtil.toTargetRangeString(profile.getTargetLowMgdl(), profile.getTargetHighMgdl(), GlucoseUnit.MGDL, units))
-                }
-            } ?: run {
-                views.setTextViewText(R.id.temp_target, "--")
-                views.setTextColor(R.id.temp_target, Color.WHITE)
-            }
-        }
     }
 
     private fun updateBoostData(views: RemoteViews) {
@@ -300,34 +269,33 @@ class BoostWidget : AppWidgetProvider() {
         } else {
             views.setTextColor(R.id.profile_pct, Color.WHITE)
         }
-
-        // Delta acceleration
-        val deltaAcclText = if (status.deltaAccl != 0.0) {
-            String.format(Locale.getDefault(), "%+.1f", status.deltaAccl)
-        } else "--"
-        views.setTextViewText(R.id.delta_accl, deltaAcclText)
-
-        // Fast carb protection
-        if (status.fastCarbProtection) {
-            views.setViewVisibility(R.id.fast_carb_layout, View.VISIBLE)
-        } else {
-            views.setViewVisibility(R.id.fast_carb_layout, View.GONE)
-        }
     }
 
-    private fun updateProfile(views: RemoteViews) {
-        val profileName = profileFunction.getProfileNameWithRemainingTime()
-        views.setTextViewText(R.id.active_profile, profileName)
-
-        val profileTextColor = profileFunction.getProfile()?.let {
-            if (it is ProfileSealed.EPS) {
-                if (it.value.originalPercentage != 100 || it.value.originalTimeshift != 0L || it.value.originalDuration != 0L)
-                    rh.gc(app.aaps.core.ui.R.color.widget_ribbonWarning)
-                else rh.gc(app.aaps.core.ui.R.color.widget_ribbonTextDefault)
-            } else rh.gc(app.aaps.core.ui.R.color.widget_ribbonTextDefault)
-        } ?: rh.gc(app.aaps.core.ui.R.color.widget_ribbonCritical)
-
-        views.setTextColor(R.id.active_profile, profileTextColor)
+    /** Target display — temp target with time remaining, algorithm-adjusted, or profile default. */
+    private fun updateTarget(views: RemoteViews) {
+        val units = profileFunction.getUnits()
+        val tempTarget = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())
+        if (tempTarget != null) {
+            views.setTextColor(R.id.temp_target, rh.gc(app.aaps.core.ui.R.color.widget_ribbonWarning))
+            views.setTextViewText(
+                R.id.temp_target,
+                profileUtil.toTargetRangeString(tempTarget.lowTarget, tempTarget.highTarget, GlucoseUnit.MGDL, units) + " " + dateUtil.untilString(tempTarget.end, rh)
+            )
+        } else {
+            profileFunction.getProfile()?.let { profile ->
+                val targetUsed = loop.lastRun?.constraintsProcessed?.targetBG ?: 0.0
+                if (targetUsed != 0.0 && abs(profile.getTargetMgdl() - targetUsed) > 0.01) {
+                    views.setTextViewText(R.id.temp_target, profileUtil.toTargetRangeString(targetUsed, targetUsed, GlucoseUnit.MGDL, units))
+                    views.setTextColor(R.id.temp_target, rh.gc(app.aaps.core.ui.R.color.widget_ribbonWarning))
+                } else {
+                    views.setTextColor(R.id.temp_target, rh.gc(app.aaps.core.ui.R.color.widget_ribbonTextDefault))
+                    views.setTextViewText(R.id.temp_target, profileUtil.toTargetRangeString(profile.getTargetLowMgdl(), profile.getTargetHighMgdl(), GlucoseUnit.MGDL, units))
+                }
+            } ?: run {
+                views.setTextViewText(R.id.temp_target, "--")
+                views.setTextColor(R.id.temp_target, Color.WHITE)
+            }
+        }
     }
 
     private fun updateIob(views: RemoteViews) {
