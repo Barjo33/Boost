@@ -250,6 +250,96 @@ open class OpenAPSBoostV3Plugin @Inject constructor(
         preferenceFragment.findPreference<SwitchPreference>(BooleanKey.ApsUseSmbAfterCarbs.key)?.isVisible = !smbAlwaysEnabled || !advancedFiltering
     }
 
+    // ---- 8H Deviation-Based Sensitivity Ratio ----
+    // Computes a sensitivity ratio from the autosens deviation history over the
+    // last 8 hours, excluding cycles where carbs are active (COB > 0, absorbing,
+    // or UAM detected). This measures the EFFECT of insulin on BG rather than the
+    // AMOUNT of insulin delivered, which avoids the meal-contamination problem
+    // that makes TDD-based 8H sensitivity tracking unreliable.
+    //
+    // Returns null if there are too few clean (non-meal) data points to compute
+    // a meaningful ratio, in which case the caller should fall back to the
+    // TDD24H/7D ratio.
+
+    private data class DeviationSensResult(
+        val ratio: Double,      // > 1 = more resistant, < 1 = more sensitive
+        val nClean: Int,        // number of non-meal 5-min entries used
+        val nTotal: Int,        // total 5-min entries in window
+        val meanDeviation: Double,
+        val meanAbsBgi: Double,
+        val debug: String
+    )
+
+    private fun computeDeviationSensitivity(maxPull: Double = 0.15): DeviationSensResult? {
+        val windowHours = 8
+        val minCleanEntries = 6   // require at least 30 min of clean data
+        val now = System.currentTimeMillis()
+        val windowStart = now - (windowHours * 60 * 60 * 1000L)
+
+        val ads = iobCobCalculator.ads.autosensDataTable
+        if (ads.size() == 0) return null
+
+        var sumDeviation = 0.0
+        var sumAbsBgi = 0.0
+        var nClean = 0
+        var nTotal = 0
+
+        for (i in 0 until ads.size()) {
+            val time = ads.keyAt(i)
+            if (time < windowStart) continue
+            if (time > now) break
+            val data = ads.valueAt(i) ?: continue
+            nTotal++
+            sumAbsBgi += kotlin.math.abs(data.bgi)
+
+            // Only include entries with no meal interference
+            if (data.validDeviation && data.cob < 1.0 && !data.absorbing && !data.uam) {
+                sumDeviation += data.deviation
+                nClean++
+            }
+        }
+
+        if (nClean < minCleanEntries || nTotal == 0) {
+            val debug = "DevSens: insufficient clean data ($nClean clean / $nTotal total in ${windowHours}H, need $minCleanEntries)"
+            aapsLogger.debug(LTag.APS, debug)
+            return null
+        }
+
+        val meanDeviation = sumDeviation / nClean
+        val meanAbsBgi = sumAbsBgi / nTotal
+
+        // Convert deviation to a ratio. Positive deviation = BG higher than expected
+        // = more resistant = ratio > 1. Normalise by mean |BGI| so the ratio is
+        // dimensionless and comparable across different insulin-on-board states.
+        val raw = if (meanAbsBgi > 0.5) {
+            1.0 + (meanDeviation / meanAbsBgi)
+        } else {
+            // Very low BGI (fasting, minimal IOB) — deviation signal is unreliable
+            // because even small BG noise produces large ratios. Return neutral.
+            1.0
+        }
+
+        val bounded = raw.coerceIn(1.0 - maxPull, 1.0 + maxPull)
+
+        val debug = "DevSens: ${nClean}/${nTotal} clean in ${windowHours}H" +
+            " | meanDev=${Round.roundTo(meanDeviation, 0.1)}" +
+            " | mean|BGI|=${Round.roundTo(meanAbsBgi, 0.1)}" +
+            " | raw=${Round.roundTo(raw, 0.01)}" +
+            " | bounded=${Round.roundTo(bounded, 0.01)}" +
+            if (raw != bounded) " (capped from ${Round.roundTo(raw, 0.01)})" else ""
+
+        aapsLogger.debug(LTag.APS, "BoostV3 $debug")
+
+        return DeviationSensResult(
+            ratio = bounded,
+            nClean = nClean,
+            nTotal = nTotal,
+            meanDeviation = meanDeviation,
+            meanAbsBgi = meanAbsBgi,
+            debug = debug
+        )
+    }
+
     // ---- ISF Pre-calculation ----
     // Mirrors the IsfCalculatorImpl from 3.2, computing sensNormalTarget and variable_sens
     // These are then passed to DetermineBasalBoost which uses them in getIsfByProfile()
@@ -338,10 +428,27 @@ open class OpenAPSBoostV3Plugin @Inject constructor(
                     sensNormalTarget *= globalScale
                     debug.append("\nTDD ISF at target: ${Round.roundTo(sensNormalTarget, 0.1)} mg/dl/U (profile was ${Round.roundTo(profileSens, 0.1)})")
 
-                    if (adjustSens && tddLast24H > 0) {
-                        ratio = max(min(tddLast24H / tdd7D, autosensMax), autosensMin)
-                        sensNormalTarget /= ratio
-                        debug.append("\nSens ratio: ${Round.roundTo(ratio, 0.01)} (24H/7D = ${Round.roundTo(tddLast24H, 0.1)}/${Round.roundTo(tdd7D, 0.1)}) → ISF=${Round.roundTo(sensNormalTarget, 0.1)}")
+                    if (adjustSens) {
+                        // Deviation-based sensitivity: uses BG deviations from the
+                        // autosens data store over the last 8H, excluding cycles where
+                        // carbs are active. This measures the EFFECT of insulin on BG
+                        // rather than the AMOUNT delivered, so it doesn't get contaminated
+                        // by meal boluses or UAM correction SMBs.
+                        val devSens = computeDeviationSensitivity(maxPull = 0.15)
+                        if (devSens != null) {
+                            ratio = max(min(devSens.ratio, autosensMax), autosensMin)
+                            sensNormalTarget /= ratio
+                            debug.append("\n── Deviation-based sensitivity ──")
+                            debug.append("\n${devSens.debug}")
+                            debug.append("\nApplied ratio=${Round.roundTo(ratio, 0.02)} → ISF=${Round.roundTo(sensNormalTarget, 0.1)}")
+                        } else if (tddLast24H != null && tddLast24H > 0 && tdd7D > 0) {
+                            // Fallback: TDD 24H/7D ratio (used when deviation data is
+                            // too sparse — continuous meals, sensor gaps, etc.)
+                            ratio = max(min(tddLast24H / tdd7D, autosensMax), autosensMin)
+                            sensNormalTarget /= ratio
+                            debug.append("\nDevSens: insufficient clean data — falling back to TDD ratio")
+                            debug.append("\nSens ratio: ${Round.roundTo(ratio, 0.01)} (24H/7D = ${Round.roundTo(tddLast24H, 0.1)}/${Round.roundTo(tdd7D, 0.1)}) → ISF=${Round.roundTo(sensNormalTarget, 0.1)}")
+                        }
                     }
                 } else {
                     debug.append("\n⚠ TDD calculation produced invalid values (tdd=$tdd, logTerm=$logTerm) — using profile ISF")
