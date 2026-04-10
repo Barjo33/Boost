@@ -97,7 +97,6 @@ import kotlin.math.min
 @Singleton
 open class OpenAPSBoostV3MLPlugin @Inject constructor(
     aapsLogger: AAPSLogger,
-    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: Context,
     private val aapsSchedulers: AapsSchedulers,
     private val rxBus: RxBus,
     private val constraintsChecker: ConstraintsChecker,
@@ -145,11 +144,7 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
 
     override fun onStart() {
         super.onStart()
-        // Load the ML hypo risk model from APK assets on plugin start
-        if (!boostRiskModel.isLoaded()) {
-            boostRiskModel.loadModel(appContext, "boost/hypo_risk_model.json")
-        }
-        aapsLogger.info(LTag.APS, "BoostV3ML: risk model loaded=${boostRiskModel.isLoaded()}, trees=${boostRiskModel.getTreeCount()}")
+        aapsLogger.info(LTag.APS, "BoostV3ML: plugin started, risk model will load on first invoke")
 
         disposable += rxBus
             .toObservable(EventCalibrationDetected::class.java)
@@ -762,6 +757,9 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
     // ---- Main invoke ----
 
     override fun invoke(initiator: String, tempBasalFallback: Boolean) {
+        // Note: risk model is loaded from addPreferenceScreen() where Context is available.
+        // If the plugin is invoked before that (rare), the model won't be loaded yet and
+        // predictHypoRisk() will return null — the algorithm proceeds without ML risk scoring.
         aapsLogger.debug(LTag.APS, "invoke from $initiator tempBasalFallback: $tempBasalFallback")
         lastAPSResult = null
         val glucoseStatus = glucoseStatusCalculatorSMB.glucoseStatusData
@@ -1252,6 +1250,12 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
     // ---- Preferences screen ----
 
     override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
+        // Load the ML risk model from APK assets on first preference screen access
+        // (this is the earliest point where a Context is available in the plugins:aps module)
+        if (!boostRiskModel.isLoaded()) {
+            boostRiskModel.loadModel(context, "boost/hypo_risk_model.json")
+            aapsLogger.info(LTag.APS, "BoostV3ML: risk model loaded=${boostRiskModel.isLoaded()}, trees=${boostRiskModel.getTreeCount()}")
+        }
         if (requiredKey != null &&
             requiredKey != "absorption_smb_advanced" &&
             requiredKey != "boost_default_aaps_settings" &&
