@@ -126,7 +126,7 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
         .fragmentClass(OpenAPSFragment::class.java.name)
         .pluginIcon(app.aaps.core.ui.R.drawable.ic_generic_icon)
         .pluginName(R.string.openaps_boost_v3ml)
-        .shortName(R.string.boost_shortname)
+        .shortName(R.string.boost_v3ml_shortname)
         .preferencesId(PluginDescription.PREFERENCE_SCREEN)
         .preferencesVisibleInSimpleMode(false)
         .showInList { config.APS }

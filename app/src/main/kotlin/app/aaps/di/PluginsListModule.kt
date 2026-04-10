@@ -8,6 +8,7 @@ import app.aaps.plugins.aps.openAPSAutoISF.OpenAPSAutoISFPlugin
 import app.aaps.plugins.aps.openAPSBoost.OpenAPSBoostPlugin
 import app.aaps.plugins.aps.openAPSBoostV2.OpenAPSBoostV2Plugin
 import app.aaps.plugins.aps.openAPSBoostV3.OpenAPSBoostV3Plugin
+import app.aaps.plugins.aps.openAPSBoostV3ML.OpenAPSBoostV3MLPlugin
 import app.aaps.plugins.aps.openAPSSMB.OpenAPSSMBPlugin
 import app.aaps.plugins.automation.AutomationPlugin
 import app.aaps.plugins.configuration.configBuilder.ConfigBuilderPlugin
@@ -287,6 +288,12 @@ abstract class PluginsListModule {
     @IntoMap
     @IntKey(237)
     abstract fun bindOpenAPSBoostV3Plugin(plugin: OpenAPSBoostV3Plugin): PluginBase
+
+    @Binds
+    @AllConfigs
+    @IntoMap
+    @IntKey(238)
+    abstract fun bindOpenAPSBoostV3MLPlugin(plugin: OpenAPSBoostV3MLPlugin): PluginBase
 
     @Binds
     @AllConfigs
