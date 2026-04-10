@@ -61,7 +61,11 @@ data class RT(
     var tddRatio: Double? = null,                // Sensitivity ratio derived from TDD (8h weighted / 7D)
     var insulinReqPctEffective: Double? = null,  // Effective insulin required % used for dosing
     var deltaAcceleration: Double? = null,       // Delta acceleration percentage
-    var boostProfileSwitch: Int? = null          // Effective profile % (activity-adjusted)
+    var boostProfileSwitch: Int? = null,         // Effective profile % (activity-adjusted)
+
+    // ML risk model fields (Boost V3ML only)
+    var mlHypoRisk: Double? = null,             // P(hypo event in next 4h), 0.0-1.0
+    var mlRiskScale: Double? = null,            // SMB scaling factor applied (1.0 = no reduction)
 ) {
 
     fun serialize() = Json.encodeToString(serializer(), this)
