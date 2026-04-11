@@ -1276,7 +1276,7 @@ class DetermineBasalBoostV3 @Inject constructor(
                 }
                 // ----- Tier 6: Acceleration bolus (delta_accl > 25) -----
                 // BG > 80 guard: must not fire during or near hypo rebound
-                else if (delta_accl > 25 && glucose_status.delta > 4 && bg > 80 && iob_data.iob < boostMaxIOB && boostActive && eventualBG > target_bg) {
+                else if (delta_accl > 25 && glucose_status.delta > 4 && bg > 110 && iob_data.iob < boostMaxIOB && boostActive && eventualBG > target_bg) {
                     consoleError.add(">>> TIER 6: Acceleration Bolus <<<")
                     rT.boostTier = "ACCELERATION"
                     boostInsulinReq = min(boost_scale * boostInsulinReq, boost_max)

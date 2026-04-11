@@ -1296,7 +1296,7 @@ class DetermineBasalBoostV3ML @Inject constructor(
                     consoleError.add("UAM High Boost enacted; SMB equals $boostInsulinReq; Original insulin requirement was $insulinReq")
                 }
                 // ----- Tier 5: Percent scale (BG 98-180, delta > 3, accelerating) -----
-                else if (!mlTierDowngrade && bg > 98 && bg < 181 && glucose_status.delta > 3 && delta_accl > 0 && eventualBG > target_bg && iob_data.iob < boostMaxIOB && boostActive) {
+                else if (!mlTierDowngrade && bg > 110 && bg < 181 && glucose_status.delta > 3 && delta_accl > 0 && eventualBG > target_bg && iob_data.iob < boostMaxIOB && boostActive) {
                     consoleError.add(">>> TIER 5: Percent Scale <<<")
                     rT.boostTier = "PERCENT_SCALE"
                     if (insulinReq > boostMaxIOB - iob_data.iob) {
@@ -1323,7 +1323,7 @@ class DetermineBasalBoostV3ML @Inject constructor(
                 // delta is rising (hypo rebound). Without this, a rebound from <70
                 // with delta > 4 and delta_accl > 25 would trigger an acceleration
                 // bolus INTO a hypo — a safety regression.
-                else if (!mlTierDowngrade && delta_accl > 25 && glucose_status.delta > 4 && bg > 80 && iob_data.iob < boostMaxIOB && boostActive && eventualBG > target_bg) {
+                else if (!mlTierDowngrade && delta_accl > 25 && glucose_status.delta > 4 && bg > 110 && iob_data.iob < boostMaxIOB && boostActive && eventualBG > target_bg) {
                     consoleError.add(">>> TIER 6: Acceleration Bolus <<<")
                     rT.boostTier = "ACCELERATION"
                     boostInsulinReq = min(boost_scale * boostInsulinReq, boost_max)
