@@ -960,9 +960,9 @@ class BoostOverviewFragment : DaggerFragment(), View.OnClickListener, View.OnLon
             }
 
             // Update label with current ratio
-            val currentRatio = bs.deviationSensRatio
-            val labelText = if (currentRatio != null && bs.deviationSensSource != "none") {
-                "Sensitivity ×${String.format(Locale.getDefault(), "%.2f", currentRatio)} (${bs.deviationSensSource})"
+            val currentRatio = lastBoostStatus.deviationSensRatio
+            val labelText = if (currentRatio != null && lastBoostStatus.deviationSensSource != "none") {
+                "Sensitivity ×${String.format(Locale.getDefault(), "%.2f", currentRatio)} (${lastBoostStatus.deviationSensSource})"
             } else {
                 "Sensitivity (autosens ratio)"
             }
