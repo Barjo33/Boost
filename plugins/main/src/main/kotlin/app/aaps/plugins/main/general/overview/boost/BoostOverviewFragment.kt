@@ -134,7 +134,6 @@ class BoostOverviewFragment : DaggerFragment(), View.OnClickListener, View.OnLon
     @Inject lateinit var xDripSource: XDripSource
     @Inject lateinit var uel: UserEntryLogger
     @Inject lateinit var warnColors: WarnColors
-    @Inject lateinit var processedDeviceStatusData: app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 
     // --- State ---
 
@@ -775,14 +774,11 @@ class BoostOverviewFragment : DaggerFragment(), View.OnClickListener, View.OnLon
 
             // ── Sensitivity Adjustment Panel ──
             // Shows the deviation-based sensitivity ratio, source, sparkline, and ISF effect.
-            // Reads from the RT fields populated by the V3 plugin's calculateBoostIsf().
-            // Fallback chain: loop.lastRun?.request (main phone) → processedDeviceStatusData (AAPSClient/NS sync)
-            val lastRt = (loop.lastRun?.request as? RT)
-                ?: processedDeviceStatusData.openAPSData.suggested
-            val sensRatio = lastRt?.deviationSensRatio
-            val sensSource = lastRt?.deviationSensSource ?: "none"
-            val sensClean = lastRt?.deviationSensClean ?: 0
-            val sensTotal = lastRt?.deviationSensTotal ?: 0
+            // Reads from BoostStatus (which gets it from RT with proper fallback chain).
+            val sensRatio = bs.deviationSensRatio
+            val sensSource = bs.deviationSensSource
+            val sensClean = bs.deviationSensClean
+            val sensTotal = bs.deviationSensTotal
 
             if (sensRatio != null && sensSource != "none") {
                 binding.sensitivityCard.visibility = android.view.View.VISIBLE
@@ -806,8 +802,8 @@ class BoostOverviewFragment : DaggerFragment(), View.OnClickListener, View.OnLon
                 binding.sensitivitySource.text = sourceStr
 
                 // ISF effect summary
-                val tddIsf = lastRt?.sensNormalTarget ?: 0.0
-                val varIsf = lastRt?.variable_sens ?: lastRt?.predictionISF ?: 0.0
+                val tddIsf = bs.sensNormalTarget
+                val varIsf = bs.variableSens
                 if (tddIsf > 0 && varIsf > 0) {
                     val isfBefore = tddIsf * sensRatio  // ISF before sensitivity adjustment
                     val unitsStr = if (profileFunction.getUnits() == GlucoseUnit.MGDL) "mg/dL/U" else "mmol/L/U"
@@ -1110,14 +1106,14 @@ class BoostOverviewFragment : DaggerFragment(), View.OnClickListener, View.OnLon
                 }
 
                 R.id.sensitivityCard -> {
-                    val rt = (loop.lastRun?.request as? RT)
-                    val ratio = rt?.deviationSensRatio
-                    val source = rt?.deviationSensSource ?: "none"
-                    val clean = rt?.deviationSensClean ?: 0
-                    val total = rt?.deviationSensTotal ?: 0
-                    val tddIsf = rt?.sensNormalTarget ?: 0.0
-                    val varIsf = rt?.variable_sens ?: 0.0
-                    val tddVal = rt?.tdd ?: 0.0
+                    val bs = lastBoostStatus
+                    val ratio = bs.deviationSensRatio
+                    val source = bs.deviationSensSource
+                    val clean = bs.deviationSensClean
+                    val total = bs.deviationSensTotal
+                    val tddIsf = bs.sensNormalTarget
+                    val varIsf = bs.variableSens
+                    val tddVal = bs.tddWeighted
 
                     val details = StringBuilder()
                     details.append("── Deviation Sensitivity ──\n\n")

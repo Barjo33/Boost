@@ -54,6 +54,12 @@ class BoostOverviewHelper @Inject constructor(
         val cannulaAgeDays: Double = -1.0,
         val sensorAgeDays: Double = -1.0,
         val fastCarbProtection: Boolean = false,
+        // Deviation-based sensitivity adjustment
+        val deviationSensRatio: Double? = null,
+        val deviationSensSource: String = "none",
+        val deviationSensClean: Int = 0,
+        val deviationSensTotal: Int = 0,
+        val sensNormalTarget: Double = 0.0,
     )
 
     enum class BoostTier(val label: String, val colorHex: Long) {
@@ -188,6 +194,11 @@ class BoostOverviewHelper @Inject constructor(
             cannulaAgeDays = getAgeDays(TE.Type.CANNULA_CHANGE),
             sensorAgeDays = getAgeDays(TE.Type.SENSOR_CHANGE),
             fastCarbProtection = fastCarbProtection,
+            deviationSensRatio = rt?.deviationSensRatio,
+            deviationSensSource = rt?.deviationSensSource ?: "none",
+            deviationSensClean = rt?.deviationSensClean ?: 0,
+            deviationSensTotal = rt?.deviationSensTotal ?: 0,
+            sensNormalTarget = rt?.sensNormalTarget ?: 0.0,
         )
     }
 
