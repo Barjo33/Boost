@@ -134,6 +134,7 @@ class BoostOverviewFragment : DaggerFragment(), View.OnClickListener, View.OnLon
     @Inject lateinit var xDripSource: XDripSource
     @Inject lateinit var uel: UserEntryLogger
     @Inject lateinit var warnColors: WarnColors
+    @Inject lateinit var processedDeviceStatusData: app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 
     // --- State ---
 
@@ -775,7 +776,9 @@ class BoostOverviewFragment : DaggerFragment(), View.OnClickListener, View.OnLon
             // ── Sensitivity Adjustment Panel ──
             // Shows the deviation-based sensitivity ratio, source, sparkline, and ISF effect.
             // Reads from the RT fields populated by the V3 plugin's calculateBoostIsf().
-            val lastRt = loop.lastRun?.request as? RT
+            // Fallback chain: loop.lastRun?.request (main phone) → processedDeviceStatusData (AAPSClient/NS sync)
+            val lastRt = (loop.lastRun?.request as? RT)
+                ?: processedDeviceStatusData.openAPSData.suggested
             val sensRatio = lastRt?.deviationSensRatio
             val sensSource = lastRt?.deviationSensSource ?: "none"
             val sensClean = lastRt?.deviationSensClean ?: 0

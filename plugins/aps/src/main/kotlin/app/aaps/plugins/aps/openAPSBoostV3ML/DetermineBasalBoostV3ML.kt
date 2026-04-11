@@ -1319,7 +1319,11 @@ class DetermineBasalBoostV3ML @Inject constructor(
                     consoleError.add("Post percent scale trigger state: $iTimeActive")
                 }
                 // ----- Tier 6: Acceleration bolus (delta_accl > 25) -----
-                else if (!mlTierDowngrade && delta_accl > 25 && glucose_status.delta > 4 && iob_data.iob < boostMaxIOB && boostActive && eventualBG > target_bg) {
+                // BG > 80 guard added: must not fire during or near hypo, even if
+                // delta is rising (hypo rebound). Without this, a rebound from <70
+                // with delta > 4 and delta_accl > 25 would trigger an acceleration
+                // bolus INTO a hypo — a safety regression.
+                else if (!mlTierDowngrade && delta_accl > 25 && glucose_status.delta > 4 && bg > 80 && iob_data.iob < boostMaxIOB && boostActive && eventualBG > target_bg) {
                     consoleError.add(">>> TIER 6: Acceleration Bolus <<<")
                     rT.boostTier = "ACCELERATION"
                     boostInsulinReq = min(boost_scale * boostInsulinReq, boost_max)
