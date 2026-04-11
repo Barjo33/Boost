@@ -600,6 +600,36 @@
 
                     </RelativeLayout>
 
+                    <!-- ═══ Sensitivity graph (shows deviation-based sensitivity ratio over time) ═══ -->
+                    <RelativeLayout
+                        android:id="@+id/sensitivity_graph_container"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:visibility="gone">
+
+                        <com.jjoe64.graphview.GraphView
+                            android:id="@+id/sensitivity_graph"
+                            android:layout_width="match_parent"
+                            android:layout_height="100dp"
+                            android:contentDescription="Sensitivity ratio over time" />
+
+                        <TextView
+                            android:id="@+id/sensitivity_graph_label"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_alignParentTop="true"
+                            android:layout_alignParentStart="true"
+                            android:layout_marginStart="30dp"
+                            android:layout_marginTop="4dp"
+                            android:text="Sensitivity"
+                            android:textSize="11sp"
+                            android:textColor="?android:attr/textColorSecondary"
+                            android:letterSpacing="0.05"
+                            android:importantForAccessibility="no"
+                            tools:ignore="HardcodedText" />
+
+                    </RelativeLayout>
+
                 </LinearLayout>
 
             </com.google.android.material.card.MaterialCardView>

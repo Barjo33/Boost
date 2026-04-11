@@ -899,6 +899,78 @@ class BoostOverviewFragment : DaggerFragment(), View.OnClickListener, View.OnLon
             binding.hrStepsGraphContainer.visibility = android.view.View.GONE
         }
 
+        // ── Sensitivity ratio graph ──
+        // Shows the autosens-derived sensitivity ratio over the display range.
+        // This is the ratio that computeDeviationSensitivity() uses — plotting it
+        // lets the user see how their sensitivity has been changing over time.
+        // The graph is always shown when the autosens data table has entries.
+        val adsTable = iobCobCalculator.ads.autosensDataTable
+        if (adsTable.size() > 0) {
+            binding.sensitivityGraphContainer.visibility = android.view.View.VISIBLE
+            val sensGraph = binding.sensitivityGraph
+
+            // Build data points from the autosens data store
+            val dataPoints = mutableListOf<com.jjoe64.graphview.series.DataPoint>()
+            val refPoints = mutableListOf<com.jjoe64.graphview.series.DataPoint>()
+            for (i in 0 until adsTable.size()) {
+                val time = adsTable.keyAt(i)
+                if (time < overviewData.fromTime || time > overviewData.endTime) continue
+                val data = adsTable.valueAt(i) ?: continue
+                val ratio = data.autosensResult.ratio
+                if (ratio > 0) {
+                    dataPoints.add(com.jjoe64.graphview.series.DataPoint(time.toDouble(), ratio))
+                    refPoints.add(com.jjoe64.graphview.series.DataPoint(time.toDouble(), 1.0))
+                }
+            }
+
+            sensGraph.removeAllSeries()
+            if (dataPoints.isNotEmpty()) {
+                // Reference line at 1.0 (neutral)
+                val refSeries = com.jjoe64.graphview.series.LineGraphSeries(refPoints.toTypedArray())
+                refSeries.color = android.graphics.Color.GRAY
+                refSeries.thickness = 2
+                sensGraph.addSeries(refSeries)
+
+                // Sensitivity ratio line
+                val sensSeries = com.jjoe64.graphview.series.LineGraphSeries(dataPoints.toTypedArray())
+                sensSeries.color = rh.gac(ctx, app.aaps.core.ui.R.attr.defaultTextColor)
+                sensSeries.thickness = 4
+                sensGraph.addSeries(sensSeries)
+
+                // Configure axes
+                sensGraph.viewport.isXAxisBoundsManual = true
+                sensGraph.viewport.setMinX(overviewData.fromTime.toDouble())
+                sensGraph.viewport.setMaxX(overviewData.endTime.toDouble())
+                sensGraph.viewport.isYAxisBoundsManual = true
+                sensGraph.viewport.setMinY(0.7)
+                sensGraph.viewport.setMaxY(1.3)
+                sensGraph.gridLabelRenderer?.isHorizontalLabelsVisible = false
+                sensGraph.gridLabelRenderer?.numVerticalLabels = 3
+                sensGraph.gridLabelRenderer?.labelVerticalWidth = axisWidth
+                sensGraph.gridLabelRenderer?.gridColor = rh.gac(ctx, app.aaps.core.ui.R.attr.graphGrid)
+
+                // Now line
+                val nowSeries = com.jjoe64.graphview.series.LineGraphSeries(arrayOf(
+                    com.jjoe64.graphview.series.DataPoint(dateUtil.now().toDouble(), 0.7),
+                    com.jjoe64.graphview.series.DataPoint(dateUtil.now().toDouble(), 1.3)
+                ))
+                nowSeries.color = rh.gac(ctx, app.aaps.core.ui.R.attr.defaultTextColor)
+                nowSeries.thickness = 1
+                sensGraph.addSeries(nowSeries)
+            }
+
+            // Update label with current ratio
+            val currentRatio = bs.deviationSensRatio
+            val labelText = if (currentRatio != null && bs.deviationSensSource != "none") {
+                "Sensitivity ×${String.format(Locale.getDefault(), "%.2f", currentRatio)} (${bs.deviationSensSource})"
+            } else {
+                "Sensitivity (autosens ratio)"
+            }
+            binding.sensitivityGraphLabel.text = labelText
+        } else {
+            binding.sensitivityGraphContainer.visibility = android.view.View.GONE
+        }
+
         // TalkBack
         val hours = overviewData.rangeToDisplay
         binding.bgGraph.contentDescription = "Blood glucose graph, ${hours} hour view. Tap to open treatments. Long press to change time range"
