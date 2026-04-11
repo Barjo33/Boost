@@ -63,6 +63,12 @@ data class RT(
     var deltaAcceleration: Double? = null,       // Delta acceleration percentage
     var boostProfileSwitch: Int? = null,         // Effective profile % (activity-adjusted)
 
+    // Deviation-based sensitivity (Boost V3 DISFv3-sensitivity)
+    var deviationSensRatio: Double? = null,      // The applied sensitivity ratio (> 1 = more resistant)
+    var deviationSensSource: String? = null,     // "deviation" or "tdd_fallback" or "none"
+    var deviationSensClean: Int? = null,         // Number of clean (non-meal) entries in the 8H window
+    var deviationSensTotal: Int? = null,         // Total entries in the 8H window
+
     // ML risk model fields (Boost V3ML only)
     var mlHypoRisk: Double? = null,             // P(hypo event in next 4h), 0.0-1.0
     var mlRiskScale: Double? = null,            // SMB scaling factor applied (1.0 = no reduction)

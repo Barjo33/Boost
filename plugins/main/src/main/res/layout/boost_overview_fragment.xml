@@ -407,6 +407,81 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- ═══ Sensitivity Adjustment Panel ═══ -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/sensitivityCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:layout_marginTop="4dp"
+                app:cardCornerRadius="8dp"
+                app:cardElevation="0dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="8dp">
+
+                    <!-- Header row: label + current ratio + source -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="SENSITIVITY"
+                            android:textSize="11sp"
+                            android:textColor="?android:attr/textColorTertiary"
+                            android:letterSpacing="0.1"
+                            tools:ignore="HardcodedText" />
+                        <TextView
+                            android:id="@+id/sensitivity_ratio_value"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            tools:text="×1.12" />
+                        <TextView
+                            android:id="@+id/sensitivity_source"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="10sp"
+                            android:textColor="?android:attr/textColorTertiary"
+                            tools:text="deviation 42/96" />
+                    </LinearLayout>
+
+                    <!-- Sparkline row: 8h history of the ratio -->
+                    <TextView
+                        android:id="@+id/sensitivity_sparkline"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="monospace"
+                        android:textSize="14sp"
+                        android:letterSpacing="0.05"
+                        android:gravity="center"
+                        android:paddingTop="4dp"
+                        android:paddingBottom="2dp"
+                        tools:text="▁▂▃▅▆█▇▅▃▂▁▁▂▃▅▇███▇▆▅▃▂" />
+
+                    <!-- ISF adjustment summary -->
+                    <TextView
+                        android:id="@+id/sensitivity_isf_summary"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:textSize="11sp"
+                        android:textColor="?android:attr/textColorSecondary"
+                        tools:text="TDD ISF 98 → 87 mg/dL/U" />
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- ═══ BG Graph (reuses existing) ═══ -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/graphCard"

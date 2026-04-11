@@ -351,7 +351,12 @@ open class OpenAPSBoostV3Plugin @Inject constructor(
         val insulinDivisor: Int,
         val ratio: Double,
         val tdd: Double,
-        val isfDebug: String = ""
+        val isfDebug: String = "",
+        // Deviation sensitivity fields (for RT upload + UI display)
+        val deviationSensRatio: Double? = null,   // applied ratio (null if adjustSens off)
+        val deviationSensSource: String = "none",  // "deviation", "tdd_fallback", or "none"
+        val deviationSensClean: Int = 0,           // clean entries in 8H window
+        val deviationSensTotal: Int = 0,           // total entries in 8H window
     )
 
     private fun calculateBoostIsf(
@@ -379,6 +384,12 @@ open class OpenAPSBoostV3Plugin @Inject constructor(
         val bgCurrent = if (glucoseValue > bgCap) bgCap + ((glucoseValue - bgCap) / 3.0) else glucoseValue
 
         val debug = StringBuilder()
+
+        // Track deviation sensitivity state for RT upload + UI display
+        var devSensRatio: Double? = null
+        var devSensSource = "none"
+        var devSensClean = 0
+        var devSensTotal = 0
 
         // TDD-based ISF calculation
         val useTdd = preferences.get(BooleanKey.ApsBoostUseTdd)
@@ -441,6 +452,10 @@ open class OpenAPSBoostV3Plugin @Inject constructor(
                             debug.append("\n── Deviation-based sensitivity ──")
                             debug.append("\n${devSens.debug}")
                             debug.append("\nApplied ratio=${Round.roundTo(ratio, 0.02)} → ISF=${Round.roundTo(sensNormalTarget, 0.1)}")
+                            devSensRatio = ratio
+                            devSensSource = "deviation"
+                            devSensClean = devSens.nClean
+                            devSensTotal = devSens.nTotal
                         } else if (tddLast24H != null && tddLast24H > 0 && tdd7D > 0) {
                             // Fallback: TDD 24H/7D ratio (used when deviation data is
                             // too sparse — continuous meals, sensor gaps, etc.)
@@ -448,6 +463,8 @@ open class OpenAPSBoostV3Plugin @Inject constructor(
                             sensNormalTarget /= ratio
                             debug.append("\nDevSens: insufficient clean data — falling back to TDD ratio")
                             debug.append("\nSens ratio: ${Round.roundTo(ratio, 0.01)} (24H/7D = ${Round.roundTo(tddLast24H, 0.1)}/${Round.roundTo(tdd7D, 0.1)}) → ISF=${Round.roundTo(sensNormalTarget, 0.1)}")
+                            devSensRatio = ratio
+                            devSensSource = "tdd_fallback"
                         }
                     }
                 } else {
@@ -494,7 +511,11 @@ open class OpenAPSBoostV3Plugin @Inject constructor(
             insulinDivisor = insulinDivisor,
             ratio = Round.roundTo(ratio, 0.01),
             tdd = tdd,
-            isfDebug = debug.toString()
+            isfDebug = debug.toString(),
+            deviationSensRatio = devSensRatio,
+            deviationSensSource = devSensSource,
+            deviationSensClean = devSensClean,
+            deviationSensTotal = devSensTotal,
         )
     }
 
@@ -1094,6 +1115,12 @@ open class OpenAPSBoostV3Plugin @Inject constructor(
             currentTime = now,
             flatBGsDetected = flatBGsDetected
         ).also {
+            // Populate deviation sensitivity fields on the RT for Nightscout upload + UI
+            it.deviationSensRatio = isfResult.deviationSensRatio
+            it.deviationSensSource = isfResult.deviationSensSource
+            it.deviationSensClean = isfResult.deviationSensClean
+            it.deviationSensTotal = isfResult.deviationSensTotal
+
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints
             determineBasalResult.autosensResult = autosensResult
