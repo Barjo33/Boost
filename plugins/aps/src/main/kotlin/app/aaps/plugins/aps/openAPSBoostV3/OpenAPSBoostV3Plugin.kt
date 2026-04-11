@@ -893,31 +893,13 @@ open class OpenAPSBoostV3Plugin @Inject constructor(
                     activeRecoveryTargetOffset = targetOffsetMgdl
                     recoveryWindowEnd = now + recoveryMillis
                     aapsLogger.debug(LTag.APS, "Boost post-exercise [$lastExerciseStateAtTransition]: window=${recoveryMillis / 60_000}min target=${recoveryTargetMgdl.toInt()}mg/dL SMBscale=$activeRecoveryScale")
-                    if (persistenceLayer.getTemporaryTargetActiveAt(now) == null) {
-                        val tt = TT(
-                            timestamp = now,
-                            duration = recoveryMillis,
-                            reason = TT.Reason.ACTIVITY,
-                            lowTarget = recoveryTargetMgdl,
-                            highTarget = recoveryTargetMgdl
-                        )
-                        disposable += persistenceLayer.insertAndCancelCurrentTemporaryTarget(
-                            temporaryTarget = tt,
-                            action = Action.TT,
-                            source = Sources.Aaps,
-                            note = rh.gs(R.string.boost_post_exercise_recovery_title),
-                            listValues = listOf(
-                                ValueWithUnit.TETTReason(TT.Reason.ACTIVITY),
-                                ValueWithUnit.Mgdl(recoveryTargetMgdl),
-                                ValueWithUnit.Minute(TimeUnit.MILLISECONDS.toMinutes(recoveryMillis).toInt())
-                            )
-                        ).subscribe(
-                            { aapsLogger.debug(LTag.APS, "Boost post-exercise: TempTarget inserted (${recoveryTargetMgdl.toInt()} mg/dL for ${TimeUnit.MILLISECONDS.toMinutes(recoveryMillis)}min)") },
-                            { aapsLogger.error(LTag.APS, "Boost post-exercise: failed to insert TempTarget", it) }
-                        )
-                    } else {
-                        aapsLogger.debug(LTag.APS, "Boost post-exercise: TempTarget already active — skipping insert")
-                    }
+                    // NOTE: No TempTarget is set. The recovery mechanism works entirely
+                    // through internal target adjustment (applied in the oapsProfile
+                    // construction below) + boost_bolus/boost_scale scaling. Setting a
+                    // TT was causing the SMB-disable-on-high-temptarget check to fire,
+                    // which completely killed Boost's tier system during recovery —
+                    // the opposite of what's intended. The scaled-down Boost tiers
+                    // provide graduated protection that a full SMB disable does not.
                 } else {
                     aapsLogger.debug(LTag.APS, "Boost post-exercise: exercise too brief (${exerciseDurationMin}min < ${postExerciseMinDuration}min) — no recovery")
                 }
@@ -1002,6 +984,24 @@ open class OpenAPSBoostV3Plugin @Inject constructor(
         val recentSteps30Min = StepService.getRecentStepCount30Min()
         val recentSteps60Min = StepService.getRecentStepCount60Min()
 
+        // ---- Apply recovery target raise internally (no TT) ----
+        // When in the post-exercise recovery window, raise the target to the
+        // configured recovery target. This is applied directly to the targets
+        // passed to the algorithm, NOT via a TempTarget, so the SMB-disable
+        // check doesn't fire and Boost's tier system stays active (just scaled).
+        var effectiveMinBg = activityResult.minBg
+        var effectiveMaxBg = activityResult.maxBg
+        var effectiveTargetBg = activityResult.targetBg
+        if (postExerciseRecoveryEnabled && now < recoveryWindowEnd) {
+            val recoveryTargetMgdl = postExerciseRecoveryTarget + activeRecoveryTargetOffset
+            if (recoveryTargetMgdl > effectiveTargetBg) {
+                effectiveMinBg = recoveryTargetMgdl
+                effectiveMaxBg = recoveryTargetMgdl
+                effectiveTargetBg = recoveryTargetMgdl
+                aapsLogger.debug(LTag.APS, "Boost recovery: internal target raised to ${recoveryTargetMgdl.toInt()} mg/dL (profile was ${activityResult.targetBg.toInt()})")
+            }
+        }
+
         // ---- Build the OapsProfileBoost ----
 
         val oapsProfile = OapsProfileBoost(
@@ -1011,9 +1011,9 @@ open class OpenAPSBoostV3Plugin @Inject constructor(
             max_iob = constraintsChecker.getMaxIOBAllowed().also { inputConstraints.copyReasons(it) }.value(),
             max_daily_basal = profile.getMaxDailyBasal(),
             max_basal = constraintsChecker.getMaxBasalAllowed(profile).also { inputConstraints.copyReasons(it) }.value(),
-            min_bg = activityResult.minBg,
-            max_bg = activityResult.maxBg,
-            target_bg = activityResult.targetBg,
+            min_bg = effectiveMinBg,
+            max_bg = effectiveMaxBg,
+            target_bg = effectiveTargetBg,
             carb_ratio = profile.getIc(),
             sens = profile.getIsfMgdl("OpenAPSBoostPlugin"),
             autosens_adjust_targets = false,
