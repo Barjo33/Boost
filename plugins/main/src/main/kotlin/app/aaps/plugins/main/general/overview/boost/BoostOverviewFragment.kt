@@ -900,47 +900,56 @@ class BoostOverviewFragment : DaggerFragment(), View.OnClickListener, View.OnLon
         }
 
         // ── Sensitivity ratio graph ──
-        // Computes the deviation-based sensitivity ratio per point from the raw
-        // autosens deviation/BGI data. This mirrors computeDeviationSensitivity()
-        // but produces a per-point time series instead of a single 8H aggregate.
-        // The graph shows what the deviation sensitivity WOULD produce even when
-        // the "Adjust Sensitivity" preference is off — letting the user evaluate
-        // the signal before enabling it.
-        //
-        // For each 5-min cycle, we compute a rolling 1H deviation ratio:
-        //   ratio = 1.0 + (mean_deviation_1h / mean_abs_bgi_1h)
-        // Only "clean" cycles (no COB, no UAM, valid deviation) contribute.
-        // This is noisier than the 8H aggregate but shows real-time trends.
-        val adsTable = iobCobCalculator.ads.autosensDataTable
-        if (adsTable.size() > 10) {
+        // Computes deviation ratio directly from bucketed BG data + IOB, bypassing
+        // autosens entirely (which may be disabled). For each 5-min BG point, we
+        // compute BGI = -IOB × ISF × 5min_activity_fraction, then deviation =
+        // actual_delta - BGI. A rolling 1H window converts deviations into a ratio.
+        // This works regardless of autosens/adjustSens settings.
+        val profile = profileFunction.getProfile()
+        val bucketedData = iobCobCalculator.ads.getBucketedDataTableCopy()
+        if (bucketedData != null && bucketedData.size > 20 && profile != null) {
             binding.sensitivityGraphContainer.visibility = android.view.View.VISIBLE
             val sensGraph = binding.sensitivityGraph
 
-            // Collect all data points in the display window
-            data class AdsPoint(val time: Long, val deviation: Double, val bgi: Double, val clean: Boolean)
-            val allPoints = mutableListOf<AdsPoint>()
-            for (i in 0 until adsTable.size()) {
-                val time = adsTable.keyAt(i)
-                val data = adsTable.valueAt(i) ?: continue
-                val clean = data.validDeviation && data.cob < 1.0 && !data.absorbing && !data.uam
-                allPoints.add(AdsPoint(time, data.deviation, data.bgi, clean))
+            // Build per-point deviation from bucketed BG + IOB
+            data class DevPoint(val time: Long, val deviation: Double, val absBgi: Double, val hasCob: Boolean)
+            val devPoints = mutableListOf<DevPoint>()
+            val profileIsf = profile.getIsfMgdl("SensGraph")
+
+            for (i in 1 until bucketedData.size) {
+                val bg = bucketedData[i].recalculated
+                val prevBg = bucketedData[i - 1].recalculated
+                val time = bucketedData[i].timestamp
+                if (bg <= 39 || prevBg <= 39) continue
+
+                val actualDelta = bg - prevBg  // mg/dL change in this 5-min interval
+
+                // Compute expected BG change from IOB (BGI)
+                val iobData = iobCobCalculator.calculateFromTreatmentsAndTemps(time, profile)
+                val bgi = -iobData.activity * profileIsf * 5.0  // activity is U/min, ISF is mg/dL/U
+                val deviation = actualDelta - bgi
+
+                // Check COB at this time (rough: any recent carbs = not clean)
+                val cobInfo = iobCobCalculator.getCobInfo("SensGraph")
+                val hasCob = cobInfo.displayCob != null && cobInfo.displayCob!! > 0.5
+
+                devPoints.add(DevPoint(time, deviation, kotlin.math.abs(bgi), hasCob))
             }
 
-            // Compute rolling 1H deviation ratio for each point in the display window
-            val windowMs = 3600_000L  // 1 hour rolling window
+            // Compute rolling 1H deviation ratio for points in the display window
+            val windowMs = 3600_000L
             val dataPoints = mutableListOf<com.jjoe64.graphview.series.DataPoint>()
             val refPoints = mutableListOf<com.jjoe64.graphview.series.DataPoint>()
-            for (pt in allPoints) {
+            for (pt in devPoints) {
                 if (pt.time < overviewData.fromTime || pt.time > overviewData.endTime) continue
 
-                // Gather clean points in the 1H window ending at this point
                 var sumDev = 0.0; var sumAbsBgi = 0.0; var nClean = 0; var nTotal = 0
-                for (wp in allPoints) {
+                for (wp in devPoints) {
                     if (wp.time > pt.time) break
                     if (wp.time < pt.time - windowMs) continue
                     nTotal++
-                    sumAbsBgi += kotlin.math.abs(wp.bgi)
-                    if (wp.clean) { sumDev += wp.deviation; nClean++ }
+                    sumAbsBgi += wp.absBgi
+                    if (!wp.hasCob) { sumDev += wp.deviation; nClean++ }
                 }
 
                 val ratio = if (nClean >= 3 && nTotal > 0) {
