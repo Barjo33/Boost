@@ -900,38 +900,81 @@ class BoostOverviewFragment : DaggerFragment(), View.OnClickListener, View.OnLon
         }
 
         // ── Sensitivity ratio graph ──
-        // Shows the autosens-derived sensitivity ratio over the display range.
-        // This is the ratio that computeDeviationSensitivity() uses — plotting it
-        // lets the user see how their sensitivity has been changing over time.
-        // The graph is always shown when the autosens data table has entries.
+        // Computes the deviation-based sensitivity ratio per point from the raw
+        // autosens deviation/BGI data. This mirrors computeDeviationSensitivity()
+        // but produces a per-point time series instead of a single 8H aggregate.
+        // The graph shows what the deviation sensitivity WOULD produce even when
+        // the "Adjust Sensitivity" preference is off — letting the user evaluate
+        // the signal before enabling it.
+        //
+        // For each 5-min cycle, we compute a rolling 1H deviation ratio:
+        //   ratio = 1.0 + (mean_deviation_1h / mean_abs_bgi_1h)
+        // Only "clean" cycles (no COB, no UAM, valid deviation) contribute.
+        // This is noisier than the 8H aggregate but shows real-time trends.
         val adsTable = iobCobCalculator.ads.autosensDataTable
-        if (adsTable.size() > 0) {
+        if (adsTable.size() > 10) {
             binding.sensitivityGraphContainer.visibility = android.view.View.VISIBLE
             val sensGraph = binding.sensitivityGraph
 
-            // Build data points from the autosens data store
-            val dataPoints = mutableListOf<com.jjoe64.graphview.series.DataPoint>()
-            val refPoints = mutableListOf<com.jjoe64.graphview.series.DataPoint>()
+            // Collect all data points in the display window
+            data class AdsPoint(val time: Long, val deviation: Double, val bgi: Double, val clean: Boolean)
+            val allPoints = mutableListOf<AdsPoint>()
             for (i in 0 until adsTable.size()) {
                 val time = adsTable.keyAt(i)
-                if (time < overviewData.fromTime || time > overviewData.endTime) continue
                 val data = adsTable.valueAt(i) ?: continue
-                val ratio = data.autosensResult.ratio
-                if (ratio > 0) {
-                    dataPoints.add(com.jjoe64.graphview.series.DataPoint(time.toDouble(), ratio))
-                    refPoints.add(com.jjoe64.graphview.series.DataPoint(time.toDouble(), 1.0))
+                val clean = data.validDeviation && data.cob < 1.0 && !data.absorbing && !data.uam
+                allPoints.add(AdsPoint(time, data.deviation, data.bgi, clean))
+            }
+
+            // Compute rolling 1H deviation ratio for each point in the display window
+            val windowMs = 3600_000L  // 1 hour rolling window
+            val dataPoints = mutableListOf<com.jjoe64.graphview.series.DataPoint>()
+            val refPoints = mutableListOf<com.jjoe64.graphview.series.DataPoint>()
+            for (pt in allPoints) {
+                if (pt.time < overviewData.fromTime || pt.time > overviewData.endTime) continue
+
+                // Gather clean points in the 1H window ending at this point
+                var sumDev = 0.0; var sumAbsBgi = 0.0; var nClean = 0; var nTotal = 0
+                for (wp in allPoints) {
+                    if (wp.time > pt.time) break
+                    if (wp.time < pt.time - windowMs) continue
+                    nTotal++
+                    sumAbsBgi += kotlin.math.abs(wp.bgi)
+                    if (wp.clean) { sumDev += wp.deviation; nClean++ }
                 }
+
+                val ratio = if (nClean >= 3 && nTotal > 0) {
+                    val meanAbsBgi = sumAbsBgi / nTotal
+                    if (meanAbsBgi > 0.5) {
+                        (1.0 + (sumDev / nClean) / meanAbsBgi).coerceIn(0.5, 1.5)
+                    } else 1.0
+                } else 1.0
+
+                dataPoints.add(com.jjoe64.graphview.series.DataPoint(pt.time.toDouble(), ratio))
+                refPoints.add(com.jjoe64.graphview.series.DataPoint(pt.time.toDouble(), 1.0))
             }
 
             sensGraph.removeAllSeries()
-            if (dataPoints.isNotEmpty()) {
+            if (dataPoints.size > 2) {
                 // Reference line at 1.0 (neutral)
                 val refSeries = com.jjoe64.graphview.series.LineGraphSeries(refPoints.toTypedArray())
                 refSeries.color = android.graphics.Color.GRAY
                 refSeries.thickness = 2
                 sensGraph.addSeries(refSeries)
 
-                // Sensitivity ratio line
+                // Cap lines at ±15% (the current maxPull)
+                val capHighPoints = refPoints.map { com.jjoe64.graphview.series.DataPoint(it.x, 1.15) }.toTypedArray()
+                val capLowPoints = refPoints.map { com.jjoe64.graphview.series.DataPoint(it.x, 0.85) }.toTypedArray()
+                val capHighSeries = com.jjoe64.graphview.series.LineGraphSeries(capHighPoints)
+                capHighSeries.color = android.graphics.Color.argb(80, 255, 0, 0)
+                capHighSeries.thickness = 1
+                sensGraph.addSeries(capHighSeries)
+                val capLowSeries = com.jjoe64.graphview.series.LineGraphSeries(capLowPoints)
+                capLowSeries.color = android.graphics.Color.argb(80, 255, 0, 0)
+                capLowSeries.thickness = 1
+                sensGraph.addSeries(capLowSeries)
+
+                // Deviation ratio line — colour by position relative to 1.0
                 val sensSeries = com.jjoe64.graphview.series.LineGraphSeries(dataPoints.toTypedArray())
                 sensSeries.color = rh.gac(ctx, app.aaps.core.ui.R.attr.defaultTextColor)
                 sensSeries.thickness = 4
@@ -959,12 +1002,13 @@ class BoostOverviewFragment : DaggerFragment(), View.OnClickListener, View.OnLon
                 sensGraph.addSeries(nowSeries)
             }
 
-            // Update label with current ratio
-            val currentRatio = lastBoostStatus.deviationSensRatio
-            val labelText = if (currentRatio != null && lastBoostStatus.deviationSensSource != "none") {
-                "Sensitivity ×${String.format(Locale.getDefault(), "%.2f", currentRatio)} (${lastBoostStatus.deviationSensSource})"
+            // Update label — show current 1H rolling ratio
+            val latestRatio = dataPoints.lastOrNull()?.y ?: 1.0
+            val currentDevRatio = lastBoostStatus.deviationSensRatio
+            val labelText = if (currentDevRatio != null && lastBoostStatus.deviationSensSource != "none") {
+                "Sensitivity ×${String.format(Locale.getDefault(), "%.2f", currentDevRatio)} applied (${lastBoostStatus.deviationSensSource})"
             } else {
-                "Sensitivity (autosens ratio)"
+                "Sensitivity ×${String.format(Locale.getDefault(), "%.2f", latestRatio)} (preview — not applied)"
             }
             binding.sensitivityGraphLabel.text = labelText
         } else {
