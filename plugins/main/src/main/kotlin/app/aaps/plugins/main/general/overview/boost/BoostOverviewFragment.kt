@@ -914,7 +914,13 @@ class BoostOverviewFragment : DaggerFragment(), View.OnClickListener, View.OnLon
             // Build per-point deviation from bucketed BG + IOB
             data class DevPoint(val time: Long, val deviation: Double, val absBgi: Double, val hasCob: Boolean)
             val devPoints = mutableListOf<DevPoint>()
-            val profileIsf = profile.getIsfMgdl("SensGraph")
+            // Use the algorithm's variable_sens (DynISF-adjusted) when available.
+            // profile.getIsfMgdl() returns the STATIC profile ISF (e.g., 162 mg/dL/U)
+            // but DynISF may be using a much lower value (e.g., 50). Using the wrong
+            // ISF makes BGI 3× too large, flattening the ratio and producing spikes
+            // when IOB drops to zero. On AAPSClient this comes from NS device status.
+            val effectiveIsf = lastBoostStatus.variableSens.takeIf { it > 0 }
+                ?: profile.getIsfMgdl("SensGraph")
 
             for (i in 1 until bucketedData.size) {
                 val bg = bucketedData[i].recalculated
@@ -926,7 +932,7 @@ class BoostOverviewFragment : DaggerFragment(), View.OnClickListener, View.OnLon
 
                 // Compute expected BG change from IOB (BGI)
                 val iobData = iobCobCalculator.calculateFromTreatmentsAndTemps(time, profile)
-                val bgi = -iobData.activity * profileIsf * 5.0  // activity is U/min, ISF is mg/dL/U
+                val bgi = -iobData.activity * effectiveIsf * 5.0  // activity is U/min, ISF is mg/dL/U
                 val deviation = actualDelta - bgi
 
                 // Check COB at this time (rough: any recent carbs = not clean)
