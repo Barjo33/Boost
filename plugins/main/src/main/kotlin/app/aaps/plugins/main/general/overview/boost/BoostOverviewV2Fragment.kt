@@ -765,12 +765,55 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
         graphData.formatAxis(overviewData.fromTime, overviewData.endTime)
         graphData.performUpdate()
 
+        // ── V2 Dark Theme Restyle ──
+        // The standard GraphData series use the AAPS theme colours (green bands,
+        // cyan bars). Override them after performUpdate() to match the V2 design.
+        val bgGraph = binding.v2BgGraph
+        bgGraph.viewport.backgroundColor = Color.parseColor("#0a0c10")
+        bgGraph.gridLabelRenderer?.gridColor = Color.parseColor("#1a1d28")
+        bgGraph.gridLabelRenderer?.horizontalLabelsColor = Color.parseColor("#333333")
+        bgGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#333333")
+        // Restyle series: iterate and adjust colours
+        for (i in 0 until bgGraph.series.size) {
+            val series = bgGraph.series[i]
+            when (series) {
+                is com.jjoe64.graphview.series.AreaGraphSeries<*> -> {
+                    // In-range area — make it subtle accent tint instead of bright green
+                    series.color = 0  // no border
+                    series.backgroundColor = Color.parseColor("#0c00d4ff")  // very subtle cyan tint
+                }
+                is com.jjoe64.graphview.series.BarGraphSeries<*> -> {
+                    // Basal bars — change from cyan to orange, reduce opacity
+                    series.color = Color.parseColor("#59fb923c")  // semi-transparent orange
+                }
+            }
+        }
+
         // IOB graph
         val iobGraphData = graphDataProvider.get().with(binding.v2IobGraph, overviewData)
         iobGraphData.addIob(true, 1.0)
         iobGraphData.addNowLine(dateUtil.now())
         iobGraphData.formatAxis(overviewData.fromTime, overviewData.endTime)
         iobGraphData.performUpdate()
+
+        // IOB graph V2 restyle
+        val iobGraph = binding.v2IobGraph
+        iobGraph.viewport.backgroundColor = Color.parseColor("#090b0f")
+        iobGraph.gridLabelRenderer?.gridColor = Color.parseColor("#1a1d28")
+        iobGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#333333")
+        // Restyle IOB series to blue
+        for (i in 0 until iobGraph.series.size) {
+            val series = iobGraph.series[i]
+            when (series) {
+                is com.jjoe64.graphview.series.AreaGraphSeries<*> -> {
+                    series.backgroundColor = Color.parseColor("#4060a5fa")  // blue gradient fill
+                }
+                is com.jjoe64.graphview.series.LineGraphSeries<*> -> {
+                    series.color = Color.parseColor("#60a5fa")  // blue line
+                    series.thickness = 4
+                }
+            }
+        }
 
         // Sensitivity graph
         val profile = profileFunction.getProfile()
