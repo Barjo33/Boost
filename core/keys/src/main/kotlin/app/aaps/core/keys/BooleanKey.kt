@@ -33,6 +33,7 @@ enum class BooleanKey(
     OverviewUseBolusReminder("use_bolus_reminder", true, defaultedBySM = true),
     OverviewUseSuperBolus("key_usersuperbolus", false, defaultedBySM = true, hideParentScreenIfHidden = true),
     OverviewUseBoostOverview("use_boost_overview", false, defaultedBySM = true),
+    OverviewUseBoostOverviewV2("use_boost_overview_v2", false, defaultedBySM = true),
 
     PumpBtWatchdog("bt_watchdog", false, showInNsClientMode = false, hideParentScreenIfHidden = true),
 
