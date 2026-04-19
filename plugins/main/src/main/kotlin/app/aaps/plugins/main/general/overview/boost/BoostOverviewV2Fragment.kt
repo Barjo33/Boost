@@ -76,7 +76,6 @@ import app.aaps.core.ui.extensions.runOnUiThread
 import app.aaps.core.ui.extensions.toVisibility
 import app.aaps.plugins.main.R
 import app.aaps.plugins.main.databinding.BoostOverviewV2FragmentBinding
-import app.aaps.plugins.main.general.overview.graphData.GraphData
 import app.aaps.plugins.main.general.overview.notifications.NotificationStore
 import app.aaps.plugins.main.general.overview.notifications.events.EventUpdateOverviewNotification
 import dagger.android.support.DaggerFragment
@@ -123,7 +122,7 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
     @Inject lateinit var automation: Automation
     @Inject lateinit var uiInteraction: UiInteraction
     @Inject lateinit var decimalFormatter: DecimalFormatter
-    @Inject lateinit var graphDataProvider: Provider<GraphData>
+    @Inject lateinit var graphDataProvider: Provider<BoostV2GraphData>
     @Inject lateinit var boostHelper: BoostOverviewHelper
     @Inject lateinit var commandQueue: CommandQueue
     @Inject lateinit var dexcomBoyda: DexcomBoyda
@@ -764,15 +763,7 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
         graphData.setNumVerticalLabels()
         graphData.formatAxis(overviewData.fromTime, overviewData.endTime)
         graphData.performUpdate()
-
-        // ── V2 Dark Theme Restyle ──
-        // Override graph backgrounds and grid to match the dark design.
-        // Individual series colours still come from the AAPS theme — fully
-        // restyling those requires forking GraphData, which is a follow-up.
-        binding.v2BgGraph.viewport.backgroundColor = Color.parseColor("#0a0c10")
-        binding.v2BgGraph.gridLabelRenderer?.gridColor = Color.parseColor("#1a1d28")
-        binding.v2BgGraph.gridLabelRenderer?.horizontalLabelsColor = Color.parseColor("#333333")
-        binding.v2BgGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#333333")
+        graphData.applyV2Theme()
 
         // IOB graph
         val iobGraphData = graphDataProvider.get().with(binding.v2IobGraph, overviewData)
@@ -780,11 +771,7 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
         iobGraphData.addNowLine(dateUtil.now())
         iobGraphData.formatAxis(overviewData.fromTime, overviewData.endTime)
         iobGraphData.performUpdate()
-
-        // IOB graph V2 restyle
-        binding.v2IobGraph.viewport.backgroundColor = Color.parseColor("#090b0f")
-        binding.v2IobGraph.gridLabelRenderer?.gridColor = Color.parseColor("#1a1d28")
-        binding.v2IobGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#333333")
+        iobGraphData.applyV2Theme()
 
         // Sensitivity graph
         val profile = profileFunction.getProfile()

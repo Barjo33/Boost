@@ -12,6 +12,7 @@ import app.aaps.plugins.main.general.overview.boost.BoostOverviewFragment
 import app.aaps.plugins.main.general.overview.boost.BoostOverviewV2Fragment
 import app.aaps.plugins.main.general.overview.boost.widget.BoostWidget
 import app.aaps.plugins.main.general.overview.boost.widget.BoostWidgetConfigureActivity
+import app.aaps.plugins.main.general.overview.boost.BoostV2GraphData
 import app.aaps.plugins.main.general.overview.graphData.GraphData
 import app.aaps.plugins.main.general.overview.notifications.receivers.DismissNotificationReceiver
 import dagger.Binds
@@ -45,6 +46,13 @@ abstract class OverviewModule {
             preferences: Preferences,
             rh: ResourceHelper
         ): GraphData = GraphData(profileFunction, preferences, rh)
+
+        @Provides
+        fun providesBoostV2GraphData(
+            profileFunction: ProfileFunction,
+            preferences: Preferences,
+            rh: ResourceHelper
+        ): BoostV2GraphData = BoostV2GraphData(profileFunction, preferences, rh)
     }
 
     @Module
