@@ -393,7 +393,11 @@ open class OpenAPSBoostV3Plugin @Inject constructor(
 
         // TDD-based ISF calculation
         val useTdd = preferences.get(BooleanKey.ApsBoostUseTdd)
-        val adjustSens = preferences.get(BooleanKey.ApsBoostAdjustSensitivity)
+        // Use the standard AAPS autosens on/off switch instead of a separate
+        // Boost-specific preference. This means the user enables sensitivity
+        // adjustment via the same "Use Autosens" toggle they're already familiar
+        // with, and the autosens min/max bounds control the adjustment range.
+        val adjustSens = constraintsChecker.isAutosensModeEnabled().value()
 
         if (useTdd) {
             // Fetch all TDD components — use allowMissingDays=true so partial data still works
@@ -445,7 +449,11 @@ open class OpenAPSBoostV3Plugin @Inject constructor(
                         // carbs are active. This measures the EFFECT of insulin on BG
                         // rather than the AMOUNT delivered, so it doesn't get contaminated
                         // by meal boluses or UAM correction SMBs.
-                        val devSens = computeDeviationSensitivity(maxPull = 0.15)
+                        // Use autosens bounds for the deviation cap instead of the
+                        // hardcoded ±15%. The user's autosens max/min settings control
+                        // how far the deviation ratio can push the ISF.
+                        val maxPull = max(autosensMax - 1.0, 1.0 - autosensMin)
+                        val devSens = computeDeviationSensitivity(maxPull = maxPull)
                         if (devSens != null) {
                             ratio = max(min(devSens.ratio, autosensMax), autosensMin)
                             sensNormalTarget /= ratio
