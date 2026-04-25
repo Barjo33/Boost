@@ -276,15 +276,15 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
     private fun computeDeviationSensitivity(maxPull: Double = 0.15): DeviationSensResult? {
         val windowHours = 8
         val minCleanEntries = 6   // require at least 30 min of clean data
+        val minCleanPct = 0.5     // zero-pad if clean entries < 50% of window
         val now = System.currentTimeMillis()
         val windowStart = now - (windowHours * 60 * 60 * 1000L)
 
         val ads = iobCobCalculator.ads.autosensDataTable
         if (ads.size() == 0) return null
 
-        var sumDeviation = 0.0
+        val cleanDeviations = mutableListOf<Double>()
         var sumAbsBgi = 0.0
-        var nClean = 0
         var nTotal = 0
 
         for (i in 0 until ads.size()) {
@@ -297,25 +297,43 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
 
             // Only include entries with no meal interference
             if (data.validDeviation && data.cob < 1.0 && !data.absorbing && !data.uam) {
-                sumDeviation += data.deviation
-                nClean++
+                // Zero positive deviations when BG < 80 (matches oref1 behaviour).
+                // Prevents post-hypo rebounds from being counted as resistance.
+                val dev = if (data.bg < 80 && data.deviation > 0) 0.0 else data.deviation
+                cleanDeviations.add(dev)
             }
         }
 
+        val nClean = cleanDeviations.size
         if (nClean < minCleanEntries || nTotal == 0) {
             val debug = "DevSens: insufficient clean data ($nClean clean / $nTotal total in ${windowHours}H, need $minCleanEntries)"
             aapsLogger.debug(LTag.APS, debug)
             return null
         }
 
-        val meanDeviation = sumDeviation / nClean
+        // Zero-pad when clean entries are sparse. If meals excluded most of the
+        // window, the small clean sample may be unrepresentative. Padding with
+        // zeros pulls the ratio toward 1.0, matching oref1's dampening behaviour.
+        val minExpected = (nTotal * minCleanPct).toInt()
+        val nPadded = if (nClean < minExpected) minExpected - nClean else 0
+        for (i in 0 until nPadded) cleanDeviations.add(0.0)
+
+        // Use median instead of mean — robust to outliers from the aggressive
+        // meal filtering, which can leave a small biased sample.
+        cleanDeviations.sort()
+        val medianDeviation = if (cleanDeviations.size % 2 == 0) {
+            (cleanDeviations[cleanDeviations.size / 2 - 1] + cleanDeviations[cleanDeviations.size / 2]) / 2.0
+        } else {
+            cleanDeviations[cleanDeviations.size / 2]
+        }
+
         val meanAbsBgi = sumAbsBgi / nTotal
 
         // Convert deviation to a ratio. Positive deviation = BG higher than expected
         // = more resistant = ratio > 1. Normalise by mean |BGI| so the ratio is
         // dimensionless and comparable across different insulin-on-board states.
         val raw = if (meanAbsBgi > 0.5) {
-            1.0 + (meanDeviation / meanAbsBgi)
+            1.0 + (medianDeviation / meanAbsBgi)
         } else {
             // Very low BGI (fasting, minimal IOB) — deviation signal is unreliable
             // because even small BG noise produces large ratios. Return neutral.
@@ -325,7 +343,8 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
         val bounded = raw.coerceIn(1.0 - maxPull, 1.0 + maxPull)
 
         val debug = "DevSens: ${nClean}/${nTotal} clean in ${windowHours}H" +
-            " | meanDev=${Round.roundTo(meanDeviation, 0.1)}" +
+            (if (nPadded > 0) " (+${nPadded} zero-pad)" else "") +
+            " | medianDev=${Round.roundTo(medianDeviation, 0.1)}" +
             " | mean|BGI|=${Round.roundTo(meanAbsBgi, 0.1)}" +
             " | raw=${Round.roundTo(raw, 0.01)}" +
             " | bounded=${Round.roundTo(bounded, 0.01)}" +
@@ -337,7 +356,7 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
             ratio = bounded,
             nClean = nClean,
             nTotal = nTotal,
-            meanDeviation = meanDeviation,
+            meanDeviation = medianDeviation,
             meanAbsBgi = meanAbsBgi,
             debug = debug
         )
