@@ -448,31 +448,24 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
                     if (adjustSens) {
                         // Deviation-based sensitivity: uses BG deviations from the
                         // autosens data store over the last 8H, excluding cycles where
-                        // carbs are active. This measures the EFFECT of insulin on BG
-                        // rather than the AMOUNT delivered, so it doesn't get contaminated
-                        // by meal boluses or UAM correction SMBs.
-                        // Use autosens bounds for the deviation cap instead of the
-                        // hardcoded ±15%. The user's autosens max/min settings control
-                        // how far the deviation ratio can push the ISF.
+                        // carbs are active. Ratio is stored here but applied AFTER the
+                        // log scaler to variableSens, so it doesn't compound with DynISF.
                         val maxPull = max(autosensMax - 1.0, 1.0 - autosensMin)
                         val devSens = computeDeviationSensitivity(maxPull = maxPull)
                         if (devSens != null) {
                             ratio = max(min(devSens.ratio, autosensMax), autosensMin)
-                            sensNormalTarget /= ratio
                             debug.append("\n── Deviation-based sensitivity ──")
                             debug.append("\n${devSens.debug}")
-                            debug.append("\nApplied ratio=${Round.roundTo(ratio, 0.02)} → ISF=${Round.roundTo(sensNormalTarget, 0.1)}")
+                            debug.append("\nRatio=${Round.roundTo(ratio, 0.02)} (applied to variableSens after log scaler)")
                             devSensRatio = ratio
                             devSensSource = "deviation"
                             devSensClean = devSens.nClean
                             devSensTotal = devSens.nTotal
                         } else if (tddLast24H != null && tddLast24H > 0 && tdd7D > 0) {
-                            // Fallback: TDD 24H/7D ratio (used when deviation data is
-                            // too sparse — continuous meals, sensor gaps, etc.)
+                            // Fallback: TDD 24H/7D ratio
                             ratio = max(min(tddLast24H / tdd7D, autosensMax), autosensMin)
-                            sensNormalTarget /= ratio
                             debug.append("\nDevSens: insufficient clean data — falling back to TDD ratio")
-                            debug.append("\nSens ratio: ${Round.roundTo(ratio, 0.01)} (24H/7D = ${Round.roundTo(tddLast24H, 0.1)}/${Round.roundTo(tdd7D, 0.1)}) → ISF=${Round.roundTo(sensNormalTarget, 0.1)}")
+                            debug.append("\nRatio=${Round.roundTo(ratio, 0.01)} (24H/7D = ${Round.roundTo(tddLast24H, 0.1)}/${Round.roundTo(tdd7D, 0.1)}, applied after log scaler)")
                             devSensRatio = ratio
                             devSensSource = "tdd_fallback"
                         }
@@ -504,7 +497,15 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
         // Calculate variable_sens using log formula (V3: velocity=1.0, simplified)
         val sbg = ln((bgCurrent / insulinDivisor) + 1.0)
         val scaler = ln((bgNormalTarget / insulinDivisor) + 1.0) / sbg
-        val variableSens = sensNormalTarget * scaler
+        var variableSens = sensNormalTarget * scaler
+
+        // Apply deviation sensitivity AFTER the log scaler so it doesn't
+        // compound with DynISF's BG-dependent curve
+        if (ratio != 1.0) {
+            variableSens /= ratio
+            debug.append("\nVariable ISF before sens: ${Round.roundTo(sensNormalTarget * scaler, 0.1)}")
+            debug.append("\nAfter deviation ratio ${Round.roundTo(ratio, 0.02)}: ${Round.roundTo(variableSens, 0.1)}")
+        }
 
         if (ratio == 1.0 && adjustSens && !useTdd) {
             ratio = sensNormalTarget / variableSens
