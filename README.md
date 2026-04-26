@@ -1,4 +1,4 @@
-# AndroidAPS - Boost V2
+# AndroidAPS - Boost V3ML Testing
 
 * Check the wiki: https://wiki.aaps.app
 * Everyone who's been looping with AndroidAPS needs to fill out the form after 3 days of looping https://docs.google.com/forms/d/14KcMjlINPMJHVt28MDRupa4sz4DDIooI4SrW0P3HSN8/viewform?c=0&w=1
@@ -7,9 +7,11 @@
 
 [![Support Server](https://img.shields.io/discord/629952586895851530.svg?label=Discord&logo=Discord&colorB=7289da&style=for-the-badge)](https://discord.gg/aUzQ8q5zQd)
 
-***Boost and Boost V2 based on AAPS 3.4.1.0***
+***Boost V3ML Testing branch — based on AAPS 3.4.1.0***
 
-Boost V2 is a variant of the Boost plugin that uses **Chris Wilson's DynISF V2 formula** for ISF calculation.
+> ⚠️ **This is the V3ML testing branch.** It contains all features from the dev branch plus two experimental additions: an **on-device ML hypo risk model** and a **deviation-based sensitivity model**. Both are under active testing and evaluation. See the [Boost V3ML](#boost-v3ml) section below.
+
+This APK contains **five** APS plugins: Boost (V1), Boost V2, Boost V3, and **Boost V3ML**. To use the ML risk model and deviation sensitivity features, you must select **Boost V3ML** as your active APS plugin in Config Builder. Selecting Boost V3 will give you V3 without the ML model.
 
 > ⚠️ **Boost V2 is not ready for live use.** Do not use Boost V2 as your active APS plugin. It should only be run **in parallel** alongside the standard Boost plugin (via Config Builder) on a development or secondary phone so that you can compare its loop outputs and logs against Boost before any consideration of switching. No live dosing decisions should be based on Boost V2 at this stage.
 
@@ -272,6 +274,77 @@ V3 will produce a more stable ISF that doesn't escalate during the spike, reduci
 If your control is generally stable and you're not experiencing rollercoaster patterns, V1 or V2 may be more responsive to genuine changes in insulin needs.
 
 > ⚠️ **Boost V3 is experimental.** Run it in parallel alongside V1 in Config Builder to compare outputs before switching. Start with a **TDD adjustment factor of 100%** and monitor for several days.
+
+---
+
+## Boost V3ML
+
+Boost V3ML extends V3 with two features: an on-device ML hypo risk model and a deviation-based sensitivity model. Everything else — the DynISF formula, the 8-tier SMB decision tree, TDD selection, exercise handling — is inherited from V3.
+
+**To use V3ML, select it as the active APS plugin in Config Builder.** It appears as a separate entry from Boost V3. If you have Boost V3 selected, the ML model and deviation sensitivity will not be active.
+
+### On-device ML hypo risk model
+
+A LightGBM gradient-boosted decision tree model that predicts the probability of a hypoglycaemic event (2+ consecutive CGM readings below 70 mg/dL) in the next 4 hours.
+
+The model uses 8 features available at decision time: current BG, total IOB, basal IOB, BG above target, BG trend direction, hour of day, insulin activity, and the algorithm's insulin requirement. It was trained on ~3 million decisions from 28 Nightscout users with a Leave-One-User-Out AUC of 0.68.
+
+The model runs as a pure-Kotlin tree walker (50 trees, depth 4, ~148KB) with no native library dependencies. Inference takes <5ms per cycle.
+
+**How it modifies dosing:**
+
+The risk score (0.0–1.0) acts through two mechanisms:
+
+1. **Graduated SMB scaling.** When risk exceeds 30%, the SMB is scaled down linearly. At 30% risk the SMB is unchanged; at 65% risk it is halved; at 100% risk it is suppressed. The scaling is applied after tier selection — the tier logic runs normally and the ML model only reduces the final delivery.
+
+2. **Tier downgrade.** When risk exceeds 60%, tiers 3–6 (UAM Boost, UAM High Boost, Percent Scale, Acceleration) are blocked. The algorithm can still use tiers 1–2 and tier 7, but the aggressive boost tiers are suppressed.
+
+The risk score and scale factor are logged to Nightscout via the `mlHypoRisk` and `mlRiskScale` fields in the device status.
+
+### Deviation sensitivity
+
+A real-time sensitivity model that measures how well insulin is actually working by analysing BG deviations over the past 8 hours. When enabled, it replaces the standard sensitivity ratio.
+
+**What it controls:**
+- Dosing ISF (variableSens) — adjusted after the DynISF log curve
+- Basal rate — profile basal is multiplied by the ratio in determine_basal
+- BG targets — min_bg, max_bg, and target_bg are shifted by the ratio
+
+It is controlled by the **Use Autosens** toggle and bounded by the **Max autosens ratio** and **Min autosens ratio** settings, which are surfaced in the Boost DynISF settings screen.
+
+**How it works:**
+
+The model reads from the AAPS deviation data store over the past 8 hours. It filters to "clean" entries only — where there is no carb absorption active (COB < 1, not absorbing, not UAM). Positive deviations when BG < 80 are zeroed to prevent post-hypo rebounds from being counted as resistance. When clean entries are less than 50% of the window, zeros are added to dampen the signal.
+
+The filtered deviations are sorted and the **median** is taken (robust to outliers). The ratio is then:
+
+```
+ratio = 1 + (medianDeviation / mean|BGI|)
+```
+
+The denominator — mean absolute BGI across the whole window — normalises by how much insulin effect there typically is. A ratio of 1.2 means insulin is 20% less effective than expected.
+
+The ratio is applied to `variableSens` after the Chris Wilson DynISF log curve has been computed:
+
+```
+variableSens = 1800 / (TDD × ln((currentBG / 120) + 1))
+variableSens /= ratio
+```
+
+This is a percentage adjustment on the DynISF output. At ratio 1.2, ISF is reduced by 17% from wherever DynISF placed it. The same ratio also adjusts basal and BG targets.
+
+### Boost Overview V2
+
+A dark-theme redesign of the Boost Overview screen with a hero BG ring, stat pills, chart cards, and a sensitivity panel showing the deviation ratio. Toggled via the **Use Boost Overview V2** preference.
+
+### Key differences from V3
+
+| | Boost V3 | Boost V3ML |
+|---|---|---|
+| **ML hypo risk** | No | Yes — graduated SMB scaling + tier downgrade |
+| **Deviation sensitivity** | Available but observation only | Active — replaces standard sensitivity ratio |
+| **Boost Overview V2** | No | Yes |
+| **Exercise recovery** | Internal target raise (no TT) | Internal target raise (no TT) |
 
 ---
 
