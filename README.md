@@ -1,15 +1,15 @@
-# AndroidAPS - Boost V3ML Testing
+# AndroidAPS - Boost v4.2 Testing
 
 [![Support Server](https://img.shields.io/discord/629952586895851530.svg?label=Discord&logo=Discord&colorB=7289da&style=for-the-badge)](https://discord.gg/aUzQ8q5zQd)
 
-> ⚠️ **This is the V3ML testing branch.** It is a testbed for ML-powered safety features across all Boost plugins. Do not use this branch for live dosing unless you are actively participating in testing.
+> ⚠️ **This is the v4.2 testing branch.** It is a testbed for ML-powered safety features across all Boost plugins. Do not use this branch for live dosing unless you are actively participating in testing.
 
 This branch adds two experimental features on top of the dev branch:
 
-1. **On-device ML hypo risk model** — active in all three plugins (Boost V1, V2, V3ML)
-2. **Deviation-based sensitivity model** — active in V3ML only (replaces standard sensitivity ratio)
+1. **On-device ML hypo risk model** — active in all three plugins (Boost V1, V2, v4.2)
+2. **Deviation-based sensitivity model** — active in v4.2 only (replaces standard sensitivity ratio)
 
-The APK contains three APS plugins: **Boost (V1)**, **Boost V2**, and **Boost V3ML**. The standalone V3 plugin has been removed from this branch — V3ML supersedes it.
+The APK contains three APS plugins: **Boost (V1)**, **Boost V2**, and **Boost v4.2**. The standalone V3 plugin has been removed from this branch — v4.2 supersedes it.
 
 ---
 
@@ -17,7 +17,7 @@ The APK contains three APS plugins: **Boost (V1)**, **Boost V2**, and **Boost V3
 
 ### ML hypo risk model (all plugins)
 
-A LightGBM gradient-boosted decision tree model that predicts the probability of a hypoglycaemic event (2+ consecutive CGM readings < 70 mg/dL) in the next 4 hours. It runs every cycle in Boost V1, V2, and V3ML.
+A LightGBM gradient-boosted decision tree model that predicts the probability of a hypoglycaemic event (2+ consecutive CGM readings < 70 mg/dL) in the next 4 hours. It runs every cycle in Boost V1, V2, and v4.2.
 
 **Model:** 50 trees, max depth 4, ~148KB JSON, pure-Kotlin tree walker, <5ms inference, no native dependencies. Trained on ~3 million decisions from 28 Nightscout users (Leave-One-User-Out AUC: 0.68).
 
@@ -30,7 +30,7 @@ A LightGBM gradient-boosted decision tree model that predicts the probability of
 
 Risk score and scale factor are logged to Nightscout via `mlHypoRisk` and `mlRiskScale` in the device status.
 
-### Deviation sensitivity (V3ML only)
+### Deviation sensitivity (v4.2 only)
 
 A real-time sensitivity model that measures how well insulin is actually working by analysing BG deviations over the past 8 hours. When enabled, it replaces the standard sensitivity ratio and controls:
 
@@ -58,7 +58,7 @@ variableSens /= ratio
 
 Dark-theme redesign with hero BG ring, stat pills, chart cards, and sensitivity panel. Toggled via **Use Boost Overview V2** preference.
 
-### Exercise recovery fix (V3ML only)
+### Exercise recovery fix (v4.2 only)
 
 Exercise recovery uses internal target raise (effectiveMinBg/effectiveMaxBg/effectiveTargetBg) instead of TempTarget insertion. TTs with target > 100 triggered the SMB-disable-on-high-temptarget check, killing Boost's tier system during recovery.
 
@@ -66,7 +66,7 @@ Exercise recovery uses internal target raise (effectiveMinBg/effectiveMaxBg/effe
 
 ## Plugin comparison
 
-| Feature | Boost V1 | Boost V2 | Boost V3ML |
+| Feature | Boost V1 | Boost V2 | Boost v4.2 |
 |---|---|---|---|
 | **ISF formula** | 1800 / (TDD × ln) | 2300 / (ln × TDD² × 0.02) | 1800 / (TDD × ln) |
 | **TDD source** | Blended (8H + 7D + 1D) | Blended (8H + 7D + 1D) | 7D average only |
@@ -341,11 +341,11 @@ If your control is generally stable and you're not experiencing rollercoaster pa
 
 ---
 
-## Boost V3ML
+## Boost v4.2
 
-Boost V3ML extends V3 with two features: an on-device ML hypo risk model and a deviation-based sensitivity model. Everything else — the DynISF formula, the 8-tier SMB decision tree, TDD selection, exercise handling — is inherited from V3.
+Boost v4.2 extends V3 with two features: an on-device ML hypo risk model and a deviation-based sensitivity model. Everything else — the DynISF formula, the 8-tier SMB decision tree, TDD selection, exercise handling — is inherited from V3.
 
-**To use V3ML, select it as the active APS plugin in Config Builder.** It appears as a separate entry from Boost V3. If you have Boost V3 selected, the ML model and deviation sensitivity will not be active.
+**To use v4.2, select it as the active APS plugin in Config Builder.** It appears as a separate entry from Boost V3. If you have Boost V3 selected, the ML model and deviation sensitivity will not be active.
 
 ### On-device ML hypo risk model
 
@@ -403,7 +403,7 @@ A dark-theme redesign of the Boost Overview screen with a hero BG ring, stat pil
 
 ### Key differences from V3
 
-| | Boost V3 | Boost V3ML |
+| | Boost V3 | Boost v4.2 |
 |---|---|---|
 | **ML hypo risk** | No | Yes — graduated SMB scaling + tier downgrade |
 | **Deviation sensitivity** | Available but observation only | Active — replaces standard sensitivity ratio |
