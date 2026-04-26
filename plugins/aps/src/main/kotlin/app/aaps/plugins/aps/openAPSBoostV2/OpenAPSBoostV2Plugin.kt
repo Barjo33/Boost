@@ -116,6 +116,7 @@ open class OpenAPSBoostV2Plugin @Inject constructor(
     private val uiInteraction: UiInteraction,
     private val tddCalculator: TddCalculator,
     private val determineBasalBoostV2: DetermineBasalBoostV2,
+    private val boostRiskModel: app.aaps.plugins.aps.openAPSBoostV3ML.BoostRiskModel,
     private val profiler: Profiler,
     private val apsResultProvider: Provider<APSResult>
 ) : PluginBase(
@@ -957,7 +958,8 @@ open class OpenAPSBoostV2Plugin @Inject constructor(
             meal_data = mealData,
             microBolusAllowed = microBolusAllowed,
             currentTime = now,
-            flatBGsDetected = flatBGsDetected
+            flatBGsDetected = flatBGsDetected,
+            riskModel = boostRiskModel
         ).also {
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints
@@ -1108,6 +1110,10 @@ open class OpenAPSBoostV2Plugin @Inject constructor(
     // ---- Preferences screen ----
 
     override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
+        if (!boostRiskModel.isLoaded()) {
+            boostRiskModel.loadModel(context, "boost/hypo_risk_model.json")
+            aapsLogger.info(LTag.APS, "BoostV2: risk model loaded=${boostRiskModel.isLoaded()}, trees=${boostRiskModel.getTreeCount()}")
+        }
         if (requiredKey != null &&
             requiredKey != "absorption_smb_advanced" &&
             requiredKey != "boost_default_aaps_settings" &&

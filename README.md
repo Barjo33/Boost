@@ -1,23 +1,87 @@
 # AndroidAPS - Boost V3ML Testing
 
-* Check the wiki: https://wiki.aaps.app
-* Everyone who's been looping with AndroidAPS needs to fill out the form after 3 days of looping https://docs.google.com/forms/d/14KcMjlINPMJHVt28MDRupa4sz4DDIooI4SrW0P3HSN8/viewform?c=0&w=1
-* **Boost Tuning Guide:** https://tim2000s.github.io/Boost-in-AAPS_3.4/boost_tuning_guide.html
-* **Boost Simulator:** https://tim2000s.github.io/Boost-in-AAPS_3.4/boost_simulator.html
-
 [![Support Server](https://img.shields.io/discord/629952586895851530.svg?label=Discord&logo=Discord&colorB=7289da&style=for-the-badge)](https://discord.gg/aUzQ8q5zQd)
 
-***Boost V3ML Testing branch — based on AAPS 3.4.1.0***
+> ⚠️ **This is the V3ML testing branch.** It is a testbed for ML-powered safety features across all Boost plugins. Do not use this branch for live dosing unless you are actively participating in testing.
 
-> ⚠️ **This is the V3ML testing branch.** It contains all features from the dev branch plus two experimental additions: an **on-device ML hypo risk model** and a **deviation-based sensitivity model**. Both are under active testing and evaluation. See the [Boost V3ML](#boost-v3ml) section below.
+This branch adds two experimental features on top of the dev branch:
 
-This APK contains **five** APS plugins: Boost (V1), Boost V2, Boost V3, and **Boost V3ML**. To use the ML risk model and deviation sensitivity features, you must select **Boost V3ML** as your active APS plugin in Config Builder. Selecting Boost V3 will give you V3 without the ML model.
+1. **On-device ML hypo risk model** — active in all three plugins (Boost V1, V2, V3ML)
+2. **Deviation-based sensitivity model** — active in V3ML only (replaces standard sensitivity ratio)
 
-> ⚠️ **Boost V2 is not ready for live use.** Do not use Boost V2 as your active APS plugin. It should only be run **in parallel** alongside the standard Boost plugin (via Config Builder) on a development or secondary phone so that you can compare its loop outputs and logs against Boost before any consideration of switching. No live dosing decisions should be based on Boost V2 at this stage.
+The APK contains three APS plugins: **Boost (V1)**, **Boost V2**, and **Boost V3ML**. The standalone V3 plugin has been removed from this branch — V3ML supersedes it.
 
-All Boost-specific settings, including Dynamic ISF, Night Mode, and Step Counting, are now consolidated within the Boost and Boost V2 preferences screen as sub-screens.
+---
 
-This release also includes a **new Boost Overview UI** — a redesigned home screen tailored for Boost users, with at-a-glance algorithm status, larger graphs, and tappable detail panels. See the [Boost Overview UI](#boost-overview-ui) section below.
+## What's different from dev
+
+### ML hypo risk model (all plugins)
+
+A LightGBM gradient-boosted decision tree model that predicts the probability of a hypoglycaemic event (2+ consecutive CGM readings < 70 mg/dL) in the next 4 hours. It runs every cycle in Boost V1, V2, and V3ML.
+
+**Model:** 50 trees, max depth 4, ~148KB JSON, pure-Kotlin tree walker, <5ms inference, no native dependencies. Trained on ~3 million decisions from 28 Nightscout users (Leave-One-User-Out AUC: 0.68).
+
+**Inputs (8 features):** current BG, total IOB, basal IOB, BG above target, BG trend direction, hour of day, insulin activity, algorithm's insulin requirement.
+
+**How it modifies dosing:**
+
+- **Graduated SMB scaling.** When risk > 30%, the SMB is scaled down linearly: full at 30%, halved at 65%, suppressed at 100%. Applied after tier selection — the tier logic runs normally, the ML model only reduces the final delivery.
+- **Tier downgrade.** When risk > 60%, tiers 3–6 (UAM Boost, UAM High Boost, Percent Scale, Acceleration) are blocked. Tiers 1–2 and 7–8 remain available.
+
+Risk score and scale factor are logged to Nightscout via `mlHypoRisk` and `mlRiskScale` in the device status.
+
+### Deviation sensitivity (V3ML only)
+
+A real-time sensitivity model that measures how well insulin is actually working by analysing BG deviations over the past 8 hours. When enabled, it replaces the standard sensitivity ratio and controls:
+
+- **Dosing ISF** — adjusted after the DynISF Chris Wilson log curve
+- **Basal rate** — profile basal multiplied by the ratio
+- **BG targets** — min_bg, max_bg, target_bg shifted by the ratio
+
+Controlled by the **Use Autosens** toggle. Bounded by **Max/Min autosens ratio** (surfaced in the Boost DynISF settings screen).
+
+**How it works:**
+
+Reads from the AAPS deviation data store over 8 hours. Filters to clean entries only (no COB, no absorption, no UAM). Zeros positive deviations when BG < 80 (prevents post-hypo rebounds counting as resistance). Zero-pads when clean entries < 50% of the window (dampens sparse data). Takes the **median** of filtered deviations (robust to outliers), then:
+
+```
+ratio = 1 + (medianDeviation / mean|BGI|)
+```
+
+Applied to variableSens after the DynISF log curve:
+```
+variableSens = 1800 / (TDD × ln((currentBG / 120) + 1))
+variableSens /= ratio
+```
+
+### Boost Overview V2 (all plugins)
+
+Dark-theme redesign with hero BG ring, stat pills, chart cards, and sensitivity panel. Toggled via **Use Boost Overview V2** preference.
+
+### Exercise recovery fix (V3ML only)
+
+Exercise recovery uses internal target raise (effectiveMinBg/effectiveMaxBg/effectiveTargetBg) instead of TempTarget insertion. TTs with target > 100 triggered the SMB-disable-on-high-temptarget check, killing Boost's tier system during recovery.
+
+---
+
+## Plugin comparison
+
+| Feature | Boost V1 | Boost V2 | Boost V3ML |
+|---|---|---|---|
+| **ISF formula** | 1800 / (TDD × ln) | 2300 / (ln × TDD² × 0.02) | 1800 / (TDD × ln) |
+| **TDD source** | Blended (8H + 7D + 1D) | Blended (8H + 7D + 1D) | 7D average only |
+| **BG impact dampening** | User-adjustable (velocity) | None | None |
+| **ML hypo risk** | Yes | Yes | Yes |
+| **Deviation sensitivity** | No | No | Yes |
+| **Exercise recovery** | TT-based | TT-based | Internal target (no TT) |
+
+---
+
+For the full Boost documentation (tiers, settings, COB handling, night mode, step counting, heart rate, fast-carb rebound), see the dev branch README.
+
+All Boost-specific settings, including Dynamic ISF, Night Mode, and Step Counting, are consolidated within each plugin's preferences screen as sub-screens.
+
+This release also includes a **Boost Overview UI** — a redesigned home screen tailored for Boost users, with at-a-glance algorithm status, larger graphs, and tappable detail panels. See the [Boost Overview UI](#boost-overview-ui) section below.
 
 ## You will need to make a note of your preferences and re-enter them. This is true for all the Boost, Dynamic ISF and Night Mode preferences due to the major re-engineering that had to take place.
 
