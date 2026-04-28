@@ -1139,10 +1139,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
     // ---- Preferences screen ----
 
     override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
-        if (!boostRiskModel.isLoaded()) {
-            boostRiskModel.loadModel(context, "boost/hypo_risk_model.json")
-            aapsLogger.info(LTag.APS, "Boost: risk model loaded=${boostRiskModel.isLoaded()}, trees=${boostRiskModel.getTreeCount()}")
-        }
+        // Risk model self-loads lazily on first predictHypoRisk() call via Context-injected
+        // BoostRiskModel; no need to drive load from settings access.
         if (requiredKey != null &&
             requiredKey != "absorption_smb_advanced" &&
             requiredKey != "boost_default_aaps_settings" &&

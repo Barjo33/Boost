@@ -805,9 +805,8 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
     // ---- Main invoke ----
 
     override fun invoke(initiator: String, tempBasalFallback: Boolean) {
-        // Note: risk model is loaded from addPreferenceScreen() where Context is available.
-        // If the plugin is invoked before that (rare), the model won't be loaded yet and
-        // predictHypoRisk() will return null — the algorithm proceeds without ML risk scoring.
+        // Risk model is lazy-loaded inside BoostRiskModel.predictHypoRisk() on
+        // first call after process start. Safe to invoke without prior settings access.
         aapsLogger.debug(LTag.APS, "invoke from $initiator tempBasalFallback: $tempBasalFallback")
         lastAPSResult = null
         val glucoseStatus = glucoseStatusCalculatorSMB.glucoseStatusData
@@ -1304,12 +1303,10 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
     // ---- Preferences screen ----
 
     override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
-        // Load the ML risk model from APK assets on first preference screen access
-        // (this is the earliest point where a Context is available in the plugins:aps module)
-        if (!boostRiskModel.isLoaded()) {
-            boostRiskModel.loadModel(context, "boost/hypo_risk_model.json")
-            aapsLogger.info(LTag.APS, "BoostV3ML: risk model loaded=${boostRiskModel.isLoaded()}, trees=${boostRiskModel.getTreeCount()}")
-        }
+        // The risk model now self-loads lazily on first predictHypoRisk() call
+        // via Context-injected BoostRiskModel (constructor injection). No need
+        // to drive load from the settings screen, which previously left the
+        // model unloaded for users who never opened V3ML preferences.
         if (requiredKey != null &&
             requiredKey != "absorption_smb_advanced" &&
             requiredKey != "boost_default_aaps_settings" &&

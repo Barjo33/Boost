@@ -28,12 +28,32 @@ import javax.inject.Singleton
  */
 @Singleton
 class BoostRiskModel @Inject constructor(
+    private val context: Context,
     private val aapsLogger: AAPSLogger
 ) {
 
     private var trees: List<TreeNode>? = null
     private var featureNames: List<String>? = null
-    private var loaded = false
+    @Volatile private var loaded = false
+    @Volatile private var loadAttempted = false
+    private val loadLock = Any()
+    private val defaultAssetPath = "boost/hypo_risk_model.json"
+
+    /**
+     * Idempotent, thread-safe lazy loader. Called from predictHypoRisk()
+     * so the model is guaranteed available on first inference after a
+     * process restart, regardless of whether the user has opened the
+     * settings screen. Falls back to no-op once a load attempt has been
+     * made, so we don't retry on every cycle if the asset is missing.
+     */
+    private fun ensureLoaded() {
+        if (loaded || loadAttempted) return
+        synchronized(loadLock) {
+            if (loaded || loadAttempted) return
+            loadModel(context, defaultAssetPath)
+            loadAttempted = true
+        }
+    }
 
     data class TreeNode(
         val isLeaf: Boolean,
@@ -111,6 +131,7 @@ class BoostRiskModel @Inject constructor(
         iobActivity: Double,
         insulinReq: Double
     ): Double? {
+        ensureLoaded()
         val modelTrees = trees ?: return null
         if (!loaded) return null
 
