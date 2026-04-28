@@ -280,12 +280,24 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
         val now = System.currentTimeMillis()
         val windowStart = now - (windowHours * 60 * 60 * 1000L)
 
+        // Unannounced-rise filter thresholds. UAM in oref1 needs sustained positive
+        // deviation; brief fast-carb rises and modest unannounced food slip past it
+        // and inflate the median. Catch them by magnitude and slope, then exclude
+        // the downstream insulin-tail window where the recovery curve would
+        // otherwise pull the median negative.
+        val unflaggedDevThreshold = 12.0    // single-cycle deviation that's almost certainly external
+        val unflaggedDeltaThreshold = 8.0   // 5-min BG delta consistent with unannounced food
+        val unflaggedAvgDeltaThreshold = 6.0 // sustained rise over 3 cycles
+        val shadowMs = 60 * 60 * 1000L      // exclude cycles within 60 min after a flagged rise
+
         val ads = iobCobCalculator.ads.autosensDataTable
         if (ads.size() == 0) return null
 
         val cleanDeviations = mutableListOf<Double>()
         var sumAbsBgi = 0.0
         var nTotal = 0
+        var nUnflaggedExcluded = 0
+        var lastSuspiciousTime = Long.MIN_VALUE
 
         for (i in 0 until ads.size()) {
             val time = ads.keyAt(i)
@@ -295,8 +307,22 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
             nTotal++
             sumAbsBgi += kotlin.math.abs(data.bgi)
 
+            // Detect rises that the UAM/COB filter missed: large standalone deviation,
+            // OR rapid 5-min delta with positive deviation, OR sustained rise.
+            val likelyUnannounced =
+                data.deviation > unflaggedDevThreshold ||
+                (data.delta > unflaggedDeltaThreshold && data.deviation > 5.0) ||
+                (data.avgDelta > unflaggedAvgDeltaThreshold && data.deviation > 5.0)
+            if (likelyUnannounced) lastSuspiciousTime = time
+
+            val inShadow = (time - lastSuspiciousTime) in 1..shadowMs
+
             // Only include entries with no meal interference
             if (data.validDeviation && data.cob < 1.0 && !data.absorbing && !data.uam) {
+                if (likelyUnannounced || inShadow) {
+                    nUnflaggedExcluded++
+                    continue
+                }
                 // Zero positive deviations when BG < 80 (matches oref1 behaviour).
                 // Prevents post-hypo rebounds from being counted as resistance.
                 val dev = if (data.bg < 80 && data.deviation > 0) 0.0 else data.deviation
@@ -344,6 +370,7 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
 
         val debug = "DevSens: ${nClean}/${nTotal} clean in ${windowHours}H" +
             (if (nPadded > 0) " (+${nPadded} zero-pad)" else "") +
+            (if (nUnflaggedExcluded > 0) " (-${nUnflaggedExcluded} unflagged-rise)" else "") +
             " | medianDev=${Round.roundTo(medianDeviation, 0.1)}" +
             " | mean|BGI|=${Round.roundTo(meanAbsBgi, 0.1)}" +
             " | raw=${Round.roundTo(raw, 0.01)}" +
