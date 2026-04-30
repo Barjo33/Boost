@@ -253,138 +253,97 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
         preferenceFragment.findPreference<SwitchPreference>(BooleanKey.ApsUseSmbAfterCarbs.key)?.isVisible = !smbAlwaysEnabled || !advancedFiltering
     }
 
-    // ---- 8H Deviation-Based Sensitivity Ratio ----
-    // Computes a sensitivity ratio from the autosens deviation history over the
-    // last 8 hours, excluding cycles where carbs are active (COB > 0, absorbing,
-    // or UAM detected). This measures the EFFECT of insulin on BG rather than the
-    // AMOUNT of insulin delivered, which avoids the meal-contamination problem
-    // that makes TDD-based 8H sensitivity tracking unreliable.
+    // ---- TDD-Anchored Sensitivity Ratio (EMA τ=3h) ----
+    // Computes a sensitivity ratio from the user's actual insulin demand:
+    // raw = tdd_24h / tdd_7d, then exponentially smoothed with τ=3h.
     //
-    // Returns null if there are too few clean (non-meal) data points to compute
-    // a meaningful ratio, in which case the caller should fall back to the
-    // TDD24H/7D ratio.
+    // Rationale: the prior deviation-based function measured BG-vs-BGI
+    // prediction error, which conflates real insulin resistance with
+    // absorption-pattern model mismatch (sub-UAM food, fat-stack tail, dawn
+    // glucose). Cross-validation against actual TDD usage over 9 days
+    // (2026-04-21 → 2026-04-30, n=1,923 cycles) showed 28.5% of cycles in
+    // the divergent quadrant where the deviation function called the user
+    // insulin-resistant while measured TDD usage was below baseline. 93%
+    // of +cap activations had no TDD support. See
+    // 10-boost-tdd-sensitivity-evaluation.docx in Drive.
+    //
+    // TDD usage is the integral of every dosing decision and is the cleanest
+    // empirical proxy for biological sensitivity available on-device.
+    //
+    // Cold-start: blend toward 1.0 until ≥5 days of TDD history have been
+    // observed since the EMA started (firstTddSeenMs). The first 24h after
+    // a fresh install can produce extreme ratios when the 7d window is
+    // partially filled (max=1.70 observed in the 9-day dataset on day 1).
+    //
+    // Smoother trade-off: τ=3h was chosen as a balance between τ=2h (very
+    // responsive but slightly noisier, max single-cycle |Δ|≈0.008) and τ=4h
+    // (slightly delayed at ~1.5h phase lag). At τ=3h, max |Δ| in production
+    // data is ~0.006 and phase lag is ~1h.
 
-    private data class DeviationSensResult(
-        val ratio: Double,      // > 1 = more resistant, < 1 = more sensitive
-        val nClean: Int,        // number of non-meal 5-min entries used
-        val nTotal: Int,        // total 5-min entries in window
-        val meanDeviation: Double,
-        val meanAbsBgi: Double,
+    @Volatile private var tddEmaState: Double = 1.0
+    @Volatile private var lastTddEmaUpdateMs: Long = 0L
+    @Volatile private var firstTddSeenMs: Long = 0L
+    private val tddEmaTauMs: Long = 3L * 60 * 60 * 1000L  // 3-hour EMA
+    private val tddColdStartDays: Double = 5.0
+
+    private data class TddSensResult(
+        val ratio: Double,        // bounded EMA value (post autosens clamp)
+        val raw: Double,          // raw tdd_24h / tdd_7d (post bounds, pre-EMA, pre-warmup)
+        val ema: Double,          // EMA value before final autosens clamp
+        val warmupFraction: Double, // 0.0..1.0 (1.0 once ≥5d history seen)
         val debug: String
     )
 
-    private fun computeDeviationSensitivity(maxPull: Double = 0.15): DeviationSensResult? {
-        val windowHours = 8
-        val minCleanEntries = 6   // require at least 30 min of clean data
-        val minCleanPct = 0.5     // zero-pad if clean entries < 50% of window
-        val now = System.currentTimeMillis()
-        val windowStart = now - (windowHours * 60 * 60 * 1000L)
-
-        // Unannounced-rise filter thresholds. UAM in oref1 needs sustained positive
-        // deviation; brief fast-carb rises and modest unannounced food slip past it
-        // and inflate the median. Catch them by magnitude and slope, then exclude
-        // the downstream insulin-tail window where the recovery curve would
-        // otherwise pull the median negative.
-        val unflaggedDevThreshold = 12.0    // single-cycle deviation that's almost certainly external
-        val unflaggedDeltaThreshold = 8.0   // 5-min BG delta consistent with unannounced food
-        val unflaggedAvgDeltaThreshold = 6.0 // sustained rise over 3 cycles
-        val shadowMs = 60 * 60 * 1000L      // exclude cycles within 60 min after a flagged rise
-
-        val ads = iobCobCalculator.ads.autosensDataTable
-        if (ads.size() == 0) return null
-
-        val cleanDeviations = mutableListOf<Double>()
-        var sumAbsBgi = 0.0
-        var nTotal = 0
-        var nUnflaggedExcluded = 0
-        var lastSuspiciousTime = Long.MIN_VALUE
-
-        for (i in 0 until ads.size()) {
-            val time = ads.keyAt(i)
-            if (time < windowStart) continue
-            if (time > now) break
-            val data = ads.valueAt(i) ?: continue
-            nTotal++
-            sumAbsBgi += kotlin.math.abs(data.bgi)
-
-            // Detect rises that the UAM/COB filter missed: large standalone deviation,
-            // OR rapid 5-min delta with positive deviation, OR sustained rise.
-            val likelyUnannounced =
-                data.deviation > unflaggedDevThreshold ||
-                (data.delta > unflaggedDeltaThreshold && data.deviation > 5.0) ||
-                (data.avgDelta > unflaggedAvgDeltaThreshold && data.deviation > 5.0)
-            if (likelyUnannounced) lastSuspiciousTime = time
-
-            val inShadow = (time - lastSuspiciousTime) in 1..shadowMs
-
-            // Only include entries with no meal interference
-            if (data.validDeviation && data.cob < 1.0 && !data.absorbing && !data.uam) {
-                if (likelyUnannounced || inShadow) {
-                    nUnflaggedExcluded++
-                    continue
-                }
-                // Zero positive deviations when BG < 80 (matches oref1 behaviour).
-                // Prevents post-hypo rebounds from being counted as resistance.
-                val dev = if (data.bg < 80 && data.deviation > 0) 0.0 else data.deviation
-                cleanDeviations.add(dev)
-            }
-        }
-
-        val nClean = cleanDeviations.size
-        if (nClean < minCleanEntries || nTotal == 0) {
-            val debug = "DevSens: insufficient clean data ($nClean clean / $nTotal total in ${windowHours}H, need $minCleanEntries)"
-            aapsLogger.debug(LTag.APS, debug)
+    private fun computeTddSensitivity(
+        tddLast24H: Double?,
+        tdd7D: Double?,
+        autosensMin: Double,
+        autosensMax: Double
+    ): TddSensResult? {
+        if (tddLast24H == null || tdd7D == null || tddLast24H <= 0.0 || tdd7D <= 0.0) {
+            aapsLogger.debug(LTag.APS, "BoostV3ML TddSens: skipped — tdd_24h=$tddLast24H tdd_7d=$tdd7D")
             return null
         }
+        val now = System.currentTimeMillis()
+        if (firstTddSeenMs == 0L) firstTddSeenMs = now
 
-        // Zero-pad when clean entries are sparse. If meals excluded most of the
-        // window, the small clean sample may be unrepresentative. Padding with
-        // zeros pulls the ratio toward 1.0, matching oref1's dampening behaviour.
-        val minExpected = (nTotal * minCleanPct).toInt()
-        val nPadded = if (nClean < minExpected) minExpected - nClean else 0
-        for (i in 0 until nPadded) cleanDeviations.add(0.0)
+        val rawRatio = (tddLast24H / tdd7D).coerceIn(autosensMin, autosensMax)
 
-        // Use median instead of mean — robust to outliers from the aggressive
-        // meal filtering, which can leave a small biased sample.
-        cleanDeviations.sort()
-        val medianDeviation = if (cleanDeviations.size % 2 == 0) {
-            (cleanDeviations[cleanDeviations.size / 2 - 1] + cleanDeviations[cleanDeviations.size / 2]) / 2.0
+        // Cold-start: linearly blend raw toward 1.0 over the first 5 days
+        val daysSeen = (now - firstTddSeenMs) / (24.0 * 60.0 * 60.0 * 1000.0)
+        val warmup = (daysSeen / tddColdStartDays).coerceIn(0.0, 1.0)
+        val warmedRatio = 1.0 + (rawRatio - 1.0) * warmup
+
+        // EMA update with elapsed-time-aware α
+        val ema = if (lastTddEmaUpdateMs == 0L) {
+            tddEmaState = warmedRatio
+            warmedRatio
         } else {
-            cleanDeviations[cleanDeviations.size / 2]
+            val dtMs = (now - lastTddEmaUpdateMs).coerceAtLeast(0L)
+            val alpha = if (dtMs > 0L) 1.0 - kotlin.math.exp(-dtMs.toDouble() / tddEmaTauMs.toDouble()) else 0.0
+            tddEmaState += alpha * (warmedRatio - tddEmaState)
+            tddEmaState
         }
+        lastTddEmaUpdateMs = now
 
-        val meanAbsBgi = sumAbsBgi / nTotal
+        // Final autosens clamp on the smoothed value
+        val bounded = ema.coerceIn(autosensMin, autosensMax)
 
-        // Convert deviation to a ratio. Positive deviation = BG higher than expected
-        // = more resistant = ratio > 1. Normalise by mean |BGI| so the ratio is
-        // dimensionless and comparable across different insulin-on-board states.
-        val raw = if (meanAbsBgi > 0.5) {
-            1.0 + (medianDeviation / meanAbsBgi)
-        } else {
-            // Very low BGI (fasting, minimal IOB) — deviation signal is unreliable
-            // because even small BG noise produces large ratios. Return neutral.
-            1.0
-        }
-
-        val bounded = raw.coerceIn(1.0 - maxPull, 1.0 + maxPull)
-
-        val debug = "DevSens: ${nClean}/${nTotal} clean in ${windowHours}H" +
-            (if (nPadded > 0) " (+${nPadded} zero-pad)" else "") +
-            (if (nUnflaggedExcluded > 0) " (-${nUnflaggedExcluded} unflagged-rise)" else "") +
-            " | medianDev=${Round.roundTo(medianDeviation, 0.1)}" +
-            " | mean|BGI|=${Round.roundTo(meanAbsBgi, 0.1)}" +
-            " | raw=${Round.roundTo(raw, 0.01)}" +
-            " | bounded=${Round.roundTo(bounded, 0.01)}" +
-            if (raw != bounded) " (capped from ${Round.roundTo(raw, 0.01)})" else ""
+        val debug = "TddSens: tdd_24h=${Round.roundTo(tddLast24H, 0.1)}" +
+            " tdd_7d=${Round.roundTo(tdd7D, 0.1)}" +
+            " | raw=${Round.roundTo(rawRatio, 0.001)}" +
+            " | warmup=${Round.roundTo(warmup, 0.01)} (days=${Round.roundTo(daysSeen, 0.1)}/$tddColdStartDays)" +
+            " | warmed=${Round.roundTo(warmedRatio, 0.001)}" +
+            " | ema(τ=3h)=${Round.roundTo(ema, 0.001)}" +
+            " | bounded=${Round.roundTo(bounded, 0.001)}"
 
         aapsLogger.debug(LTag.APS, "BoostV3ML $debug")
 
-        return DeviationSensResult(
+        return TddSensResult(
             ratio = bounded,
-            nClean = nClean,
-            nTotal = nTotal,
-            meanDeviation = medianDeviation,
-            meanAbsBgi = meanAbsBgi,
+            raw = rawRatio,
+            ema = ema,
+            warmupFraction = warmup,
             debug = debug
         )
     }
@@ -492,28 +451,28 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
                     debug.append("\nTDD ISF at target: ${Round.roundTo(sensNormalTarget, 0.1)} mg/dl/U (profile was ${Round.roundTo(profileSens, 0.1)})")
 
                     if (adjustSens) {
-                        // Deviation-based sensitivity: uses BG deviations from the
-                        // autosens data store over the last 8H, excluding cycles where
-                        // carbs are active. Ratio is stored here but applied AFTER the
-                        // log scaler to variableSens, so it doesn't compound with DynISF.
-                        val maxPull = max(autosensMax - 1.0, 1.0 - autosensMin)
-                        val devSens = computeDeviationSensitivity(maxPull = maxPull)
-                        if (devSens != null) {
-                            ratio = max(min(devSens.ratio, autosensMax), autosensMin)
-                            debug.append("\n── Deviation-based sensitivity ──")
-                            debug.append("\n${devSens.debug}")
+                        // TDD-anchored sensitivity (EMA τ=3h on tdd_24h / tdd_7d).
+                        // Replaces the prior deviation-based function which conflated
+                        // real IR with absorption-pattern model mismatch — see
+                        // 10-boost-tdd-sensitivity-evaluation.docx for the data.
+                        // Applied AFTER the log scaler so it doesn't compound with DynISF.
+                        val tddSens = computeTddSensitivity(tddLast24H, tdd7D, autosensMin, autosensMax)
+                        if (tddSens != null) {
+                            ratio = tddSens.ratio
+                            debug.append("\n── TDD-anchored sensitivity (EMA τ=3h) ──")
+                            debug.append("\n${tddSens.debug}")
                             debug.append("\nRatio=${Round.roundTo(ratio, 0.02)} (applied to variableSens after log scaler)")
                             devSensRatio = ratio
-                            devSensSource = "deviation"
-                            devSensClean = devSens.nClean
-                            devSensTotal = devSens.nTotal
-                        } else if (tddLast24H != null && tddLast24H > 0 && tdd7D > 0) {
-                            // Fallback: TDD 24H/7D ratio
-                            ratio = max(min(tddLast24H / tdd7D, autosensMax), autosensMin)
-                            debug.append("\nDevSens: insufficient clean data — falling back to TDD ratio")
-                            debug.append("\nRatio=${Round.roundTo(ratio, 0.01)} (24H/7D = ${Round.roundTo(tddLast24H, 0.1)}/${Round.roundTo(tdd7D, 0.1)}, applied after log scaler)")
-                            devSensRatio = ratio
-                            devSensSource = "tdd_fallback"
+                            devSensSource = if (tddSens.warmupFraction < 1.0) "tdd_ema_3h_warmup" else "tdd_ema_3h"
+                            // Repurpose existing NS fields:
+                            //   deviationSensClean = warmup percent (0..100)
+                            //   deviationSensTotal = warmup days × 10 (so days seen / 0.1)
+                            devSensClean = (tddSens.warmupFraction * 100.0).toInt()
+                            val daysSeen = if (firstTddSeenMs == 0L) 0.0 else (System.currentTimeMillis() - firstTddSeenMs) / (24.0 * 60.0 * 60.0 * 1000.0)
+                            devSensTotal = (daysSeen * 10.0).toInt()
+                        } else {
+                            debug.append("\nTddSens: tdd_24h or tdd_7d unavailable — ratio held at 1.0")
+                            devSensSource = "tdd_unavailable"
                         }
                     }
                 } else {
@@ -545,12 +504,12 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
         val scaler = ln((bgNormalTarget / insulinDivisor) + 1.0) / sbg
         var variableSens = sensNormalTarget * scaler
 
-        // Apply deviation sensitivity AFTER the log scaler so it doesn't
-        // compound with DynISF's BG-dependent curve
+        // Apply sensitivity ratio AFTER the log scaler so it doesn't compound
+        // with DynISF's BG-dependent curve
         if (ratio != 1.0) {
             variableSens /= ratio
             debug.append("\nVariable ISF before sens: ${Round.roundTo(sensNormalTarget * scaler, 0.1)}")
-            debug.append("\nAfter deviation ratio ${Round.roundTo(ratio, 0.02)}: ${Round.roundTo(variableSens, 0.1)}")
+            debug.append("\nAfter sensitivity ratio ${Round.roundTo(ratio, 0.02)}: ${Round.roundTo(variableSens, 0.1)}")
         }
 
         if (ratio == 1.0 && adjustSens && !useTdd) {
