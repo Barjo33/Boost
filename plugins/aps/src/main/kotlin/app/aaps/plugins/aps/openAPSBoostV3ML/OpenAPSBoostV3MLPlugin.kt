@@ -270,10 +270,14 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
     // TDD usage is the integral of every dosing decision and is the cleanest
     // empirical proxy for biological sensitivity available on-device.
     //
-    // Cold-start: blend toward 1.0 until ≥5 days of TDD history have been
-    // observed since the EMA started (firstTddSeenMs). The first 24h after
-    // a fresh install can produce extreme ratios when the 7d window is
-    // partially filled (max=1.70 observed in the 9-day dataset on day 1).
+    // Cold-start: blend toward 1.0 until ≥5 days of TDD history exist.
+    // firstTddSeenMs is seeded from the oldest TDD record in the database
+    // (via tddCalculator.calculate), NOT from plugin start time, so a fresh
+    // APK install on a device with existing pump history doesn't re-trigger
+    // the warmup. Defaults to now if the data store can't be queried.
+    // The first 24h after a true fresh install can produce extreme ratios
+    // when the 7d window is partially filled (max=1.70 observed on day 1
+    // in the 9-day NS dataset).
     //
     // Smoother trade-off: τ=3h was chosen as a balance between τ=2h (very
     // responsive but slightly noisier, max single-cycle |Δ|≈0.008) and τ=4h
@@ -294,6 +298,39 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
         val debug: String
     )
 
+    /**
+     * Seed firstTddSeenMs from the oldest TDD record actually in the database,
+     * not from the moment the plugin started. This way a fresh APK install on a
+     * device with existing pump history doesn't re-trigger the 5-day warmup —
+     * it picks up where the data already is.
+     *
+     * Falls back to "now" if the data store can't be queried (defensive: warmup
+     * is the safer behaviour if we don't know data depth).
+     */
+    private fun seedFirstTddSeen() {
+        if (firstTddSeenMs != 0L) return
+        val now = System.currentTimeMillis()
+        try {
+            // Look back up to 10 days. If pump history is older, that's plenty
+            // for 5-day warmup. allowMissingDays=true so a single missing day
+            // doesn't truncate the lookback.
+            val tdds = tddCalculator.calculate(days = 10L, allowMissingDays = true)
+            if (tdds != null && tdds.size() > 0) {
+                firstTddSeenMs = tdds.keyAt(0)  // oldest day-start timestamp
+                val daysOld = (now - firstTddSeenMs) / (24.0 * 60.0 * 60.0 * 1000.0)
+                val msg = if (daysOld >= tddColdStartDays) "warmup already complete"
+                          else "warmup will complete in ${Round.roundTo(tddColdStartDays - daysOld, 0.1)} day(s)"
+                aapsLogger.info(LTag.APS, "BoostV3ML TddSens: oldest TDD record ${Round.roundTo(daysOld, 0.1)}d old — $msg")
+            } else {
+                firstTddSeenMs = now
+                aapsLogger.info(LTag.APS, "BoostV3ML TddSens: no TDD history found, starting 5-day warmup from now")
+            }
+        } catch (e: Exception) {
+            firstTddSeenMs = now
+            aapsLogger.warn(LTag.APS, "BoostV3ML TddSens: TDD history seed failed (${e.message}), defaulting to 5-day warmup from now")
+        }
+    }
+
     private fun computeTddSensitivity(
         tddLast24H: Double?,
         tdd7D: Double?,
@@ -305,7 +342,7 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
             return null
         }
         val now = System.currentTimeMillis()
-        if (firstTddSeenMs == 0L) firstTddSeenMs = now
+        seedFirstTddSeen()
 
         val rawRatio = (tddLast24H / tdd7D).coerceIn(autosensMin, autosensMax)
 
