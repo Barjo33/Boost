@@ -42,6 +42,9 @@
     <string name="openaps_boost_v3ml">Boost v4.2</string>
     <string name="boost_v3ml_shortname">v4.2</string>
     <string name="description_boost_v3ml">Boost v4.2 — ML hypo risk model, deviation sensitivity, 7D-only TDD, exercise recovery fix</string>
+    <string name="openaps_boost_v3mlg3">Boost v4.3 (G3)</string>
+    <string name="boost_v3mlg3_shortname">v4.3</string>
+    <string name="description_boost_v3mlg3">Boost v4.3 — adds Pre-UAM Uncertainty Hold (G3) gating T5/6/7/8 on unannounced rises</string>
     <string name="boost_dynisf_v2_title">Dynamic ISF V2 (TDD²-based)</string>
     <string name="boost_use_tdd_v2_summary">Calculate ISF using Chris Wilson V2 formula: 2300/(ln(BG/insulinDivisor+1)·TDD²·0.02). TDD is required for V2 — falls back to profile ISF if data is incomplete</string>
     <string name="boost_insulin_req_title">Boost Insulin Required %%</string>
