@@ -116,7 +116,7 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
     private val bgQualityCheck: BgQualityCheck,
     private val uiInteraction: UiInteraction,
     private val tddCalculator: TddCalculator,
-    private val determineBasalBoostV3ML: DetermineBasalBoostV3ML,
+    private val determineBasalBoostV3MLG3: DetermineBasalBoostV3MLG3,
     private val boostRiskModel: BoostRiskModel,
     private val profiler: Profiler,
     private val apsResultProvider: Provider<APSResult>
@@ -1160,7 +1160,7 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
         aapsLogger.debug(LTag.APS, "flatBGsDetected:    $flatBGsDetected")
         aapsLogger.debug(LTag.APS, "BoostActive:        ${activityResult.boostActive}")
 
-        determineBasalBoostV3ML.determine_basal(
+        determineBasalBoostV3MLG3.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
             iob_data_array = iobArray,
