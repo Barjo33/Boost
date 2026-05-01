@@ -1205,12 +1205,12 @@ function calcAll(inp) {
   const maxBasalBolus = effectiveBasal * smbMinToUse / 60.0;
   const insulinReqV1  = Math.max(0, (inp.bg - inp.target) / isfV1);
   const baseReqDivisor = 1.0 / inp.insulinReqPct;
-  const scale_pct = inp.percentScale ? 100.0 / (inp.percentScaleVal * profileScale) : baseReqDivisor;
+  const scalePct = inp.percentScale ? 100.0 / (inp.percentScaleVal * profileScale) : baseReqDivisor;
   let scaledDivisor = baseReqDivisor;
   if (inp.percentScale) {
     scaledDivisor = inp.bg < 108
-      ? scale_pct
-      : baseReqDivisor - ((Math.abs(inp.bg - 180) / 72) * (baseReqDivisor - scale_pct));
+      ? scalePct
+      : baseReqDivisor - ((Math.abs(inp.bg - 180) / 72) * (baseReqDivisor - scalePct));
   }
 
   const nightSuppressed = inp.nightMode && inp.nightActive &&
@@ -1297,7 +1297,7 @@ function calcAll(inp) {
       if (insReq > boostMaxIOB - inp.iob) insReq = boostMaxIOB - inp.iob;
       let div5 = scaledDivisor;
       if (insReq < 0) {
-        div5 = baseReqDivisor - ((Math.abs(inp.bg - 180) / 72) * (baseReqDivisor - 2 * scale_pct));
+        div5 = baseReqDivisor - ((Math.abs(inp.bg - 180) / 72) * (baseReqDivisor - 2 * scalePct));
         insReq = effectiveBasal;
       }
       microBolus = Math.floor(Math.min(insReq / div5, inp.bolusMax) * R) / R;
@@ -1309,7 +1309,7 @@ function calcAll(inp) {
       tier = 'T6_ACCELERATION';
       let boostInsReq = Math.min(boost_scale * effectiveBasal, inp.bolusMax);
       if (boostInsReq > boostMaxIOB - inp.iob) boostInsReq = boostMaxIOB - inp.iob;
-      const div6 = baseReqDivisor - ((Math.abs(inp.bg - 180) / 72) * (baseReqDivisor - 2 * scale_pct));
+      const div6 = baseReqDivisor - ((Math.abs(inp.bg - 180) / 72) * (baseReqDivisor - 2 * scalePct));
       microBolus = Math.floor(Math.min(boostInsReq / div6, inp.bolusMax) * R) / R;
       if (fastCarbRebound) microBolus = Math.floor(microBolus * fastCarbScale * R) / R;
     }
@@ -1344,7 +1344,7 @@ function calcAll(inp) {
     scaledProfileIsf, sensNTV1, sensNTV2,
     isfV1, isfV2, bgCapped,
     smbMinToUse, maxBasalBolus,
-    insulinReqV1, scaledDivisor, baseReqDivisor, scale_pct, rawMicroBolusUnscaled, microBolus,
+    insulinReqV1, scaledDivisor, baseReqDivisor, scalePct, rawMicroBolusUnscaled, microBolus,
     ioBlock, boostDisabledScale, nightSuppressed,
     ttRatioApplied, circFactor,
     delta_accl, uamBoost1, uamBoost2, eventualBG, fastCarbRebound, fastCarbScale, tier,
@@ -1610,11 +1610,11 @@ function update() {
       smbBreak += `boost_scale×basal=min(${fmt(r.boost_scale,2)}×${fmt(r.effectiveBasal,3)}, ${inp.bolusMax})=${fmt(Math.min(r.boost_scale*r.effectiveBasal,inp.bolusMax),3)} U\n`;
       smbBreak += `SMB = ${fmt(r.microBolus,2)} U (capped at bolusMax=${inp.bolusMax} U)`;
     } else if (tierKey === 'T5_PERCENT_SCALE') {
-      smbBreak += `insulinDivisor = ${fmt(r.scaledDivisor,3)} (base=${fmt(r.baseReqDivisor,3)}, scale_pct=${fmt(r.scale_pct,3)})\n`;
+      smbBreak += `insulinDivisor = ${fmt(r.scaledDivisor,3)} (base=${fmt(r.baseReqDivisor,3)}, scalePct=${fmt(r.scalePct,3)})\n`;
       smbBreak += `min(insulinReq÷insulinDivisor, bolusMax) = min(${fmt(r.insulinReqV1/r.scaledDivisor,3)}, ${inp.bolusMax}) = ${fmt(r.microBolus,2)} U`;
     } else if (tierKey === 'T6_ACCELERATION') {
-      const div6 = r.baseReqDivisor - ((Math.abs(inp.bg-180)/72)*(r.baseReqDivisor - 2*r.scale_pct));
-      smbBreak += `div6 = insulinReqPCT − (|BG-180|÷72)×(insulinReqPCT−2×scale_pct) = ${fmt(div6,3)}\n`;
+      const div6 = r.baseReqDivisor - ((Math.abs(inp.bg-180)/72)*(r.baseReqDivisor - 2*r.scalePct));
+      smbBreak += `div6 = insulinReqPCT − (|BG-180|÷72)×(insulinReqPCT−2×scalePct) = ${fmt(div6,3)}\n`;
       smbBreak += `boost_scale×basal=${fmt(Math.min(r.boost_scale*r.effectiveBasal,inp.bolusMax),3)} U ÷ div6 = ${fmt(r.microBolus,2)} U`;
     } else if (tierKey === 'T7_ENHANCED_OREF1') {
       smbBreak += `min(insulinReq÷insulinReqPCT, bolusMax) = min(${fmt(r.insulinReqV1/r.baseReqDivisor,3)}, ${inp.bolusMax}) = ${fmt(r.microBolus,2)} U`;
@@ -1850,51 +1850,55 @@ function drawSmbChart(inp, r) {
   const pad = { t:20, r:20, b:40, l:55 };
   const mgdlMin=80, mgdlMax=300;
   const divisor = r.divisor;
+
+  // The chart shows SMB as a function of BG, holding all other inputs fixed.
+  // For each BG point, we re-run the tier decision with the current dynamics inputs.
+  // Tier 8 (fallback) caps at maxBasalBolus; all other tiers cap at bolusMax.
   const profileScale = r.profilePct/100.0;
-  const boost_scale_c = inp.scale * profileScale;
-  const effBasal_c = inp.basal * profileScale;
-  const bRD = 1.0/inp.insulinReqPct;
-  const smbMinC = inp.iob>-0.2 ? inp.uamSmbMin : inp.smbMin;
-  const maxBB_c = effBasal_c * smbMinC / 60.0;
-  const RC=20;
+  const boostScaleChart = inp.scale * profileScale;
+  const effectiveBasalChart = inp.basal * profileScale;
+  const baseReqDivisorChart = 1.0/inp.insulinReqPct;
+  const smbMinChart = inp.iob>-0.2 ? inp.uamSmbMin : inp.smbMin;
+  const maxBasalBolusChart = effectiveBasalChart * smbMinChart / 60.0;
+  const RC=20;// roundSMBTo
 
   const mgdls=[], smbs=[];
   for (let bg=mgdlMin; bg<=mgdlMax; bg+=2) {
     mgdls.push(bg);
     const isfAtBg = inp.useTdd&&r.sensNTV1 ? calcIsfAtBg(bg,r.sensNTV1,inp.normTarget,divisor,inp.velocity,inp.bgCap) : inp.profIsf;
-    const iReq=Math.max(0,(bg-inp.target)/isfAtBg);
-    const spct=inp.percentScale?100.0/(inp.percentScaleVal*profileScale):bRD;
-    const sDiv=inp.percentScale?(bg<108?spct:bRD-((Math.abs(bg-180)/72)*(bRD-spct))):bRD;
-    const evBG=bg+inp.longAvgDelta*6;
+    const insulinReq=Math.max(0,(bg-inp.target)/isfAtBg);
+    const scalePercentScale=inp.percentScale?100.0/(inp.percentScaleVal*profileScale):baseReqDivisorChart;
+    const scaledDiv=inp.percentScale?(bg<108?scalePercentScale:baseReqDivisorChart-((Math.abs(bg-180)/72)*(baseReqDivisorChart-scalePercentScale))):baseReqDivisorChart;
+    const eventBG=bg+inp.longAvgDelta*6;
     let smb;
     if (inp.iob > inp.maxIob || inp.scale >= 3.0) {
       smb = 0;
     } else if (inp.cob > 0 && inp.lastCarbAge < 25) {
-      smb = Math.floor(Math.min(insulinReq/baseReqDivisor_chart, insulinReq) * RC) / RC;
+      smb = Math.floor(Math.min(insulinReq/baseReqDivisorChart, insulinReq) * RC) / RC;
     } else if (inp.cob > 0 && inp.lastCarbAge < 40 && inp.delta > 5) {
-      smb = Math.floor(Math.min(insulinReq/baseReqDivisor_chart, inp.bolusMax) * RC) / RC;
+      smb = Math.floor(Math.min(insulinReq/baseReqDivisorChart, inp.bolusMax) * RC) / RC;
     } else if (inp.delta >= 5 && inp.shortAvgDelta >= 3 && r.uamBoost1 > 1.2 && r.uamBoost2 > 2 && inp.iob < inp.maxIob && eventBG > inp.target && bg > 80) {
-      const t3d = r.delta_accl > 1 ? scaledDiv : baseReqDivisor_chart;
+      const t3d = r.delta_accl > 1 ? scaledDiv : baseReqDivisorChart;
       smb = Math.floor(Math.min(insulinReq/t3d, inp.bolusMax) * RC) / RC;
       if (r.fastCarbRebound) smb = Math.floor(smb * r.fastCarbScale * RC) / RC;
     } else if (r.delta_accl > 5 && bg > 180 && inp.iob < inp.maxIob && eventBG > inp.target && bg > 80) {
-      smb = Math.floor(Math.min(Math.min(boost_scale_chart*effectiveBasal_chart,inp.bolusMax), inp.bolusMax) * RC) / RC;
+      smb = Math.floor(Math.min(Math.min(boostScaleChart*effectiveBasalChart,inp.bolusMax), inp.bolusMax) * RC) / RC;
     } else if (bg > 110 && bg < 181 && inp.delta > 3 && r.delta_accl > 0 && eventBG > inp.target && inp.iob < inp.maxIob) {
       smb = Math.floor(Math.min(insulinReq/scaledDiv, inp.bolusMax) * RC) / RC;
       if (r.fastCarbRebound) smb = Math.floor(smb * r.fastCarbScale * RC) / RC;
     } else if (r.delta_accl > 25 && inp.delta > 4 && inp.iob < inp.maxIob && eventBG > inp.target) {
-      const d6 = baseReqDivisor_chart - ((Math.abs(bg-180)/72)*(baseReqDivisor_chart - 2*scale_pct_c));
-      const bi = Math.min(boost_scale_chart*effectiveBasal_chart, inp.bolusMax);
+      const d6 = baseReqDivisorChart - ((Math.abs(bg-180)/72)*(baseReqDivisorChart - 2*scale_pct_c));
+      const bi = Math.min(boost_scale_chart*effectiveBasalChart, inp.bolusMax);
       smb = Math.floor(Math.min(bi/d6, inp.bolusMax) * RC) / RC;
       if (r.fastCarbRebound) smb = Math.floor(smb * r.fastCarbScale * RC) / RC;
     } else if (inp.delta > 0 && r.delta_accl >= 0.5) {
-      smb = Math.floor(Math.min(insulinReq/baseReqDivisor_chart, inp.bolusMax) * RC) / RC;
+      smb = Math.floor(Math.min(insulinReq/baseReqDivisorChart, inp.bolusMax) * RC) / RC;
     } else {
-      smb = Math.floor(Math.min(insulinReq/baseReqDivisor_chart, maxBasalBolus_chart) * RC) / RC;
+      smb = Math.floor(Math.min(insulinReq/baseReqDivisorChart, maxBasalBolusChart) * RC) / RC;
       // Spike override: raise cap when rate-limited during a genuine spike
-      if (bg > 180 && inp.delta > 5 && insulinReq > 3 * maxBasalBolus_chart && smb >= maxBasalBolus_chart - 0.05 && inp.iob < inp.maxIob) {
+      if (bg > 180 && inp.delta > 5 && insulinReq > 3 * maxBasalBolusChart && smb >= maxBasalBolusChart - 0.05 && inp.iob < inp.maxIob) {
         const soCap = Math.min(inp.bolusMax, inp.maxIob - inp.iob);
-        const soSmb = Math.floor(Math.min(insulinReq/baseReqDivisor_chart, soCap) * RC) / RC;
+        const soSmb = Math.floor(Math.min(insulinReq/baseReqDivisorChart, soCap) * RC) / RC;
         if (soSmb > smb) smb = soSmb;
       }
     }
@@ -1910,12 +1914,12 @@ function drawSmbChart(inp, r) {
 
   ctx.clearRect(0,0,W,H); ctx.fillStyle='#0f1117'; ctx.fillRect(0,0,W,H);
   ctx.strokeStyle='rgba(249,115,22,0.4)'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
-  ctx.beginPath(); ctx.moveTo(xS(dispMin),yS(maxBB_c)); ctx.lineTo(xS(dispMax),yS(maxBB_c)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(xS(dispMin),yS(maxBasalBolusChart)); ctx.lineTo(xS(dispMax),yS(maxBasalBolusChart)); ctx.stroke();
   ctx.strokeStyle='rgba(239,68,68,0.4)';
   ctx.beginPath(); ctx.moveTo(xS(dispMin),yS(inp.bolusMax)); ctx.lineTo(xS(dispMax),yS(inp.bolusMax)); ctx.stroke();
   ctx.setLineDash([]);
   ctx.fillStyle='rgba(249,115,22,0.6)'; ctx.font='10px system-ui'; ctx.textAlign='right';
-  if (maxBB_c<maxY) ctx.fillText(`maxBasalBolus ${fmt(maxBB_c,2)}U (T8)`,xS(dispMax)-4,yS(maxBB_c)-4);
+  if (maxBasalBolusChart<maxY) ctx.fillText(`maxBasalBolus ${fmt(maxBasalBolusChart,2)}U (T8)`,xS(dispMax)-4,yS(maxBasalBolusChart)-4);
   if (inp.bolusMax<maxY) ctx.fillText(`bolusMax ${inp.bolusMax}U (T1-7)`,xS(dispMax)-4,yS(inp.bolusMax)-4);
   ctx.strokeStyle='#1e2d40'; ctx.lineWidth=1;
   const bgTicks=currentUnit==='mmol'?[5,7.5,10,12.5,15]:[100,150,200,250,300];
