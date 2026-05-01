@@ -1068,15 +1068,28 @@ class DetermineBasalBoostV3ML @Inject constructor(
             //   1. Graduated SMB scaling (after tier selection)
             //   2. Tier downgrade (when risk > 0.6)
             //   3. Logging to Nightscout via RT.mlHypoRisk
+            //
+            // Map shortAvgDelta (mg/dL per 5 min) to the NS direction code (-2..+2)
+            // that the model was trained on. Training-time encoding (from
+            // shared_loader.py): DoubleDown=-2, SingleDown=-1.5, FortyFiveDown=-1,
+            // Flat=0, FortyFiveUp=1, SingleUp=1.5, DoubleUp=2. The thresholds below
+            // mirror the standard CGM trend-arrow buckets: ±5/±10/±15 mg/dL per
+            // 5-min cycle (i.e. ±1/±2/±3 mg/dL per minute).
+            val directionNumValue = when {
+                glucose_status.shortAvgDelta > 15.0  -> 2.0
+                glucose_status.shortAvgDelta > 10.0  -> 1.5
+                glucose_status.shortAvgDelta > 5.0   -> 1.0
+                glucose_status.shortAvgDelta > -5.0  -> 0.0
+                glucose_status.shortAvgDelta > -10.0 -> -1.0
+                glucose_status.shortAvgDelta > -15.0 -> -1.5
+                else                                  -> -2.0
+            }
             val mlHypoRisk = riskModel?.predictHypoRisk(
                 cgmMgdl = bg,
                 iobTotal = iob_data.iob,
                 iobBasal = iob_data.basaliob,
                 bgAboveTarget = bg - target_bg,
-                directionNum = if (abs(glucose_status.shortAvgDelta) > 0.001)
-                    (glucose_status.delta - glucose_status.shortAvgDelta) / abs(glucose_status.shortAvgDelta)
-                    .coerceIn(-2.0, 2.0)
-                else 0.0,
+                directionNum = directionNumValue,
                 hour = java.time.LocalTime.now().hour,
                 iobActivity = iob_data.activity,
                 insulinReq = insulinReq
