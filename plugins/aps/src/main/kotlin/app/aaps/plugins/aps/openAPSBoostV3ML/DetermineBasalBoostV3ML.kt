@@ -265,7 +265,7 @@ class DetermineBasalBoostV3ML @Inject constructor(
         // Boost Dynamic ISF for predictions
         // =====================================================================
         consoleError.add("═════════════════════════════════════════════════════════")
-        consoleError.add("  Boost v4.2 (ML Risk + DevSens) | Profile: ${profile.profileSwitch}%")
+        consoleError.add("  Boost v4.4 (ML Risk + Post-SMB Gate + Meal Model) | Profile: ${profile.profileSwitch}%")
         consoleError.add("═════════════════════════════════════════════════════════")
         consoleError.add("Steps: 5m=${profile.recentSteps5Minutes} 15m=${profile.recentSteps15Minutes} 30m=${profile.recentSteps30Minutes} 60m=${profile.recentSteps60Minutes}")
 
