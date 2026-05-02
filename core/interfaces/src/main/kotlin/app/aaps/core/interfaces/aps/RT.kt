@@ -72,6 +72,15 @@ data class RT(
     // ML risk model fields (Boost V3ML only)
     var mlHypoRisk: Double? = null,             // P(hypo event in next 4h), 0.0-1.0
     var mlRiskScale: Double? = null,            // SMB scaling factor applied (1.0 = no reduction)
+
+    // Post-SMB risk gate (7.7) — second inference at projected post-SMB IOB
+    var mlPostSmbRisk: Double? = null,          // P(hypo in next 4h) at projected post-SMB IOB
+    var mlPostSmbScale: Double? = null,         // additional damping applied (1.0 = no reduction)
+    var mlPostSmbMicroBolusBefore: Double? = null,  // microBolus before post-SMB damping (diagnostics)
+
+    // Meal-likelihood model (7.10) — separate model predicting meal in progress
+    var mlMealLikely: Double? = null,           // P(BG peak >= current+50 in next 90 min), 0.0-1.0
+    var mlMealG3Released: Boolean? = null,      // true if meal model released the G3 hold this cycle (V3MLG3 only)
 ) {
 
     fun serialize() = Json.encodeToString(serializer(), this)
