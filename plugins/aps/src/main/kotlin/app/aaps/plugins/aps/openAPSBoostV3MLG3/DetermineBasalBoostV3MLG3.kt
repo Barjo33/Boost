@@ -1,5 +1,6 @@
 package app.aaps.plugins.aps.openAPSBoostV3MLG3
 
+import app.aaps.plugins.aps.openAPSBoostV3ML.BoostMealModel
 import app.aaps.plugins.aps.openAPSBoostV3ML.BoostRiskModel
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.interfaces.aps.APSResult
@@ -174,7 +175,8 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
     fun determine_basal(
         glucose_status: GlucoseStatus, currenttemp: CurrentTemp, iob_data_array: Array<IobTotal>, profile: OapsProfileBoost, autosens_data: AutosensResult, meal_data: MealData,
         microBolusAllowed: Boolean, currentTime: Long, flatBGsDetected: Boolean,
-        riskModel: BoostRiskModel? = null
+        riskModel: BoostRiskModel? = null,
+        mealModel: BoostMealModel? = null
     ): RT {
         consoleError.clear()
         consoleLog.clear()
@@ -1101,6 +1103,22 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
                 consoleError.add("ML hypo risk: ${round(mlHypoRisk * 100, 1)}%")
             }
 
+            // Meal-likelihood model (v4.4 / 7.10) — used below as a G3 release condition.
+            val mlMealLikely = mealModel?.predictMealLikelihood(
+                cgmMgdl = bg,
+                iobTotal = iob_data.iob,
+                iobBasal = iob_data.basaliob,
+                bgAboveTarget = bg - target_bg,
+                directionNum = directionNumValue,
+                hour = java.time.LocalTime.now().hour,
+                iobActivity = iob_data.activity,
+                insulinReq = insulinReq
+            )
+            if (mlMealLikely != null) {
+                rT.mlMealLikely = round(mlMealLikely, 3)
+                consoleError.add("ML meal likelihood: ${round(mlMealLikely * 100, 1)}%")
+            }
+
             // Graduated SMB scaling factor: linearly scale down SMB when risk > 0.3
             // riskScale = 1.0 when risk ≤ 0.3, linearly → 0.0 at risk = 1.0
             val riskScale = if (mlHypoRisk != null && mlHypoRisk > 0.3) {
@@ -1145,11 +1163,23 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
             // (shortAvgDelta < 3) or reverses (delta < 0), the hold lifts
             // automatically. This makes a 10-min explicit timer unnecessary —
             // the BG signals provide the natural release.
-            val g3HoldActive =
+            // Pre-UAM hold conditions (the original G3 gate).
+            val g3HoldConditionsMet =
                 meal_data.mealCOB < 1.0 &&
                 profile.recentLowBG >= 70.0 &&
                 glucose_status.delta >= 5.0 &&
                 glucose_status.shortAvgDelta >= 3.0
+            // v4.4 / 7.10: when the meal-likelihood model is confident a meal is in
+            // progress, release the hold so OREF1 tiers can dose normally. The model
+            // gives an independent meal-detection signal that doesn't rely on UAM's
+            // threshold heuristic.
+            val mealModelReleases = mlMealLikely != null && mlMealLikely > 0.65
+            val g3HoldActive = g3HoldConditionsMet && !mealModelReleases
+            if (g3HoldConditionsMet && mealModelReleases) {
+                rT.mlMealG3Released = true
+                consoleError.add("── G3 Pre-UAM Hold RELEASED by meal model ──")
+                consoleError.add("mlMealLikely=${round(mlMealLikely!! * 100, 1)}% > 65% — releasing hold so OREF1 tiers can dose")
+            }
             if (g3HoldActive) {
                 consoleError.add("── G3 Pre-UAM Uncertainty Hold ─────────────")
                 consoleError.add("BG rising from near-target, COB=0, awaiting UAM engagement")
@@ -1437,6 +1467,38 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
                         consoleError.add("Raising SMB cap from $maxBolus to ${round(spikeOverrideCap, 2)}: $microBolus → $overrideBolus")
                         rT.reason.append("Spike override: cap raised from $maxBolus to ${round(spikeOverrideCap, 2)}; ")
                         microBolus = overrideBolus
+                    }
+                }
+
+                // ── Post-SMB Risk Gate (v4.4 / 7.7) ──
+                // Re-run the risk model at the projected post-SMB IOB. If the
+                // model says the SMB we're about to deliver materially raises
+                // 4h hypo risk (and the post-risk is itself above 0.40), apply
+                // an additional damping factor BEFORE the existing mlRiskScale
+                // brake so the two compose on the final delivery.
+                if (riskModel != null && mlHypoRisk != null && microBolus > 0) {
+                    val postSmbRisk = riskModel.predictHypoRisk(
+                        cgmMgdl = bg,
+                        iobTotal = iob_data.iob + microBolus,
+                        iobBasal = iob_data.basaliob,
+                        bgAboveTarget = bg - target_bg,
+                        directionNum = directionNumValue,
+                        hour = java.time.LocalTime.now().hour,
+                        iobActivity = iob_data.activity,
+                        insulinReq = insulinReq
+                    )
+                    if (postSmbRisk != null) {
+                        rT.mlPostSmbRisk = round(postSmbRisk, 3)
+                        if (postSmbRisk > mlHypoRisk + 0.15 && postSmbRisk > 0.40) {
+                            val postSmbScale = Math.max(0.3, 1.0 - (postSmbRisk - 0.40) / 0.6)
+                            val preSmb = microBolus
+                            microBolus = Math.floor(microBolus * postSmbScale * roundSMBTo) / roundSMBTo
+                            rT.mlPostSmbScale = round(postSmbScale, 3)
+                            rT.mlPostSmbMicroBolusBefore = round(preSmb, 3)
+                            consoleError.add("Post-SMB risk gate: pre=${round(mlHypoRisk, 3)}, post=${round(postSmbRisk, 3)}, scale=${round(postSmbScale, 2)}, SMB ${round(preSmb, 2)} → ${round(microBolus, 2)}")
+                        } else {
+                            rT.mlPostSmbScale = 1.0
+                        }
                     }
                 }
 
