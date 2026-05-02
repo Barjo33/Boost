@@ -1,5 +1,6 @@
 package app.aaps.plugins.aps.openAPSBoostV3MLG3
 
+import app.aaps.plugins.aps.openAPSBoostV3ML.BoostMealModel
 import app.aaps.plugins.aps.openAPSBoostV3ML.BoostRiskModel
 import android.content.Context
 import android.content.Intent
@@ -118,6 +119,7 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
     private val tddCalculator: TddCalculator,
     private val determineBasalBoostV3MLG3: DetermineBasalBoostV3MLG3,
     private val boostRiskModel: BoostRiskModel,
+    private val boostMealModel: BoostMealModel,
     private val profiler: Profiler,
     private val apsResultProvider: Provider<APSResult>
 ) : PluginBase(
@@ -1170,7 +1172,8 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
             microBolusAllowed = microBolusAllowed,
             currentTime = now,
             flatBGsDetected = flatBGsDetected,
-            riskModel = boostRiskModel
+            riskModel = boostRiskModel,
+            mealModel = boostMealModel
         ).also {
             // Populate deviation sensitivity fields on the RT for Nightscout upload + UI
             it.deviationSensRatio = isfResult.deviationSensRatio

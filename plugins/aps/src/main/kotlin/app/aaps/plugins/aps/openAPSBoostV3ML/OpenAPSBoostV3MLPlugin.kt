@@ -117,6 +117,7 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
     private val tddCalculator: TddCalculator,
     private val determineBasalBoostV3ML: DetermineBasalBoostV3ML,
     private val boostRiskModel: BoostRiskModel,
+    private val boostMealModel: BoostMealModel,
     private val profiler: Profiler,
     private val apsResultProvider: Provider<APSResult>
 ) : PluginBase(
@@ -1169,7 +1170,8 @@ open class OpenAPSBoostV3MLPlugin @Inject constructor(
             microBolusAllowed = microBolusAllowed,
             currentTime = now,
             flatBGsDetected = flatBGsDetected,
-            riskModel = boostRiskModel
+            riskModel = boostRiskModel,
+            mealModel = boostMealModel
         ).also {
             // Populate deviation sensitivity fields on the RT for Nightscout upload + UI
             it.deviationSensRatio = isfResult.deviationSensRatio
