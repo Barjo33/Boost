@@ -920,6 +920,11 @@ canvas {
 // ════════════════════════════════════════════════════════════
 let currentUnit = 'mgdl'; // 'mgdl' or 'mmol'
 const MMOL = 18.0182;     // mg/dL per mmol/L
+const consts = { MMOL_TO_MGDL: 18.01559 };
+
+function mmolToMgdl(mgdl) {
+  return Math.round(mgdl * consts.MMOL_TO_MGDL);
+}
 
 function toDisplay(mgdl) {
   return currentUnit === 'mmol' ? mgdl / MMOL : mgdl;
@@ -2247,17 +2252,60 @@ function avgDeltaOverWindow(entries,windowMin) {
   if (dt<=0) return 0;
   return (entries[0].sgv-oldest.sgv)*(5/dt);
 }
-function getProfileValueAt(schedule,nowMs) {
+function secondsFromMidnightInTimeZone(nowMs,timeZone) {
+  if (timeZone) {
+    try {
+      const parts=new Intl.DateTimeFormat('en-GB',{
+        timeZone,
+        hour12:false,
+        hourCycle:'h23',
+        hour:'2-digit',
+        minute:'2-digit',
+        second:'2-digit'
+      }).formatToParts(new Date(nowMs));
+      const get=type=>Number(parts.find(p=>p.type===type)?.value);
+      const hour=get('hour');
+      const minute=get('minute');
+      const second=get('second');
+      if (Number.isFinite(hour)&&Number.isFinite(minute)&&Number.isFinite(second)) {
+        return hour*3600+minute*60+second;
+      }
+    } catch (_) {}
+  }
+  const d=new Date(nowMs);
+  return d.getHours()*3600+d.getMinutes()*60+d.getSeconds();
+}
+
+function profileSlotSeconds(slot) {
+  if (slot&&Number.isFinite(slot.timeAsSeconds)) return slot.timeAsSeconds;
+  if (!slot||typeof slot.time!=='string') return null;
+  const parts=slot.time.split(':').map(Number);
+  if (!Number.isFinite(parts[0])||!Number.isFinite(parts[1])) return null;
+  return parts[0]*3600+parts[1]*60+(Number.isFinite(parts[2])?parts[2]:0);
+}
+
+function getProfileValueAt(schedule,nowMs,timeZone) {
   if (!schedule||!schedule.length) return null;
-  const midnight=new Date(nowMs); midnight.setHours(0,0,0,0);
-  const secsFromMidnight=(nowMs-midnight.getTime())/1000;
-  let val=schedule[0].value;
-  for (const slot of schedule) {
-    const parts=slot.time.split(':').map(Number);
-    const slotSecs=parts[0]*3600+parts[1]*60;
-    if (slotSecs<=secsFromMidnight) val=slot.value; else break;
+  const secsFromMidnight=secondsFromMidnightInTimeZone(nowMs,timeZone);
+  const slots=schedule
+    .map(slot=>({value:slot.value,secs:profileSlotSeconds(slot)}))
+    .filter(slot=>Number.isFinite(slot.secs))
+    .sort((a,b)=>a.secs-b.secs);
+  if (!slots.length) return null;
+  let val=slots[slots.length-1].value;
+  for (const slot of slots) {
+    if (slot.secs<=secsFromMidnight) val=slot.value; else break;
   }
   return val;
+}
+
+function profileUsesMmol(profile) {
+  return String(profile?.units||'').toLowerCase()==='mmol';
+}
+
+function profileGlucoseToMgdl(value,profile) {
+  if (value==null||!isFinite(value)) return null;
+  return profileUsesMmol(profile) ? mmolToMgdl(value) : Math.round(value);
 }
 
 function setSliderMgdl(id,mgdlValue,mgdlMin,mgdlMax) {
@@ -2301,13 +2349,14 @@ function applyNsData(entries,ds,profileData) {
     const defaultName=rec?.defaultProfile||(store&&Object.keys(store)[0]);
     const prof=store?.[defaultName];
     if (prof) {
-      const basal=getProfileValueAt(prof.basal,nowMs);
-      const isf=getProfileValueAt(prof.sens,nowMs);
-      const cr=getProfileValueAt(prof.carbratio,nowMs);
-      const tgLow=getProfileValueAt(prof.target_low,nowMs);
-      const tgHigh=getProfileValueAt(prof.target_high,nowMs);
+      const profileTimezone=prof.timezone;
+      const basal=getProfileValueAt(prof.basal,nowMs,profileTimezone);
+      const isf=profileGlucoseToMgdl(getProfileValueAt(prof.sens,nowMs,profileTimezone),prof);
+      const cr=getProfileValueAt(prof.carbratio,nowMs,profileTimezone);
+      const tgLow=profileGlucoseToMgdl(getProfileValueAt(prof.target_low,nowMs,profileTimezone),prof);
+      const tgHigh=profileGlucoseToMgdl(getProfileValueAt(prof.target_high,nowMs,profileTimezone),prof);
       if (basal!=null) setSlider('basal',+basal.toFixed(2),0.1,5);
-      if (isf!=null) setSliderMgdl('profIsf',Math.round(isf),10,200);
+      if (isf!=null) setSliderMgdl('profIsf',isf,10,200);
       if (cr!=null) setSlider('cr',+cr.toFixed(1),3,30);
       if (tgLow!=null&&tgHigh!=null) setSliderMgdl('target',Math.round((tgLow+tgHigh)/2),72,180);
     }
