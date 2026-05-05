@@ -80,7 +80,8 @@ data class RT(
 
     // Meal-likelihood model (7.10) — separate model predicting meal in progress
     var mlMealLikely: Double? = null,           // P(BG peak >= current+50 in next 90 min), 0.0-1.0
-    var mlMealG3Released: Boolean? = null,      // true if meal model released the G3 hold this cycle (V3MLG3 only)
+    var mlMealG3Released: Boolean? = null,      // true if any v4.4+ release condition lifted the G3 hold this cycle (V3MLG3 only)
+    var mlG3ReleaseSource: String? = null,      // v4.4.1: which release condition fired ("delta_accl" | "bg_threshold" | "meal_model")
 ) {
 
     fun serialize() = Json.encodeToString(serializer(), this)
