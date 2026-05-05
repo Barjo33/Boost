@@ -267,7 +267,7 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
         // Boost Dynamic ISF for predictions
         // =====================================================================
         consoleError.add("═════════════════════════════════════════════════════════")
-        consoleError.add("  Boost v4.4 (G3 + Post-SMB Gate + Meal Model) | Profile: ${profile.profileSwitch}%")
+        consoleError.add("  Boost v4.4.1 (G3 release fix: delta_accl + BG-threshold + lower meal threshold) | Profile: ${profile.profileSwitch}%")
         consoleError.add("═════════════════════════════════════════════════════════")
         consoleError.add("Steps: 5m=${profile.recentSteps5Minutes} 15m=${profile.recentSteps15Minutes} 30m=${profile.recentSteps30Minutes} 60m=${profile.recentSteps60Minutes}")
 
@@ -1169,21 +1169,42 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
                 profile.recentLowBG >= 70.0 &&
                 glucose_status.delta >= 5.0 &&
                 glucose_status.shortAvgDelta >= 3.0
-            // v4.4 / 7.10: when the meal-likelihood model is confident a meal is in
-            // progress, release the hold so OREF1 tiers can dose normally. The model
-            // gives an independent meal-detection signal that doesn't rely on UAM's
-            // threshold heuristic.
-            val mealModelReleases = mlMealLikely != null && mlMealLikely > 0.65
-            val g3HoldActive = g3HoldConditionsMet && !mealModelReleases
-            if (g3HoldConditionsMet && mealModelReleases) {
+
+            // v4.4.1 release conditions — any one releases the hold:
+            //  (1) delta_accl > 10 — deterministic acceleration signal, same metric used
+            //      by Tiers 4/5/6 for eligibility. Fires earliest in real climbs and is
+            //      the strongest single indicator that "uncertainty" has resolved.
+            //  (2) BG > 160 && delta > 5 — safety backstop. If we're already high and
+            //      still rising, the algorithm should not be blocked by uncertainty.
+            //  (3) mlMealLikely > 0.50 — ML signal (lowered from 0.65 in v4.4 after
+            //      empirical observation that the model rarely crosses 0.65 in practice).
+            // Validated against the 2026-05-05 14:07-14:48 BST incident where v4.4
+            // blocked SMB delivery for 41 minutes while BG climbed 119 → 217 mg/dL —
+            // delta_accl > 10 would have released at 14:12 (BG=131).
+            val mealModelReleases = mlMealLikely != null && mlMealLikely > 0.50
+            val accelerationReleases = delta_accl > 10.0
+            val bgThresholdReleases = bg > 160.0 && glucose_status.delta > 5.0
+            val g3Released = mealModelReleases || accelerationReleases || bgThresholdReleases
+            val g3HoldActive = g3HoldConditionsMet && !g3Released
+
+            if (g3HoldConditionsMet && g3Released) {
                 rT.mlMealG3Released = true
-                consoleError.add("── G3 Pre-UAM Hold RELEASED by meal model ──")
-                consoleError.add("mlMealLikely=${round(mlMealLikely!! * 100, 1)}% > 65% — releasing hold so OREF1 tiers can dose")
+                rT.mlG3ReleaseSource = when {
+                    accelerationReleases -> "delta_accl"
+                    bgThresholdReleases  -> "bg_threshold"
+                    else                 -> "meal_model"
+                }
+                consoleError.add("── G3 Pre-UAM Hold RELEASED by ${rT.mlG3ReleaseSource} ──")
+                val parts = mutableListOf<String>()
+                if (accelerationReleases) parts.add("delta_accl=${round(delta_accl, 1)}>10")
+                if (bgThresholdReleases) parts.add("BG=${bg.toInt()}>160 + delta=${round(glucose_status.delta, 1)}>5")
+                if (mealModelReleases) parts.add("mlMealLikely=${round(mlMealLikely!! * 100, 1)}%>50%")
+                consoleError.add("Trigger: ${parts.joinToString("; ")}")
             }
             if (g3HoldActive) {
                 consoleError.add("── G3 Pre-UAM Uncertainty Hold ─────────────")
                 consoleError.add("BG rising from near-target, COB=0, awaiting UAM engagement")
-                consoleError.add("delta=${round(glucose_status.delta,1)} shortAvg=${round(glucose_status.shortAvgDelta,1)} recentLow=${round(profile.recentLowBG,0)}")
+                consoleError.add("delta=${round(glucose_status.delta,1)} shortAvg=${round(glucose_status.shortAvgDelta,1)} recentLow=${round(profile.recentLowBG,0)} delta_accl=${round(delta_accl,1)}")
                 consoleError.add("If T3/T4 (UAM) eligible they will still fire; T5/T6/T7/T8 suppressed this cycle")
             }
 
