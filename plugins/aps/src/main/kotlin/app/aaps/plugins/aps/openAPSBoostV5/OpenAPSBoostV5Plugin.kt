@@ -53,6 +53,12 @@ import kotlin.math.max
  *   - State persistence: MealHypothesis persists across cycles. All reset paths explicit
  *     (reboot, pump disconnect, loop suspend, profile switch, time jump > 30 min).
  *
+ * Reference documents in this directory:
+ *   - `MIGRATION.md`  — V4.4.1 → V5 mechanism mapping (where did Tier 5 go?)
+ *   - `V1_VS_V5.md`   — V1 → V5 side-by-side comparison (architecture, settings, safety,
+ *                       brake stacking, observability). The authoritative answer to
+ *                       "what does V5 do differently from the original Boost?"
+ *
  * V4 retention audit results are recorded in the V5 redesign proposal and migration doc.
  */
 @Singleton

@@ -92,6 +92,17 @@ import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
 
+/**
+ * Boost V1 — original Boost algorithm. 8-tier if-else ladder with
+ * `1800/(TDD·ln)` DynISF formula, multiple user-tunable knobs.
+ *
+ * For a side-by-side comparison with the V5 redesign (3-phase pipeline,
+ * Observe-Confirm-Commit, ≤3 user knobs) see:
+ *   `plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSBoostV5/V1_VS_V5.md`
+ *
+ * That document is the authoritative reference for what each algorithm does
+ * differently. Read it before assuming V1 and V5 share behaviour.
+ */
 @Singleton
 open class OpenAPSBoostPlugin @Inject constructor(
     aapsLogger: AAPSLogger,
