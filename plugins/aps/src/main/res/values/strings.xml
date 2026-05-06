@@ -45,6 +45,9 @@
     <string name="openaps_boost_v3mlg3">Boost v4.4.1 (G3)</string>
     <string name="boost_v3mlg3_shortname">v4.4.1</string>
     <string name="description_boost_v3mlg3">Boost v4.4.1 (G3) — fixes G3 hold release: adds delta_accl &gt; 10 + BG &gt; 160 backstop + lowers meal threshold 0.65 → 0.50</string>
+    <string name="openaps_boost_v5">Boost V5 (PRE-ALPHA)</string>
+    <string name="boost_v5_shortname">V5</string>
+    <string name="description_boost_v5">Boost V5 — Observe-Confirm-Commit redesign. PRE-ALPHA, hidden by default; not for active dosing.</string>
     <string name="boost_dynisf_v2_title">Dynamic ISF V2 (TDD²-based)</string>
     <string name="boost_use_tdd_v2_summary">Calculate ISF using Chris Wilson V2 formula: 2300/(ln(BG/insulinDivisor+1)·TDD²·0.02). TDD is required for V2 — falls back to profile ISF if data is incomplete</string>
     <string name="boost_insulin_req_title">Boost Insulin Required %%</string>
