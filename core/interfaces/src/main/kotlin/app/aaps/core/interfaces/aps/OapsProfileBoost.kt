@@ -92,5 +92,12 @@ data class OapsProfileBoost(
 
     // Boost debug context (not used by algorithm, displayed in Script Debug)
     var boostDebugReason: String = "",
-    var isfDebugReason: String = ""
+    var isfDebugReason: String = "",
+
+    // V5-shadow inputs (filled by V3MLG3/V4.4.1 plugin so the V5 shadow plugin can mirror
+    // V4.4.1's activity state without duplicating HrActivityCalculator/post-exercise state).
+    // Read by OpenAPSBoostV5Plugin.invoke(); not used by determineBasal itself.
+    var v5_exerciseActive: Boolean = false,
+    var v5_inPostExerciseWindow: Boolean = false,
+    var v5_exerciseSubclass: String = "",
 )

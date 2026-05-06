@@ -78,6 +78,7 @@ import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
 import app.aaps.core.validators.preferences.AdaptiveUnitPreference
 import app.aaps.plugins.aps.openAPSBoost.HrActivityCalculator
 import app.aaps.plugins.aps.openAPSBoost.StepService
+import app.aaps.plugins.aps.openAPSBoostV5.OpenAPSBoostV5Plugin
 import app.aaps.plugins.aps.OpenAPSFragment
 import app.aaps.plugins.aps.R
 import app.aaps.plugins.aps.events.EventOpenAPSUpdateGui
@@ -121,7 +122,13 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
     private val boostRiskModel: BoostRiskModel,
     private val boostMealModel: BoostMealModel,
     private val profiler: Profiler,
-    private val apsResultProvider: Provider<APSResult>
+    private val apsResultProvider: Provider<APSResult>,
+    // V5 shadow plugin — V4.4.1 hands its computed inputs/result to V5 at the end of each
+    // invoke() so V5 can run a parallel decision against the same data. V5 itself is hidden
+    // from the plugin list and is not user-selectable; this callback is the only way V5 sees
+    // a cycle's data. Provider<> avoids a hard DI cycle if V5 ever needs to inject something
+    // that depends on V3MLG3 (currently it doesn't).
+    private val boostV5Plugin: Provider<OpenAPSBoostV5Plugin>,
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -1148,7 +1155,15 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
 
             // Debug context
             boostDebugReason = activityResult.debugReason,
-            isfDebugReason = isfResult.isfDebug
+            isfDebugReason = isfResult.isfDebug,
+
+            // V5-shadow inputs — fill so OpenAPSBoostV5Plugin can mirror V4.4.1's activity
+            // state without duplicating HrActivityCalculator + post-exercise tracking.
+            v5_exerciseActive = activityResult.activityState in setOf(
+                "ACTIVE", "VIGOROUS_AEROBIC", "MODERATE_AEROBIC", "LIGHT_AEROBIC", "RESISTANCE", "STRESS"
+            ),
+            v5_inPostExerciseWindow = postExerciseRecoveryEnabled && now < recoveryWindowEnd,
+            v5_exerciseSubclass = activityResult.activityState,
         )
 
         aapsLogger.debug(LTag.APS, ">>> Invoking determine_basal Boost V3 <<<")
@@ -1193,6 +1208,17 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
             lastAPSRun = now
             aapsLogger.debug(LTag.APS, "Result: $it")
             rxBus.send(EventAPSCalculationFinished())
+
+            // V5 sidecar: hand V4.4.1's gathered inputs + result to the V5 shadow plugin.
+            // V5 runs its own decide() and logs RT JSON. Wrapped in try/catch internally so
+            // a V5 bug can never affect V4.4.1's dosing decision.
+            boostV5Plugin.get().runShadow(
+                rT = it,
+                glucoseStatus = glucoseStatus,
+                iobArray = iobArray,
+                oapsProfile = oapsProfile,
+                pumpBolusStep = pump.pumpDescription.bolusStep,
+            )
         }
 
         rxBus.send(EventOpenAPSUpdateGui())
