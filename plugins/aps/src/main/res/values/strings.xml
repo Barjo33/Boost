@@ -48,6 +48,13 @@
     <string name="openaps_boost_v5">Boost V5 (PRE-ALPHA)</string>
     <string name="boost_v5_shortname">V5</string>
     <string name="description_boost_v5">Boost V5 — Observe-Confirm-Commit redesign. PRE-ALPHA, hidden by default; not for active dosing.</string>
+
+    <string name="boost_v5_aggression_title">Aggression</string>
+    <string name="boost_v5_aggression_summary">Scales the catch-up dose at meal CONFIRMED. 1.0 = calibrated default; lower = gentler commit dose, higher = more aggressive. Range 0.7-1.3.</string>
+    <string name="boost_v5_hypo_caution_title">Hypo Caution</string>
+    <string name="boost_v5_hypo_caution_summary">Multiplier on the ML hypo-risk damper floor. 1.0 = default; raise toward 2.0 for hypo unawareness or after a recent severe hypo. Range 1.0-2.0.</string>
+    <string name="boost_v5_sensitivity_title">Meal-detection Sensitivity</string>
+    <string name="boost_v5_sensitivity_summary">Reserved knob — currently fixed at 1.0. Will eventually shift the OBSERVING-to-CONFIRMED score threshold for users with consistently early or late meal detection.</string>
     <string name="boost_dynisf_v2_title">Dynamic ISF V2 (TDD²-based)</string>
     <string name="boost_use_tdd_v2_summary">Calculate ISF using Chris Wilson V2 formula: 2300/(ln(BG/insulinDivisor+1)·TDD²·0.02). TDD is required for V2 — falls back to profile ISF if data is incomplete</string>
     <string name="boost_insulin_req_title">Boost Insulin Required %%</string>

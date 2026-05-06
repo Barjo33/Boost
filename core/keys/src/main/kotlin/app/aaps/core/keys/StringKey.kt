@@ -64,4 +64,7 @@ enum class StringKey(
     ApsBoostEndTime("boost_end_time", "07:01", defaultedBySM = true),
     ApsBoostNightModeStart("boost_night_mode_start", "22:00", defaultedBySM = true),
     ApsBoostNightModeEnd("boost_night_mode_end", "07:00", defaultedBySM = true),
+
+    // V5 persisted state (JSON blob: mealHypothesis, age, mlMealLikelyNullStreak)
+    ApsBoostV5State("boost_v5_state", "", defaultedBySM = true),
 }

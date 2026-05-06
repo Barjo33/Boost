@@ -1,5 +1,9 @@
 package app.aaps.plugins.aps.openAPSBoostV5
 
+import android.content.Context
+import androidx.preference.PreferenceCategory
+import androidx.preference.PreferenceManager
+import androidx.preference.PreferenceScreen
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.interfaces.aps.APS
 import app.aaps.core.interfaces.aps.APSResult
@@ -11,6 +15,9 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.validators.preferences.AdaptiveDoublePreference
 import app.aaps.plugins.aps.OpenAPSFragment
 import app.aaps.plugins.aps.R
 import org.json.JSONObject
@@ -44,6 +51,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
     aapsLogger: AAPSLogger,
     rh: ResourceHelper,
     private val config: Config,
+    private val preferences: Preferences,
     private val determineBasalBoostV5: DetermineBasalBoostV5
 ) : PluginBase(
     PluginDescription()
@@ -63,10 +71,40 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
     override val algorithm = APSResult.Algorithm.BOOST
     override var lastAPSResult: APSResult? = null
 
+    /** State persistence across cycles. Initialised lazily on first access. */
+    private val stateStore: V5StateStore by lazy { V5StateStore(preferences) }
+
     override fun isEnabled(): Boolean = false
 
     override fun invoke(initiator: String, tempBasalFallback: Boolean) {
-        aapsLogger.debug(LTag.APS, "BoostV5 invoke ignored — plugin is PRE-ALPHA and not wired for execution.")
+        // Plugin is PRE-ALPHA. invoke() is intentionally a NO-OP at the AAPS level — but the
+        // shadow-runner pathway below is the entry point future shadow-mode wiring will use:
+        //
+        //   1. Build a V5Inputs from oref/Boost services (currently UNWIRED — see TODOs).
+        //   2. shadowRun() — runs Phase 1/2/3, persists state, builds RT JSON.
+        //   3. Future: emit RT JSON to ProcessedDeviceStatusData so it appears in NS deviceStatus.
+        //
+        // Until step 1 is wired (deferred dedicated task), invoke() does nothing. This avoids
+        // emitting partial/incorrect shadow data while the integration is in progress.
+        aapsLogger.debug(LTag.APS, "BoostV5 invoke: PRE-ALPHA, shadow-runner not yet wired to AAPS inputs.")
+    }
+
+    /**
+     * Run V5 against an already-built [V5Inputs], persist the new state, and return both the
+     * full decision and a JSON blob suitable for NS deviceStatus emission.
+     *
+     * This is the integration seam: when [invoke] starts wiring real AAPS inputs (TODO: read
+     * GlucoseStatus, ProcessedDeviceStatusData, IobCobCalculator, ML models, Boost exercise
+     * state, profile.maxIOB, etc.), it should build V5Inputs and call this method. Tests can
+     * invoke shadowRun directly with synthetic inputs to validate end-to-end behaviour.
+     */
+    fun shadowRun(inputs: V5Inputs): Pair<V5Decision, JSONObject> {
+        val priorState = stateStore.load()
+        val decision = determineBasalBoostV5.decide(inputs, priorState)
+        stateStore.save(decision.newPersistedState)
+        val rtJson = v5DecisionToRtJson(decision)
+        aapsLogger.debug(LTag.APS, "BoostV5 shadow: state=${decision.mealHypothesis} dose=${decision.finalDose}")
+        return Pair(decision, rtJson)
     }
 
     override fun getGlucoseStatusData(allowOldData: Boolean): GlucoseStatus? = null
@@ -74,4 +112,52 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
     override fun configuration(): JSONObject = JSONObject()
 
     override fun applyConfiguration(configuration: JSONObject) {}
+
+    /** V5's three (and only three) user-facing knobs, per the minimal-settings tenet. */
+    val aggressionKnob: Double get() = preferences.get(DoubleKey.ApsBoostV5Aggression)
+    val hypoCautionKnob: Double get() = preferences.get(DoubleKey.ApsBoostV5HypoCaution)
+
+    /**
+     * Sensitivity knob — reserved. Per the V5 proposal Decision #4, this is the optional knob
+     * that ships ONLY if backtest bimodality justifies it. Currently fixed at 1.0 by exposing
+     * a degenerate range; it's wired into prefs so the UI surfaces it as "reserved" rather
+     * than introducing a new key later.
+     */
+    @Suppress("unused")
+    val sensitivityKnob: Double get() = preferences.get(DoubleKey.ApsBoostV5Sensitivity)
+
+    override fun addPreferenceScreen(
+        preferenceManager: PreferenceManager,
+        parent: PreferenceScreen,
+        context: Context,
+        requiredKey: String?,
+    ) {
+        if (requiredKey != null && requiredKey != "openapsboostv5_settings") return
+        val category = PreferenceCategory(context)
+        parent.addPreference(category)
+        category.apply {
+            key = "openapsboostv5_settings"
+            title = rh.gs(R.string.openaps_boost_v5)
+            initialExpandedChildrenCount = 0
+
+            addPreference(AdaptiveDoublePreference(
+                ctx = context,
+                doubleKey = DoubleKey.ApsBoostV5Aggression,
+                dialogMessage = R.string.boost_v5_aggression_summary,
+                title = R.string.boost_v5_aggression_title,
+            ))
+            addPreference(AdaptiveDoublePreference(
+                ctx = context,
+                doubleKey = DoubleKey.ApsBoostV5HypoCaution,
+                dialogMessage = R.string.boost_v5_hypo_caution_summary,
+                title = R.string.boost_v5_hypo_caution_title,
+            ))
+            addPreference(AdaptiveDoublePreference(
+                ctx = context,
+                doubleKey = DoubleKey.ApsBoostV5Sensitivity,
+                dialogMessage = R.string.boost_v5_sensitivity_summary,
+                title = R.string.boost_v5_sensitivity_title,
+            ))
+        }
+    }
 }

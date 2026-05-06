@@ -65,4 +65,9 @@ enum class DoubleKey(
     ApsBoostPostExerciseRecoveryHours("boost_post_exercise_recovery_hours", 2.0, 0.5, 8.0, defaultedBySM = true),
     ApsBoostPostExerciseRecoveryScale("boost_post_exercise_recovery_scale", 0.5, 0.0, 1.0, defaultedBySM = true),
 
+    // Boost V5 — three (and only three) user-facing knobs per the minimal-settings tenet
+    ApsBoostV5Aggression("boost_v5_aggression", 1.0, 0.7, 1.3, defaultedBySM = true),
+    ApsBoostV5HypoCaution("boost_v5_hypo_caution", 1.0, 1.0, 2.0, defaultedBySM = true),
+    ApsBoostV5Sensitivity("boost_v5_sensitivity", 1.0, 0.8, 1.2, defaultedBySM = true),
+
 }
