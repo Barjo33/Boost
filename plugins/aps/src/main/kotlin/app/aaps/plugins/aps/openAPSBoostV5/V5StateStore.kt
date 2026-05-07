@@ -3,6 +3,8 @@ package app.aaps.plugins.aps.openAPSBoostV5
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import org.json.JSONObject
+import java.util.Locale
+import kotlin.math.round
 
 /**
  * V5 persisted-state store.
@@ -71,20 +73,26 @@ object V5RTFields {
 /** Build a JSON blob suitable for embedding in NS deviceStatus from a [V5Decision]. */
 fun v5DecisionToRtJson(decision: V5Decision): JSONObject {
     val gateReduction = listOfNotNull(
-        decision.phase3.reductions.iobHeadroomBrake.takeIf { it < 1.0 }?.let { "iobHeadroom:${"%.2f".format(it)}" },
-        decision.phase3.reductions.postActionRiskCheck.takeIf { it < 1.0 }?.let { "postAction:${"%.2f".format(it)}" },
-        decision.phase3.reductions.decelerationBrake.takeIf { it < 1.0 }?.let { "decel:${"%.2f".format(it)}" },
-        decision.phase3.reductions.sensorQualityCheck.takeIf { it < 1.0 }?.let { "sensor:${"%.2f".format(it)}" },
+        decision.phase3.reductions.iobHeadroomBrake.takeIf { it < 1.0 }?.let { "iobHeadroom:${formatScale(it)}" },
+        decision.phase3.reductions.postActionRiskCheck.takeIf { it < 1.0 }?.let { "postAction:${formatScale(it)}" },
+        decision.phase3.reductions.decelerationBrake.takeIf { it < 1.0 }?.let { "decel:${formatScale(it)}" },
+        decision.phase3.reductions.sensorQualityCheck.takeIf { it < 1.0 }?.let { "sensor:${formatScale(it)}" },
         decision.phase3.reductions.hardGateFired?.let { "HARD:$it" },
         if (decision.phase3.reductions.maxIobClampApplied) "maxIOB" else null,
         if (decision.phase3.reductions.dynamicSpikeCapped) "spike" else null,
     ).joinToString(",").ifEmpty { "none" }
 
     return JSONObject()
-        .put(V5RTFields.MEAL_SIGNAL_SCORE, "%.4f".format(decision.score).toDouble())
+        .put(V5RTFields.MEAL_SIGNAL_SCORE, round4(decision.score))
         .put(V5RTFields.MEAL_HYPOTHESIS, decision.mealHypothesis.name)
         .put(V5RTFields.MEAL_HYPOTHESIS_AGE, decision.mealHypothesisAge)
-        .put(V5RTFields.AGGRESSION_BUDGET, "%.4f".format(decision.aggressionBudget.budget).toDouble())
-        .put(V5RTFields.ACTION_MULTIPLIER, "%.4f".format(decision.actionMultiplier).toDouble())
+        .put(V5RTFields.AGGRESSION_BUDGET, round4(decision.aggressionBudget.budget))
+        .put(V5RTFields.ACTION_MULTIPLIER, round4(decision.actionMultiplier))
         .put(V5RTFields.GATE_REDUCTION_PCT, gateReduction)
 }
+
+/** Numeric rounding to 4 decimals — locale-independent (don't use String.format default locale). */
+private fun round4(v: Double): Double = round(v * 10000.0) / 10000.0
+
+/** Compact 2-decimal scale formatter — locale-pinned to US so a comma-decimal device doesn't break parsing. */
+private fun formatScale(v: Double): String = String.format(Locale.US, "%.2f", v)

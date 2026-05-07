@@ -95,8 +95,12 @@ internal const val POST_ACTION_RISK_FLOOR = 0.30
 // sensorQualityCheck (placeholder; ship enabled if defined; otherwise pass-through)
 internal const val SENSOR_QUALITY_BAD_SCALE = 0.7
 
-// dynamicSpikeCap — applies on EVERY cycle, not just one tier (V4 had spike override only on Tier 8)
-internal const val DYNAMIC_SPIKE_CAP_MULTIPLIER = 1.5
+// dynamicSpikeCap — applies on EVERY cycle, not just one tier (V4 had spike override only on Tier 8).
+// Must be ABOVE the maximum normal CONFIRMED output: action_multiplier 1.8 × max user Aggression knob 1.3
+// = 2.34. Cap set to 2.5 leaves a small headroom over that maximum so the cap only fires on genuine
+// outliers (e.g., budget unexpectedly inflated by a sensitivity-stack glitch). Earlier value 1.5 was
+// a bug — it capped every CONFIRMED dose and defeated the catch-up commit.
+internal const val DYNAMIC_SPIKE_CAP_MULTIPLIER = 2.5
 
 /** Run Phase 3 in the load-bearing order. Returns final dose + per-gate reductions. */
 fun applyPhase3(input: Phase3Inputs): Phase3Result {
@@ -213,7 +217,7 @@ internal fun postActionRiskCheck(
     val projected = riskAtProjectedIob(currentIob + dose)
     if (projected > currentMlHypoRisk + POST_ACTION_RISK_DELTA_THRESHOLD &&
         projected > POST_ACTION_RISK_THRESHOLD) {
-        val raw = 1.0 - (projected - POST_ACTION_RISK_THRESHOLD) / (1.0 - POST_ACTION_RISK_THRESHOLD - 0.0)
+        val raw = 1.0 - (projected - POST_ACTION_RISK_THRESHOLD) / (1.0 - POST_ACTION_RISK_THRESHOLD)
         return max(POST_ACTION_RISK_FLOOR, raw)
     }
     return 1.0

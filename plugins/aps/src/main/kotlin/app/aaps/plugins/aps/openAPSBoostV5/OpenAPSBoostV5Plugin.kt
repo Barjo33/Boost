@@ -18,7 +18,6 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
-import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.validators.preferences.AdaptiveDoublePreference
@@ -27,7 +26,6 @@ import app.aaps.plugins.aps.R
 import org.json.JSONObject
 import java.time.LocalTime
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
@@ -67,7 +65,6 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
     rh: ResourceHelper,
     private val config: Config,
     private val preferences: Preferences,
-    private val dateUtil: DateUtil,
     private val determineBasalBoostV5: DetermineBasalBoostV5,
 ) : PluginBase(
     PluginDescription()
@@ -168,10 +165,14 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
 
         val hour = LocalTime.now(ZoneId.systemDefault()).hour
 
-        // V4.4.1's own `enableSMB` / pre-checks decision is reflected in `rT.units`. If V4.4.1
-        // chose to deliver an SMB, pre-checks passed. If V4.4.1 set `units = 0` AND there was
-        // a non-zero insulinReq, some gate fired.
-        val enableSmbPreChecks = (rT.units ?: 0.0) > 0.0 || (rT.insulinReq ?: 0.0) <= 0.0
+        // V0 SHADOW MODE: enableSmbPreChecks is permissive — V5 makes its own decision and the
+        // operator compares against V4.4.1's actual delivery. Earlier code derived this from
+        // `(units > 0) OR (insulinReq <= 0)`, but that returns false when V4.4.1 had a small
+        // insulinReq that rounded to units=0 (e.g. insulinReq=0.01U with roundSMBTo=0.05). In
+        // shadow we want V5's decision visible regardless. V5's other hard gates (minGuardBg
+        // via rT.minGuardBG, maxIOB clamp, maxDelta) already cover safety. When V5 graduates
+        // to alpha (active APS), this becomes a real V5-side enableSMB check.
+        val enableSmbPreChecks = true
 
         return V5Inputs(
             delta = gs.delta,
