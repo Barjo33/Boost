@@ -132,12 +132,39 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             val inputs = buildInputs(rT, glucoseStatus, iobArray, oapsProfile, pumpBolusStep)
             val decision = determineBasalBoostV5.decide(inputs, priorState)
             stateStore.save(decision.newPersistedState)
+
+            // Mutate V4.4.1's rT to attach V5 fields. The same rT instance is referenced by
+            // V4.4.1's DetermineBasalResult.result and gets serialised via RT.serialize() when
+            // LoopPlugin uploads NS deviceStatus — V5's fields ride along automatically.
+            // V5's runShadow runs BEFORE V4.4.1 fires EventAPSCalculationFinished so any
+            // listener sees the populated rT.
+            rT.boostV5_score = decision.score
+            rT.boostV5_state = decision.mealHypothesis.name
+            rT.boostV5_age = decision.mealHypothesisAge
+            rT.boostV5_budget = decision.aggressionBudget.budget
+            rT.boostV5_actionMult = decision.actionMultiplier
+            rT.boostV5_finalDose = decision.finalDose
+            rT.boostV5_gateReduction = formatGateReduction(decision)
+
             val rtJson = v5DecisionToRtJson(decision)
             aapsLogger.info(LTag.APS, "BoostV5_RT: ${rtJson} actual_v441_smb=${rT.units ?: 0.0} actual_v441_insulinReq=${rT.insulinReq ?: 0.0}")
         } catch (e: Throwable) {
             // Never let V5 break V4.4.1. Log and continue.
             aapsLogger.error(LTag.APS, "BoostV5 shadow error", e)
         }
+    }
+
+    /** Same compact summary used in the log line and in `v5DecisionToRtJson`'s gate string. */
+    private fun formatGateReduction(decision: V5Decision): String {
+        val parts = mutableListOf<String>()
+        decision.phase3.reductions.iobHeadroomBrake.takeIf { it < 1.0 }?.let { parts.add("iobHeadroom:${"%.2f".format(java.util.Locale.US, it)}") }
+        decision.phase3.reductions.postActionRiskCheck.takeIf { it < 1.0 }?.let { parts.add("postAction:${"%.2f".format(java.util.Locale.US, it)}") }
+        decision.phase3.reductions.decelerationBrake.takeIf { it < 1.0 }?.let { parts.add("decel:${"%.2f".format(java.util.Locale.US, it)}") }
+        decision.phase3.reductions.sensorQualityCheck.takeIf { it < 1.0 }?.let { parts.add("sensor:${"%.2f".format(java.util.Locale.US, it)}") }
+        decision.phase3.reductions.hardGateFired?.let { parts.add("HARD:$it") }
+        if (decision.phase3.reductions.maxIobClampApplied) parts.add("maxIOB")
+        if (decision.phase3.reductions.dynamicSpikeCapped) parts.add("spike")
+        return parts.joinToString(",").ifEmpty { "none" }
     }
 
     private fun buildInputs(

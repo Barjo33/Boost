@@ -1204,14 +1204,12 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
             determineBasalResult.currentTemp = currentTemp
             determineBasalResult.oapsProfileBoost = oapsProfile
             determineBasalResult.mealData = mealData
-            lastAPSResult = determineBasalResult
-            lastAPSRun = now
-            aapsLogger.debug(LTag.APS, "Result: $it")
-            rxBus.send(EventAPSCalculationFinished())
-
-            // V5 sidecar: hand V4.4.1's gathered inputs + result to the V5 shadow plugin.
-            // V5 runs its own decide() and logs RT JSON. Wrapped in try/catch internally so
-            // a V5 bug can never affect V4.4.1's dosing decision.
+            // V5 sidecar runs BEFORE EventAPSCalculationFinished is fired so V5 has a chance
+            // to mutate the rT (adding boostV5_* fields) before any listener serialises it.
+            // The same rT instance is shared by `it` and `determineBasalResult.result`, so
+            // V5's mutations are visible through the entire downstream pipeline (NS upload,
+            // ProcessedDeviceStatusData, etc.). Wrapped in try/catch internally — a V5 bug
+            // cannot affect V4.4.1's dosing decision.
             boostV5Plugin.get().runShadow(
                 rT = it,
                 glucoseStatus = glucoseStatus,
@@ -1219,6 +1217,11 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
                 oapsProfile = oapsProfile,
                 pumpBolusStep = pump.pumpDescription.bolusStep,
             )
+
+            lastAPSResult = determineBasalResult
+            lastAPSRun = now
+            aapsLogger.debug(LTag.APS, "Result: $it")
+            rxBus.send(EventAPSCalculationFinished())
         }
 
         rxBus.send(EventOpenAPSUpdateGui())
