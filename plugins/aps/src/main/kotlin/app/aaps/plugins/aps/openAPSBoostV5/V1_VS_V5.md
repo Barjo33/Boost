@@ -8,8 +8,12 @@ V1 source). V5 reference: `~/StudioProjects/Boost-AAPS-core/openAPSBoostV5/`.
 
 ## TL;DR
 
-- **V5 has 3 user settings instead of ~30.** Most of the dials V1 expects you
-  to tune are now hardcoded values calibrated by Boost developers.
+- **V5 adds 3 new user settings; most of V1's settings still apply.** V5
+  replaces the dose-sizing dials inside `determineBasal` (boost_scale,
+  insulin_req_pct, percent_scale_factor, bolus_cap, etc.) with hardcoded
+  calibrated values. The upstream environment settings (sleep-in,
+  activity %, post-exercise, dynISF velocity, etc.) keep working unchanged
+  because they act before `determineBasal` runs.
 - **V5 is more decisive about meals.** Where V1 has 8 different dosing rules
   it picks between, V5 has one explicit "is this a meal?" check and one
   dosing decision based on it.
@@ -121,13 +125,21 @@ V5 was designed to:
 
 ### Settings
 
-V1 has roughly 30+ Boost-specific dials in the preferences screen — everything
-from `boost_bolus_cap` and `boost_max_iob` to `boost_dynisf_velocity`, sleep
-hours, activity step thresholds, percent-scale factors, post-exercise
-parameters, HR zones. The expectation is that you tune most of these for your
-own physiology.
+Most of V1's settings stay exactly as they are. V5 only replaces the small
+group of dials that controlled V1's per-tier dose sizing.
 
-V5 has **three** dials, and the third is reserved for future use:
+**You keep:** sleep-in window, inactivity scaling, activity thresholds + %,
+post-exercise recovery hours/scale/target, dynISF velocity, max IOB, max
+basal, autosens, profile, ISF, CR, target ranges, TempTargets, HR zones,
+calibration-block window — all unchanged. These act in the Boost plugin
+upstream of the dosing decision; V5 inherits them automatically.
+
+**You stop using** (V5 replaces these with its own logic):
+`boost_insulin_req_pct` (divisor), `boost_scale`, `boost_percent_scale_factor`
+(sliding scale BG 108→180), `boost_bolus_cap` and the per-tier toggles. V5
+has its own action multipliers per state and its own dynamic dose cap.
+
+**You gain three new dials**, and the third is reserved for future use:
 
 | Setting | Default | Range | What it does |
 |---|---|---|---|
@@ -135,8 +147,9 @@ V5 has **three** dials, and the third is reserved for future use:
 | **Hypo Caution** | 1.0 | 1.0–2.0 | Strengthens the brake when the ML model thinks a hypo is likely. Raise it if you have hypo unawareness or recent severe lows. |
 | **Sensitivity** | 1.0 | 0.8–1.2 | Reserved — currently has no effect. May ship in a future release if backtesting justifies. |
 
-Everything else V5 needs is hardcoded by the developers based on backtesting
-across 19 users. You don't tune it.
+V5's internal numbers (score weights, state-machine thresholds, IOB-headroom
+curve points) are hardcoded — calibrated once by the developers from
+backtesting on a 19-user cohort. You don't tune them.
 
 ### Behaviour during a meal
 
@@ -203,27 +216,48 @@ picks one.
 
 ## What stays the same
 
-V5 doesn't replace these — it inherits them from your existing Boost setup:
+V5 redesigns the **dosing-decision layer** — what `determineBasal` does each
+cycle. It does NOT touch the **environment layer** (the Boost plugin code
+that prepares inputs before `determineBasal` runs). Most of V1's behaviour
+lives in that environment layer and continues to operate identically under
+V5.
+
+**Inherited unchanged:**
 
 - **Insulin sensitivity calculation.** DynISF V1 formula
   (`1800 / (TDD × ln(...))`), 7-day TDD with 8-hour pull-down, EMA-smoothed
-  sensitivity ratio, autosens, hour-of-day basal rates, hour-of-day ISF —
-  all unchanged.
+  sensitivity ratio, autosens, hour-of-day basal rates, hour-of-day ISF.
+  V5 reads the resulting `baseInsulinReq`; the user's `boost_dynisf_velocity`
+  setting still applies.
 - **TempTargets** — V5 reads them via the existing target pipeline.
 - **The `delta_accl` formula** including its `max(|shortAvgDelta|, 2.0)`
   denominator floor.
-- **Post-exercise recovery detection** — V5 reads V1/V4.4.1's existing
-  post-exercise window state. V5 doesn't reimplement HR zones or step
-  thresholds.
-- **Hypo-rebound TempTarget auto-cancel** — V1's behaviour where a recovery
+- **Sleep-in window.** V1's `boost_sleep_in_hrs` + `boost_sleep_in_steps`
+  set `boostActive = false` during the sleep window. That flag flows into
+  `baseInsulinReq` exactly as before; V5 doesn't override it.
+- **Inactivity scaling.** `boost_inactivity_pct` adjusts profile percentage
+  during inactive periods (V1 plugin line 577). The adjusted profile feeds
+  `baseInsulinReq`; V5 inherits the result.
+- **Activity (exercise) profile/target compression.** `boost_activity_pct`
+  and the activity step thresholds (5/15/30/60 min) modify profile% and
+  target during exercise. Same upstream pathway.
+- **Post-exercise recovery window detection.** V5 reads V1/V4.4.1's
+  existing recovery-window flag (`v5_inPostExerciseWindow` on
+  `OapsProfileBoost`). V5 doesn't reimplement HR-zone classification or
+  step-fusion logic.
+- **Boost active time window.** `boost_start_time` / `boost_end_time`
+  produce a `boostActive` flag in V1's plugin. V5 inherits it the same way.
+- **Hypo-rebound TempTarget auto-cancel.** V1's behaviour where a recovery
   TT gets cancelled when BG bounces back from a low. Operates outside V5's
   dose pipeline.
 - **Calibration block** — 15-minute zero after a CGM calibration event.
+- **HR integration** (`hrMaxBpm`, `hrRestingBpm`, etc.) — feeds exercise
+  classification, which feeds the upstream pathway.
 
-In other words: your sensitivity stack, your exercise classification, your
-TT handling — all of these are owned by the existing pipeline, and V5 reads
-the result. V5 changes how the dosing **decision** is made, not how
-sensitivity is calculated.
+The mental model: V1's plugin shapes the inputs (profile%, target,
+boostActive, recovery window). V5's algorithm core makes the dosing
+decision. V5 changes the second part. The first part — and all the user
+settings that drive it — continues to operate.
 
 
 ## What V5 brings that V1 doesn't have
@@ -254,19 +288,41 @@ These are genuinely new — V1 has no equivalent:
   modulators are buried in console logs.
 
 
-## What V1 does that V5 explicitly doesn't try to replicate
+## What V5 replaces (dose-sizing logic inside `determineBasal`)
 
-- **Per-tier sliding scales** (`boost_percent_scale_factor`,
-  `boost_scale`). V5 has one decision rule, not eight.
-- **Active time window** (`boost_start_time` / `boost_end_time`). V5 always
-  runs.
-- **Sleep mode and inactivity scaling** (`boost_sleep_in_hrs`,
-  `boost_inactivity_pct`). These act on profile percentage in V1; V5 reads
-  whatever the resulting `baseInsulinReq` is.
-- **Time-of-day dose amplification** (a dawn-phenomenon adjuster).
-  Specifically dropped from V5 by design — dawn coverage belongs in your
-  AAPS profile (hour-of-day basal rates / ISF), not in the dosing
-  algorithm. V5 has no such adjuster.
+These are V1's dose-sizing dials and per-tier formulas that live INSIDE
+`determineBasal`. V5's decision rule replaces them; the user no longer
+touches these knobs when running V5:
+
+- **`boost_insulin_req_pct`** — V1's divisor turning insulinReq into SMB.
+  V5's per-state action multiplier (0.3 / 1.0 / 1.8 / 1.0 / 0.4) replaces it.
+- **`boost_scale`** — multiplier on Boost insulin requirement inside V1's
+  tier formulas. V5 has the **Aggression** knob (CONFIRMED-only) instead.
+- **`boost_percent_scale_factor`** — V1's sliding-scale BG 108→180 logic
+  (PERCENT_SCALE tier). V5 has no PERCENT_SCALE tier; this knob has no
+  V5 analogue.
+- **`boost_bolus_cap`** — V1's flat per-cycle SMB cap. V5's
+  `dynamicSpikeCap` derives from `baseInsulinReq` rather than a flat user
+  value (2.5 × baseInsulinReq).
+- **`enableBoostPercentScale`, `enableCircadianISF`,
+  `allowBoost_with_high_TT`** — V1 toggles for behaviour that V5 either
+  doesn't have at all (PERCENT_SCALE) or handles differently (high-TT
+  handling flows through `baseInsulinReq`).
+- **The 8 tier formulas themselves.** V5 has one rule, not eight.
+
+### Things V5 specifically *doesn't add*, by design
+
+- **Time-of-day dose amplification** (a dawn-phenomenon adjuster). V5 has
+  no such adjuster. Dawn coverage belongs in your AAPS profile (hour-of-day
+  basal rates / hour-of-day ISF), not in the dosing algorithm. The user's
+  existing dawn-adjusted profile flows through `baseInsulinReq` and V5
+  doesn't multiply on top.
+- **BG-range dose modifier** (a "dose more at high BG" multiplier). Already
+  covered by `(eventualBG - target) / sens` in oref's standard
+  calculation; explicit modifier would double-count.
+- **Per-meal-type recognition** (carbs vs fat-protein, fast vs slow).
+  V5 treats all meals the same; the RECOVERING state handles "BG is now
+  under control" universally.
 
 
 ## Calibration philosophy
