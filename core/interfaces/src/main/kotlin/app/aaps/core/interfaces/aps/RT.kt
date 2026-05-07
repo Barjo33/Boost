@@ -25,6 +25,7 @@ data class RT(
     var bg: Double? = null,
     var tick: String? = null,
     var eventualBG: Double? = null,
+    var minGuardBG: Double? = null,                  // V4.4.1's smart-selected predicted-low (COB/UAM/IOB blend) — read by V5 shadow
     var targetBG: Double? = null,
     var snoozeBG: Double? = null, // AMA only
     var insulinReq: Double? = null,

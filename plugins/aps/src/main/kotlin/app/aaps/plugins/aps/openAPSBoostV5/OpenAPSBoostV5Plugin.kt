@@ -181,10 +181,12 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             eventualBg = rT.eventualBG ?: gs.glucose,
             targetBg = opb.target_bg,
             maxDelta = abs(gs.delta),
-            // minGuardBg: minimum across V4.4.1's IOB/UAM/ZT prediction lists. V4.4.1's own
-            // hard gate uses the same-shaped value internally (line 1055 of DetermineBasalBoostV3MLG3).
-            minGuardBg = listOfNotNull(rT.predBGs?.IOB, rT.predBGs?.UAM, rT.predBGs?.ZT)
-                .flatten().minOrNull()?.toDouble() ?: gs.glucose,
+            // minGuardBg: V4.4.1's smart-selected predicted-low (COB/UAM/IOB-blended per the rules
+            // at DetermineBasalBoostV3MLG3.kt:799-808). Reading rT.minGuardBG directly avoids the
+            // bug from a previous attempt that did `min(predBGs.IOB+UAM+ZT)` over the full prediction
+            // horizon — that picked up the IOB-only forecast tail (e.g. 39 mg/dL) and fired the V5
+            // hard gate every cycle even when V4.4.1's own minGuardBG was 92 mg/dL (well above 80).
+            minGuardBg = rT.minGuardBG ?: gs.glucose,
             minGuardThreshold = opb.lgsThreshold?.toDouble() ?: 80.0,
             deltaHistory = deltaHistory,
             iob = iob,

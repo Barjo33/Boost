@@ -806,6 +806,7 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
             minGuardBG = minIOBGuardBG
         }
         minGuardBG = round(minGuardBG, 0)
+        rT.minGuardBG = minGuardBG  // expose to V5 shadow runner (read by OpenAPSBoostV5Plugin.buildInputs)
 
         var minZTUAMPredBG = minUAMPredBG
         if (minZTGuardBG < threshold) {
