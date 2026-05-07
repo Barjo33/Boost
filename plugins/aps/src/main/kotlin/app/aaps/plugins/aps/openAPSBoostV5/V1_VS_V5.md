@@ -33,9 +33,33 @@ V1 source). V5 reference: `~/StudioProjects/Boost-AAPS-core/openAPSBoostV5/`.
 
 ## Why V5 was built
 
-### The triggers
+### The real reason
 
-A few specific patterns and incidents motivated the V5 redesign:
+I didn't want to bake more complex layers into the existing Boost code.
+By V4.4.1 the algorithm core was ~1,500 lines with eight tier formulas
+and eleven different modulators on top, and each new safety mechanism —
+V3's IOB-cap reinstatement, V3ML's hypo-risk model, V4.4's G3 hold,
+V4.4.1's G3 release fix — had to be threaded through the existing
+structure, usually as another multiplicative brake or another
+tier-eligibility gate. The V4.5 design queue had a dozen more items
+waiting. Adding the next layer would have made the codebase harder to
+reason about and harder to modify safely.
+
+The dosing-pipeline map produced on 2026-05-02 surfaced specific
+conflicts that were already showing through: the fast-carb heuristic
+and the meal-likelihood model trying to detect the same thing
+differently; `mlTierDowngrade` and `mlRiskScale` double-braking on the
+same input metric; the brake stack having no overall floor and being
+capable of driving doses to ~5 % of oref's calculated need. The kind of
+thing where patching one symptom creates another.
+
+So instead of layer #12, V5 is a redesign.
+
+### The symptoms that motivated the timing
+
+These specific incidents and patterns made it clear that the next layer
+addition wasn't going to fix the underlying issues — they're symptoms,
+not root causes:
 
 **Real meals just-missing the binary thresholds.** On 2026-05-05 around
 14:07 BST, V4.4.1 saw a real meal climbing but the UAM_BOOST tier conditions

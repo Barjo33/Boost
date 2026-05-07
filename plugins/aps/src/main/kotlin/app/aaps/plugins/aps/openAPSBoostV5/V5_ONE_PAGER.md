@@ -13,23 +13,29 @@ currently shadow-only and not user-selectable.
 
 **Why we did it**
 
-A few specific patterns prompted the rewrite. On 5 May, V4.4.1 saw a real
-meal climbing but the UAM_BOOST tier's conditions just-missed (`uamBoost1`
-at 1.15 against a 1.20 threshold) — the algorithm fell through to a slower
-tier and didn't deliver SMB for 41 minutes while BG climbed. That's a
-binary-threshold problem, and it's the kind of thing that's hard to fix
-inside a tier ladder without making the existing tiers more complex.
+Honestly, the real reason was that I didn't want to keep baking more
+complex layers into the existing code. By V4.4.1 the Boost core was
+around 1,500 lines with eight tier formulas and eleven different
+modulators on top, and each new safety mechanism — the IOB-cap
+reinstatement, the hypo-risk model, the G3 hold, the G3 release fix — had
+to be threaded through the existing structure as another multiplicative
+brake or another tier-eligibility gate. The V4.5 design queue had a dozen
+more items waiting. The next layer would have made the code harder to
+reason about and harder to modify safely.
 
-There were others. The brake stack (`mlRiskScale`, `postSmbScale`,
-`fastCarbScale`) has no overall floor, so under stacked high-risk it can
-push doses to ~5 % of what oref calculated. On 6 May, Activity mode
-persisted for 35 minutes after a walk into a meal and BG peaked at 232.
-The Boost preferences screen has 60+ entries, ~30 of them Boost-specific
-knobs the user is expected to tune themselves.
+The pipeline map I put together on 2 May made it concrete: the fast-carb
+heuristic and the meal-likelihood model trying to detect the same thing
+differently, `mlTierDowngrade` and `mlRiskScale` double-braking on the
+same metric, the brake stack having no overall floor and being able to
+drive doses to ~5 % of oref's calculated need. The kind of thing where
+patching one symptom creates another. Specific incidents — the 5 May
+just-miss that left BG climbing for 41 minutes, the 6 May walk-into-a-meal
+where Activity mode persisted 35 min and BG peaked at 232 — were real but
+they're symptoms of the layering, not separate problems.
 
-V5's design tenet is that users shouldn't be confronted with hundreds of
-internal knobs. Constants get calibrated once at release; user-facing
-settings only exist for things where per-user variation genuinely helps.
+So instead of layer #12, V5 is a redesign. The minimal-settings tenet
+fell out of that — constants get calibrated once at release, user-facing
+settings only exist where per-user variation genuinely helps.
 
 
 **What V5 changes**
