@@ -36,24 +36,24 @@ V1 source). V5 reference: `~/StudioProjects/Boost-AAPS-core/openAPSBoostV5/`.
 ### The real reason
 
 I didn't want to bake more complex layers into the existing Boost code.
-By V4.4.1 the algorithm core was ~1,500 lines with eight tier formulas
-and eleven different modulators on top, and each new safety mechanism —
-V3's IOB-cap reinstatement, V3ML's hypo-risk model, V4.4's G3 hold,
-V4.4.1's G3 release fix — had to be threaded through the existing
-structure, usually as another multiplicative brake or another
-tier-eligibility gate. The V4.5 design queue had a dozen more items
-waiting. Adding the next layer would have made the codebase harder to
-reason about and harder to modify safely.
+The algorithm core is around 1,500 lines with eight tier formulas and
+eleven different modulators on top, and each new safety mechanism over
+the years — the Tier 7 IOB cap reinstatement, the hypo-risk model, the
+G3 pre-UAM hold, the G3 release fix — had to be threaded through the
+existing structure, usually as another multiplicative brake or another
+tier-eligibility gate. The next-version design queue had a dozen more
+items waiting. Adding the next layer would have made the codebase harder
+to reason about and harder to modify safely.
 
 The dosing-pipeline map produced on 2026-05-02 surfaced specific
 conflicts that were already showing through: the fast-carb heuristic
 and the meal-likelihood model trying to detect the same thing
-differently; `mlTierDowngrade` and `mlRiskScale` double-braking on the
-same input metric; the brake stack having no overall floor and being
-capable of driving doses to ~5 % of oref's calculated need. The kind of
-thing where patching one symptom creates another.
+differently; two ML brakes double-braking on the same input metric;
+the brake stack having no overall floor and being capable of driving
+doses to ~5 % of oref's calculated need. The kind of thing where
+patching one symptom creates another.
 
-So instead of layer #12, V5 is a redesign.
+So instead of the next layer, V5 is a redesign.
 
 ### The symptoms that motivated the timing
 
@@ -62,12 +62,13 @@ addition wasn't going to fix the underlying issues — they're symptoms,
 not root causes:
 
 **Real meals just-missing the binary thresholds.** On 2026-05-05 around
-14:07 BST, V4.4.1 saw a real meal climbing but the UAM_BOOST tier conditions
-*just-missed* — `uamBoost1` was 1.15 with a 1.2 threshold; `uamBoost2` was
-1.96 with a 2.0 threshold. V4.4.1 fell through to Tier 7 (the slow-acting
-fallback) and delivered **no SMB for 41 minutes** while BG climbed unchecked.
-This is the fundamental problem with binary thresholds: real meal patterns
-vary, but the tier ladder requires exact matches.
+14:07 BST, the algorithm saw a real meal climbing but the UAM_BOOST tier
+conditions *just-missed* — `uamBoost1` was 1.15 with a 1.2 threshold;
+`uamBoost2` was 1.96 with a 2.0 threshold. The algorithm fell through to
+Tier 7 (the slow-acting fallback) and delivered **no SMB for 41 minutes**
+while BG climbed unchecked. This is the fundamental problem with binary
+thresholds: real meal patterns vary, but the tier ladder requires exact
+matches.
 
 **Dose collapse under stacked brakes.** When several brakes (`mlRiskScale`,
 `postSmbScale`, `fastCarbScale`) fire on the same cycle, they multiply
@@ -94,14 +95,14 @@ per-individual. Most users end up with sub-optimal settings they don't know
 they should change. New users find it intimidating.
 
 **Maintainability.** The Boost algorithm core is ~1,500 lines with 8 tier
-formulas and 11 different modulators. Each new safety mechanism added in V2
-through V4.4 — the spike override, the Tier 7 IOB cap, ML risk integration,
-the G3 hold, the post-SMB risk gate — had to be threaded through the
-existing structure, often by adding a multiplicative brake or a tier-eligibility
+formulas and 11 different modulators. Each new safety mechanism added over
+the years — the spike override, the Tier 7 IOB cap, the ML risk
+integration, more recently the G3 pre-UAM hold and the post-SMB risk gate
+in development branches — had to be threaded through the existing
+structure, often by adding a multiplicative brake or a tier-eligibility
 gate. A pipeline map produced 2026-05-02 surfaced specific conflicts: the
-fast-carb heuristic and the meal-likelihood model trying to detect the same
-thing differently; `mlTierDowngrade` and `mlRiskScale` double-braking on the
-same input metric.
+fast-carb heuristic and a meal-likelihood model trying to detect the same
+thing differently; two ML brakes double-braking on the same input metric.
 
 ### The goals
 
@@ -117,17 +118,19 @@ V5 was designed to:
    algorithm reasons about which phase a meal is in instead of
    re-evaluating from scratch each cycle.
 3. **Bound the safety composition.** Cap the brake stack with a hard
-   minimum (30% of oref's calculated need); collapse the three V4 brakes
+   minimum (30% of oref's calculated need); collapse multiple brakes
    on the same hypo-risk metric into a single graduated curve.
-4. **Reduce the settings burden.** Move 30+ user-facing dials to hardcoded
-   values calibrated once at release, expose only knobs where users
-   genuinely have a basis to choose a value.
+4. **Reduce the settings burden.** Move 30+ user-facing dose-sizing
+   dials to hardcoded values calibrated once at release, expose only
+   knobs where users genuinely have a basis to choose a value.
 5. **Make decisions reconstructable.** Six NS fields fully describe any
    V5 cycle's reasoning so behaviour can be analysed after the fact
    without grepping logs.
-6. **Fold V4-era additions cleanly.** G3 hold, meal-likelihood model,
-   post-SMB risk gate become components of one coherent architecture
-   instead of patches on top of the tier ladder.
+6. **Fold the staged-development additions cleanly.** Mechanisms that
+   were patched into the tier ladder over multiple Boost versions —
+   meal-likelihood ML, post-SMB risk re-projection, fast-carb rebound
+   protection — become components of one coherent architecture in V5
+   instead of patches on top.
 
 ### What V5 explicitly is not trying to do
 
@@ -135,7 +138,7 @@ V5 was designed to:
   hypo-risk damping make it more conservative in many situations.
   The goal is *correct* dosing, not maximum dosing.
 - **Not a clinical superiority claim.** V5 is PRE-ALPHA. There is no
-  demonstrated TIR / TBR improvement vs V1 or V4.4.1 yet.
+  demonstrated TIR / TBR improvement vs V1 yet.
 - **Not a replacement for sensitivity calibration.** DynISF, autosens,
   hour-of-day basal / ISF are all preserved unchanged. V5 trusts the
   user's existing sensitivity setup.
@@ -265,8 +268,8 @@ V5.
 - **Activity (exercise) profile/target compression.** `boost_activity_pct`
   and the activity step thresholds (5/15/30/60 min) modify profile% and
   target during exercise. Same upstream pathway.
-- **Post-exercise recovery window detection.** V5 reads V1/V4.4.1's
-  existing recovery-window flag (`v5_inPostExerciseWindow` on
+- **Post-exercise recovery window detection.** V5 reads the existing
+  Boost recovery-window flag (`v5_inPostExerciseWindow` on
   `OapsProfileBoost`). V5 doesn't reimplement HR-zone classification or
   step-fusion logic.
 - **Boost active time window.** `boost_start_time` / `boost_end_time`
@@ -373,19 +376,20 @@ hardcoded.
 ## Currently — what V5 is and isn't
 
 V5 is **PRE-ALPHA** and **shadow-only**. It is hidden from the plugin list
-(you cannot select it as your active APS algorithm). When you have V4.4.1
-running as your APS, V5 runs alongside as a **sidecar**:
+(you cannot select it as your active APS algorithm). During development
+testing it runs alongside the active Boost variant as a **sidecar**:
 
-1. V4.4.1 finishes its normal cycle and decides what to dose.
-2. V4.4.1 hands its inputs (glucose status, IOB, ML predictions,
-   sensitivity values, exercise state) to V5.
+1. The active Boost finishes its normal cycle and decides what to dose.
+2. Its inputs (glucose status, IOB, ML predictions where present,
+   sensitivity values, exercise state) are handed to V5.
 3. V5 runs its own decision on the same inputs and logs the result to
-   `aapsLogger` with prefix `BoostV5_RT:`.
-4. V5 does **not** affect what V4.4.1 dosed.
+   `aapsLogger` with prefix `BoostV5_RT:` and to Nightscout deviceStatus
+   under `boostV5_*` fields.
+4. V5 does **not** affect what was actually dosed.
 
-Anyone running this build is collecting parallel V5 decisions for analysis.
-V5 will only become user-selectable after the test plan's Layer 1–3
-acceptance gates pass on real shadow data.
+Test builds collect parallel V5 decisions for analysis. V5 will only
+become user-selectable in the plugin list after the test plan's Layer
+1–3 acceptance gates pass on real shadow data.
 
 
 ---
@@ -535,12 +539,12 @@ due to the SMB rounding step).
 | Plugin folder | `openAPSBoost/` | `openAPSBoostV5/` |
 | User-selectable as APS? | Yes | **No** — `showInList { false }`, `isEnabled() = false` |
 | Dosing? | Yes (when selected) | **No** — sidecar shadow only |
-| Currently runs? | Only if user selects it as APS | Whenever V4.4.1 is active (V4.4.1 calls V5 at end of its cycle) |
+| Currently runs? | Only if user selects it as APS | During development testing, alongside the active Boost variant — V5 is invoked at the end of the active variant's cycle |
 
 
 ## Related documents
 
-- `MIGRATION.md` (this directory) — V4.4.1 → V5 mechanism mapping for maintainers
 - `boost_v5_redesign_proposal.md` (claude memory) — full architectural rationale
 - `boost_dosing_pipeline_map_2026-05-02.md` (claude memory) — what motivated the V5 redesign
 - `boost_v5_constants_calibration.md` (claude memory) — calibration sweep results
+- `MIGRATION.md` (this directory) — source-level mechanism mapping for plugin maintainers
