@@ -27,6 +27,96 @@ V1 source). V5 reference: `~/StudioProjects/Boost-AAPS-core/openAPSBoostV5/`.
   but doesn't dose. You stay on your existing Boost while V5 collects data.
 
 
+## Why V5 was built
+
+### The triggers
+
+A few specific patterns and incidents motivated the V5 redesign:
+
+**Real meals just-missing the binary thresholds.** On 2026-05-05 around
+14:07 BST, V4.4.1 saw a real meal climbing but the UAM_BOOST tier conditions
+*just-missed* — `uamBoost1` was 1.15 with a 1.2 threshold; `uamBoost2` was
+1.96 with a 2.0 threshold. V4.4.1 fell through to Tier 7 (the slow-acting
+fallback) and delivered **no SMB for 41 minutes** while BG climbed unchecked.
+This is the fundamental problem with binary thresholds: real meal patterns
+vary, but the tier ladder requires exact matches.
+
+**Dose collapse under stacked brakes.** When several brakes (`mlRiskScale`,
+`postSmbScale`, `fastCarbScale`) fire on the same cycle, they multiply
+together. The combined factor can drop the dose to ~5% of what oref
+calculated as needed. There's no overall floor. In post-hypo-recovery
+scenarios this can leave a real meal dramatically under-dosed.
+
+**Activity mode persisting into a meal.** On 2026-05-06 morning, the user
+walked, then ate breakfast. Activity mode persisted for 35 minutes after
+walking stopped (the 60-min step lookback decays slowly), keeping
+`target = 150` and `profile = 80%` during the meal climb. The result: BG
+peaked at 232 mg/dL despite oref technically running. The mode-persistence
+logic doesn't know "the user is now eating."
+
+**Tier flicker on noisy signals.** When BG delta dips momentarily mid-rise
+(e.g. CGM noise), the tier conditions can fall out of UAM_BOOST or
+ACCELERATION and back into PERCENT_SCALE or ENHANCED_OREF1 — different dose
+formulas on what is functionally the same meal. Each cycle starts from
+scratch with no memory of "we were already tracking this rise."
+
+**The settings burden.** Boost's preferences screen has 60+ entries, and
+roughly 30 of them are Boost-specific knobs the user is expected to tune
+per-individual. Most users end up with sub-optimal settings they don't know
+they should change. New users find it intimidating.
+
+**Maintainability.** The Boost algorithm core is ~1,500 lines with 8 tier
+formulas and 11 different modulators. Each new safety mechanism added in V2
+through V4.4 — the spike override, the Tier 7 IOB cap, ML risk integration,
+the G3 hold, the post-SMB risk gate — had to be threaded through the
+existing structure, often by adding a multiplicative brake or a tier-eligibility
+gate. A pipeline map produced 2026-05-02 surfaced specific conflicts: the
+fast-carb heuristic and the meal-likelihood model trying to detect the same
+thing differently; `mlTierDowngrade` and `mlRiskScale` double-braking on the
+same input metric.
+
+### The goals
+
+V5 was designed to:
+
+1. **Eliminate binary cliffs in meal detection.** Replace tier conditions
+   with a continuous 0–1 score, so just-miss patterns can still reach the
+   right state through accumulated signal weight rather than needing exact
+   threshold matches.
+2. **Make the meal hypothesis a first-class state.** Encode "test then
+   commit" as an explicit state machine — IDLE → OBSERVING → CONFIRMED
+   → COMMITTED → RECOVERING — with state persisted across cycles. The
+   algorithm reasons about which phase a meal is in instead of
+   re-evaluating from scratch each cycle.
+3. **Bound the safety composition.** Cap the brake stack with a hard
+   minimum (30% of oref's calculated need); collapse the three V4 brakes
+   on the same hypo-risk metric into a single graduated curve.
+4. **Reduce the settings burden.** Move 30+ user-facing dials to hardcoded
+   values calibrated once at release, expose only knobs where users
+   genuinely have a basis to choose a value.
+5. **Make decisions reconstructable.** Six NS fields fully describe any
+   V5 cycle's reasoning so behaviour can be analysed after the fact
+   without grepping logs.
+6. **Fold V4-era additions cleanly.** G3 hold, meal-likelihood model,
+   post-SMB risk gate become components of one coherent architecture
+   instead of patches on top of the tier ladder.
+
+### What V5 explicitly is not trying to do
+
+- **Not faster dosing on average.** V5's post-exercise modifier and ML
+  hypo-risk damping make it more conservative in many situations.
+  The goal is *correct* dosing, not maximum dosing.
+- **Not a clinical superiority claim.** V5 is PRE-ALPHA. There is no
+  demonstrated TIR / TBR improvement vs V1 or V4.4.1 yet.
+- **Not a replacement for sensitivity calibration.** DynISF, autosens,
+  hour-of-day basal / ISF are all preserved unchanged. V5 trusts the
+  user's existing sensitivity setup.
+- **Not a "solve every Boost problem" claim.** Some V4.5 design items
+  (zero-temp duration cap by `delta_accl`, basal-side handling) were
+  intentionally left out of V5's scope. V5 redesigns the **dosing
+  decision**; basal-side logic remains where it was.
+
+
 ## What you'll notice as a user
 
 ### Settings
