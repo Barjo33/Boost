@@ -267,7 +267,7 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
         // Boost Dynamic ISF for predictions
         // =====================================================================
         consoleError.add("═════════════════════════════════════════════════════════")
-        consoleError.add("  Boost v4.4.1 (G3 release fix: delta_accl + BG-threshold + lower meal threshold) | Profile: ${profile.profileSwitch}%")
+        consoleError.add("  Boost v4.4.2 (tier release: T4 velocity fallback + fast-carb eBG override) | Profile: ${profile.profileSwitch}%")
         consoleError.add("═════════════════════════════════════════════════════════")
         consoleError.add("Steps: 5m=${profile.recentSteps5Minutes} 15m=${profile.recentSteps15Minutes} 30m=${profile.recentSteps30Minutes} 60m=${profile.recentSteps60Minutes}")
 
@@ -1286,10 +1286,29 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
                 val fastCarbRebound: Boolean
                 if (fastCarbConditions && bg < 170.0) {
                     // Velocity override: extreme rise well above target is a genuine spike
-                    if (glucose_status.delta > 15 && bg > target_bg + 20) {
+                    // v4.4.2: lowered delta threshold from >15 to >10 because glucose_status.delta
+                    // is AAPS's smoothed delta (averaged across recent readings), not the raw
+                    // 5-min tick. With recent-low BG history, the smoothed delta is materially
+                    // lower than the displayed tick — on the 2026-05-09 climb at BG=125 the
+                    // displayed tick was +20 but smoothed delta was likely 12-14, missing the
+                    // >15 threshold by 1-3 mg/dL.
+                    // v4.4.2: also added eventualBG escape — if oref already predicts a >100
+                    // mg/dL overshoot, the climb is genuine regardless of smoothed-delta noise.
+                    // On 2026-05-09 at 14:07 UTC, eBG was 386 (target+306), so the eBG escape
+                    // would have released fast-carb damping immediately even at low smoothed
+                    // delta. This is a structural escape: very-large eBG = the algorithm has
+                    // already concluded a major overshoot is coming, fast-carb damping is moot.
+                    val velocityOverride = glucose_status.delta > 10
+                    val eventualBgOverride = eventualBG > target_bg + 100
+                    if ((velocityOverride || eventualBgOverride) && bg > target_bg + 20) {
                         fastCarbScale = 1.0
                         fastCarbRebound = false
-                        consoleError.add("Fast-carb conditions met but velocity override: delta ${round(glucose_status.delta, 1)} > 15, BG $bg > target+20 — treating as genuine spike")
+                        val trigger = when {
+                            velocityOverride && eventualBgOverride -> "delta ${round(glucose_status.delta, 1)} > 10 + eBG ${round(eventualBG, 0)} > target+100"
+                            velocityOverride -> "delta ${round(glucose_status.delta, 1)} > 10"
+                            else             -> "eBG ${round(eventualBG, 0)} > target+100"
+                        }
+                        consoleError.add("Fast-carb conditions met but $trigger override (BG $bg > target+20) — treating as genuine spike")
                     } else {
                         fastCarbScale = if (bg < 120.0) 0.3
                                         else 0.3 + 0.7 * (bg - 120.0) / 50.0
@@ -1381,8 +1400,17 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
                     consoleError.add("UAM Boost enacted; SMB equals $boostInsulinReq; Original insulin requirement was $insulinReq")
                     rT.reason.append("UAM Boost enacted; SMB equals $boostInsulinReq; ")
                 }
-                // ----- Tier 4: UAM High Boost (high BG > 180 with acceleration) -----
-                else if (!mlTierDowngrade && delta_accl > 5 && bg > 180 && boostActive && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0) {
+                // ----- Tier 4: UAM High Boost (high BG > 180 with acceleration OR sustained velocity) -----
+                // v4.4.2: added `glucose_status.delta > 8` as an alternative trigger.
+                // delta_accl is percentage acceleration, not velocity. Once a climb stabilises
+                // into a sustained high-delta state (delta tracking shortAvgDelta), delta_accl
+                // drops near zero even though BG is still rising fast. The 2026-05-09 climb to
+                // BG=344 fell through to Tier 7/8 for 6 cycles after the initial acceleration
+                // because delta_accl stabilised below 5. Adding a velocity-based fallback
+                // catches sustained climbs that have plateaued in acceleration but are still
+                // climbing rapidly. delta > 8 mg/dL/5min ≈ +1.6 mg/dL/min is the same magnitude
+                // as Tier 5's `delta > 3` but stricter, gating on a real sustained rise.
+                else if (!mlTierDowngrade && (delta_accl > 5 || glucose_status.delta > 8) && bg > 180 && boostActive && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0) {
                     consoleError.add(">>> TIER 4: UAM High Boost <<<")
                     rT.boostTier = "UAM_HIGH_BOOST"
                     consoleError.add("Insulin required pre-boost is $insulinReq")
