@@ -67,4 +67,8 @@ enum class StringKey(
 
     // Boost V5 silent-shadow persisted state (JSON blob).
     ApsBoostV5State("boost_v5_state", "", defaultedBySM = true),
+
+    // Boost ISF shadow — persisted EMA(τ=3h) state for the V4.4.2-style
+    // TDD-anchored sensitivity ratio. JSON: { emaState, lastUpdateMs, firstSeenMs }.
+    ApsBoostIsfShadowState("boost_isf_shadow_state", "", defaultedBySM = true),
 }

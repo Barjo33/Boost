@@ -1,32 +1,28 @@
 # Boost ML + V5 Shadow Build — A Quick Read
 
-*What this branch of AndroidAPS does, why it does it, and what changes for the person actually wearing the pump.*
+*What this build of AndroidAPS does, why it does it, and what changes for the person actually wearing the pump.*
 
 ---
 
 ## The short version
 
-This build takes the publicly-released Boost (the algorithm most users will already recognise) and adds two things on top: a small set of **machine-learning components that make hypos slightly less likely and meal-rises slightly less stressful**, and a **silent observer** called V5 that watches every cycle without changing what the pump does. The original Boost algorithm — its DynISF formula, its tier ladder, the way it sizes microboluses — is untouched in spirit. The additions sit alongside, contribute information, and occasionally apply a brake. Nothing about the underlying dose calculation has been replaced.
+This build takes Boost and adds two things on top: a small set of **machine-learning components that make hypos slightly less likely and meal-rises slightly less stressful**, and a **silent observer** called V5 that watches every cycle without changing what the pump does. Boost's DynISF formula, its tier ladder, and the way it sizes microboluses are unchanged in spirit. The additions sit alongside, contribute information, and occasionally apply a brake. Nothing about the underlying dose calculation has been replaced.
 
-If a user flashes this APK and does nothing else, they will see two new fields in their Nightscout dashboard immediately (`mlHypoRisk`, `mlMealLikely`), seven more once the silent observer wakes up (`boostV5_*`), and gradually notice that the pump trims its corrections during moments when a low looks likely. Nothing else changes visually. There is no new setting to tune. There is no new mode to enable.
+A user who flashes this APK and does nothing else will see two new fields in their Nightscout dashboard immediately (`mlHypoRisk`, `mlMealLikely`), seven more once the silent observer wakes up (`boostV5_*`), and gradually notice that the pump trims its corrections during moments when a low looks likely. Nothing else changes visually. There is no new setting to tune. There is no new mode to enable.
 
 ---
 
 ## Who this is for
 
-People who already run Boost and want the safety benefit of probabilistic hypo prediction without changing the dosing logic they're calibrated against. There is no medical claim here — these are improvements at the margins, not a redesign.
+People who already run Boost and want the safety benefit of probabilistic hypo prediction without changing the dosing logic they're already calibrated against. There is no medical claim here — these are improvements at the margins, not a redesign.
 
 People who don't run Boost should stay on whatever they're using.
 
 ---
 
-## What changes vs standard Boost
+## What's different
 
-Standard Boost (the public V1) decides what to dose every five minutes by:
-
-1. Looking at the current blood glucose, trend, insulin on board, and a few derived quantities.
-2. Picking one of eight "tiers" of response — from a small correction at the gentle end to a strong COB-triggered bolus at the aggressive end.
-3. Sizing the microbolus accordingly.
+Boost decides what to dose every five minutes by looking at the current blood glucose, the trend, the insulin on board, and a few derived quantities; picking one of eight tiers of response — from a small correction at the gentle end to a strong COB-triggered bolus at the aggressive end; and sizing the microbolus accordingly.
 
 That logic stays the same in this build. What's added is a small layer of context that asks, before any dose is delivered: *given everything we know about the next four hours, is this dose the right size and shape?*
 
@@ -34,7 +30,7 @@ Concretely, four things are different:
 
 ### 1. A hypo-risk forecast every five minutes
 
-A small machine-learning model — trained on 28 real Boost users contributing roughly three million decision cycles between them — looks at the eight inputs the algorithm has already calculated, and produces a single probability: the chance that blood glucose will dip below 70 mg/dL in the next four hours. The model was validated on five further users who weren't in the training set; the numbers came out essentially where the cross-validation said they would (more on this below).
+A small machine-learning model — trained on a 28-user cohort contributing roughly three million decision cycles between them — looks at the eight inputs the algorithm has already calculated, and produces a single probability: the chance that blood glucose will dip below 70 mg/dL in the next four hours. The model was validated on five further users who weren't in the training set; the numbers came out essentially where the cross-validation said they would (more on this below).
 
 The forecast is published to Nightscout in real time as `mlHypoRisk`, a number between 0 and 1. Watching it for a day or two builds intuition: it rises overnight as insulin on board accumulates, spikes after a meal correction, falls during exercise.
 
@@ -48,25 +44,25 @@ The meal model is the more reliable of the two. Across the five out-of-cohort va
 
 This is where the dose actually changes. When `mlHypoRisk` rises above 0.3, every microbolus the algorithm wants to deliver is multiplied by a scaling factor that ramps from 1.0 down to 0.0 as the risk approaches 1.0. The size of the brake is published as `mlRiskScale` so it can be inspected after the fact.
 
-When `mlHypoRisk` exceeds 0.6, a second brake kicks in: the aggressive tiers (UAM Boost, UAM High Boost, Percent Scale, Acceleration) are skipped, and the algorithm falls through to one of the two conservative tiers (Enhanced oref1 or Regular oref1). The pump still dose if dosing is warranted — it just won't fire one of the larger response modes when the hypo forecast is loud.
+When `mlHypoRisk` exceeds 0.6, a second brake kicks in: Boost's aggressive tiers (the higher tiers responsible for the larger correction doses, including the strong-acceleration tiers and the percent-scale tier) are skipped, and the algorithm falls through to one of the two conservative tiers (Enhanced oref1 or Regular oref1). The pump still doses if dosing is warranted — it just won't fire one of the larger response modes when the hypo forecast is loud.
 
-Both brakes are strictly downward. Neither makes any cycle more aggressive than the standard Boost algorithm would have been. They can only soften.
+Both brakes are strictly downward. Neither makes any cycle more aggressive than Boost would have been by itself. They can only soften.
 
-### 4. A pre-UAM hold that delays a small set of marginal doses
+### 4. A pre-meal-tier hold that delays a small set of marginal doses
 
-When blood glucose starts climbing from near target with no logged carbs — the exact pattern of an unannounced meal whose carbs haven't been entered yet — the algorithm now holds the gentler tiers (T5/T6/T7/T8) for one to three cycles, waiting for one of three signals to release the hold:
+When blood glucose starts climbing from near target with no logged carbs — the exact pattern of an unannounced meal whose carbs haven't been entered yet — the algorithm now holds the gentler tiers (Percent Scale, Acceleration, Enhanced oref1, Regular oref1) for one to three cycles, waiting for one of three signals to release the hold:
 
 - Acceleration becomes deterministic (`delta_accl > 10`).
 - Glucose climbs above 160 and is still rising (the safety backstop).
 - The meal model says a meal is likely (`mlMealLikely > 0.5`).
 
-If the UAM tiers (T3 or T4) become eligible during the hold, they fire normally — those aren't gated. The hold only affects the gentler tiers, which would otherwise fire small SMBs into what might turn out to be a fast-carb rebound rather than a real meal climb.
+If Boost's strong-acceleration tiers (the ones that fire for genuine meal-shaped climbs) become eligible during the hold, they fire normally — those aren't gated. The hold only affects the gentler tiers, which would otherwise fire small SMBs into what might turn out to be a fast-carb rebound rather than a real meal climb.
 
-This was the most carefully-validated piece of the upstream V4.4.x work: 0 UAM-tier doses were blocked across 20 real-meal events, and 80% of fast-carb pre-rescue over-doses were suppressed.
+This was the most carefully-validated piece of the upstream work: 0 strong-tier doses were blocked across 20 real-meal events, and 80% of fast-carb pre-rescue over-doses were suppressed.
 
 ### 5. A small set of additional tweaks
 
-The build also includes a Tier 4 velocity fallback (so that the high-BG aggressive tier keeps firing during sustained climbs into the 200s+ when acceleration has plateaued), and a more responsive fast-carb release (so a genuine spike isn't held back by the rebound-protection logic for too long). These are the kind of small refinements that came out of months of incident reviews on the upstream development branch.
+The build also includes a refinement to the high-BG aggressive tier so that it keeps firing during sustained climbs into the 200s+ even after acceleration has plateaued, and a more responsive fast-carb release so that a genuine spike isn't held back by the rebound-protection logic for too long. These are the kind of small refinements that came out of months of incident reviews on the development branch.
 
 ---
 
@@ -90,7 +86,7 @@ The point of running V5 silently is straightforward: **calibration data**. V5's 
 
 If something goes wrong inside V5 — a bug, a corner case, a thread it doesn't expect — the error is caught and logged. The active algorithm carries on as if V5 wasn't there. V5 cannot affect dosing; the path through which dosing decisions are made does not consult V5.
 
-V5 also does not appear in the AndroidAPS plugin list. Users cannot enable or disable it. It runs because the active plugin (V1 or V2) calls it at the end of every cycle.
+V5 also does not appear in the AndroidAPS plugin list. Users cannot enable or disable it. It runs because the active Boost plugin calls it at the end of every cycle.
 
 ---
 
@@ -98,9 +94,9 @@ V5 also does not appear in the AndroidAPS plugin list. Users cannot enable or di
 
 **Visible immediately in Nightscout**: `mlHypoRisk`, `mlMealLikely`, `mlRiskScale`, `mlMealG3Released`, `mlG3ReleaseSource`, plus the seven `boostV5_*` fields. Useful for understanding what the algorithm is thinking; not useful for tuning anything (these aren't user-controllable knobs).
 
-**Visible occasionally in the algorithm's "reason" text**: notes like `ML risk scale 65%: SMB 0.45 → 0.29`, or `G3 pre-UAM uncertainty hold: T5/6/7/8 suppressed`, or `Fast-carb conditions met but delta 12.4 > 10 override`. These appear when the brakes or the hold actually fire.
+**Visible occasionally in the algorithm's "reason" text**: notes like `ML risk scale 65%: SMB 0.45 → 0.29`, or `pre-UAM uncertainty hold: gentler tiers suppressed`, or `Fast-carb conditions met but delta 12.4 > 10 override`. These appear when the brakes or the hold actually fire.
 
-**New `boostTier = "NONE"` entries** during G3 pre-UAM holds — distinct from baseline NONE cycles. When the hold is suppressing the gentler tiers, no SMB is delivered for that cycle, and the tier reads NONE with a hold-active explanation.
+**New `boostTier = "NONE"` entries** during the pre-meal hold — distinct from baseline NONE cycles. When the hold is suppressing the gentler tiers, no SMB is delivered for that cycle, and the tier reads NONE with a hold-active explanation.
 
 **Three new V5 settings** in `Boost V5 (PRE-ALPHA)` — Aggression, Hypo Caution, and Meal-detection Sensitivity. These are knobs for the shadow observer's calibration, not the active algorithm. Most users should leave them at their defaults (all 1.0). Changing them only affects what V5 would have done if it were dosing; it cannot change actual dosing.
 
@@ -110,9 +106,7 @@ V5 also does not appear in the AndroidAPS plugin list. Users cannot enable or di
 
 ## Why this is built the way it is
 
-The decision to keep the DynISF formula identical to the publicly-released Boost is deliberate. Users have spent time calibrating against that formula. Replacing it would require all those users to retune. The retrofit instead adds *what* the algorithm should do with the dose it has computed — not *how* the dose is computed in the first place.
-
-The decision to ship the ML retrofit in four layers (observability only → hypo brake → pre-UAM hold → Tier 4 fallback + fast-carb escape) reflects the same caution: each layer is its own branch, each layer adds one well-understood behavioural change, and a user worried about the more invasive changes can flash the lowest layer that gets them most of the safety benefit.
+The decision to keep the DynISF formula identical to Boost is deliberate. Users have spent time calibrating against that formula. Replacing it would require all those users to retune. The additions decide *what* the algorithm should do with the dose it has computed — not *how* the dose is computed in the first place.
 
 The decision to run V5 silently rather than asking users to opt into a beta reflects the principle that calibration data should be gathered before active deployment, not during it. V5 will graduate to alpha — actively driving doses for at least one user — only after its score distribution and CONFIRMED threshold have been verified against multi-user data. That data only accumulates if V5 is observing.
 
@@ -130,9 +124,9 @@ It also does not replace the user's responsibility to enter meals as accurately 
 
 ## What to expect after flashing
 
-In the first few hours, very little will look different. Nightscout will start showing the new fields, glucose will continue trending the way it normally does, and the algorithm will continue dosing the way it normally does. If the user happens to be at moderate hypo risk during that window, they may notice a slightly smaller-than-usual SMB and an `ML risk scale 75%` note in the reason text. If they happen to start a climb shortly after a meal they forgot to enter, they may notice a one-or-two-cycle delay before the algorithm starts firing — that's the pre-UAM hold engaging and then releasing once the meal-shaped climb confirms.
+In the first few hours, very little will look different. Nightscout will start showing the new fields, glucose will continue trending the way it normally does, and the algorithm will continue dosing the way it normally does. If the user happens to be at moderate hypo risk during that window, they may notice a slightly smaller-than-usual SMB and an `ML risk scale 75%` note in the reason text. If they happen to start a climb shortly after a meal they forgot to enter, they may notice a one-or-two-cycle delay before the algorithm starts firing — that's the pre-meal-tier hold engaging and then releasing once the meal-shaped climb confirms.
 
-Over a few days, the cumulative effect is what's worth watching: time-below-70 should be modestly lower, peak-after-meal values should be roughly similar, time-in-range should be modestly higher. None of these effects is dramatic. They were never supposed to be. The algorithm was already doing the right thing most of the time. The additions described here are about the tails — the cycles where standard Boost would have over-dosed near a hypo, or under-dosed at the start of a real meal, or held back while a genuine spike was beginning.
+Over a few days, the cumulative effect is what's worth watching: time-below-70 should be modestly lower, peak-after-meal values should be roughly similar, time-in-range should be modestly higher. None of these effects is dramatic. They were never supposed to be. The algorithm was already doing the right thing most of the time. The additions described here are about the tails — the cycles where Boost would have over-dosed near a hypo, or under-dosed at the start of a real meal, or held back while a genuine spike was beginning.
 
 V5's fields will populate from the first cycle. There will be no visible effect from V5 in dosing terms because V5 doesn't drive anything. Anyone watching it on a dashboard will see a state machine moving between IDLE and OBSERVING, with the score rising and falling alongside real meal events.
 
@@ -140,8 +134,4 @@ V5's fields will populate from the first cycle. There will be no visible effect 
 
 ## In summary
 
-Standard Boost decides what to dose. This build adds a probabilistic check, a brake, a pre-meal hold, two small refinements for sustained climbs, and a silent observer that's preparing the ground for the next generation of the algorithm. The user sees a small number of new dashboard fields and a slightly more cautious response near hypos. They do not see a different algorithm. The dose calculation is the same. The safety logic is the same. The change is in judgement at the margins — the kind of refinement that's hard to feel cycle-by-cycle but adds up across thousands of cycles a week.
-
----
-
-*This is the `Boost-ML-V5-Shadow` build of AndroidAPS. The branch sits on top of `Boost-ML`, which sits on a stack of four ML retrofit layers (A through D) above the publicly-released Boost. V5 is a hidden plugin invoked silently after every cycle. The source code, the cross-validation paper, the per-user calibration spec, and the layered behavioural diff are available alongside this build for anyone who wants to dig deeper.*
+Boost decides what to dose. This build adds a probabilistic check, a brake, a pre-meal hold, two small refinements for sustained climbs, and a silent observer that's preparing the ground for the next generation of the algorithm. The user sees a small number of new dashboard fields and a slightly more cautious response near hypos. They do not see a different algorithm. The dose calculation is the same. The safety logic is the same. The change is in judgement at the margins — the kind of refinement that's hard to feel cycle-by-cycle but adds up across thousands of cycles a week.

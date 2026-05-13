@@ -120,6 +120,9 @@ open class OpenAPSBoostV2Plugin @Inject constructor(
     // package. Both lazy-load JSON tree assets from `boost/` on first inference.
     private val boostRiskModel: app.aaps.plugins.aps.openAPSBoost.BoostRiskModel,
     private val boostMealModel: app.aaps.plugins.aps.openAPSBoost.BoostMealModel,
+    // ISF shadow — same singleton injected into V1; shared EMA state so the shadow
+    // ratio is continuous even if the user switches between V1 and V2.
+    private val boostIsfShadow: app.aaps.plugins.aps.openAPSBoost.BoostIsfShadow,
     private val profiler: Profiler,
     private val apsResultProvider: Provider<APSResult>,
     // V5 silent shadow — same sidecar pattern as V1. V5 sees the cycle's RT after
@@ -267,7 +270,8 @@ open class OpenAPSBoostV2Plugin @Inject constructor(
         val insulinDivisor: Int,
         val ratio: Double,
         val tdd: Double,
-        val isfDebug: String = ""
+        val isfDebug: String = "",
+        val tddSensShadow: app.aaps.plugins.aps.openAPSBoost.BoostIsfShadow.TddSensShadowResult? = null
     )
 
     private fun calculateBoostIsf(
@@ -290,6 +294,7 @@ open class OpenAPSBoostV2Plugin @Inject constructor(
 
         var sensNormalTarget = profileSens
         var ratio = 1.0
+        var isfShadowResult: app.aaps.plugins.aps.openAPSBoost.BoostIsfShadow.TddSensShadowResult? = null
         var tdd = 0.0
         val bgCurrent = if (glucoseValue > bgCap) bgCap + ((glucoseValue - bgCap) / 3.0) else glucoseValue
 
@@ -346,6 +351,16 @@ open class OpenAPSBoostV2Plugin @Inject constructor(
 
                     if (adjustSens && tddLast24H > 0) {
                         ratio = max(min(tddLast24H / tdd7D, autosensMax), autosensMin)
+                        // ISF shadow — V4.4.2-style EMA(τ=3h) ratio computed in parallel.
+                        isfShadowResult = boostIsfShadow.computeShadow(
+                            tddLast24H = tddLast24H,
+                            tdd7D = tdd7D,
+                            autosensMin = autosensMin,
+                            autosensMax = autosensMax
+                        )
+                        if (isfShadowResult != null) {
+                            debug.append("\n${isfShadowResult.debugLine}")
+                        }
                         sensNormalTarget /= ratio
                         debug.append("\nSens ratio: ${Round.roundTo(ratio, 0.01)} (24H/7D = ${Round.roundTo(tddLast24H, 0.1)}/${Round.roundTo(tdd7D, 0.1)}) → ISF=${Round.roundTo(sensNormalTarget, 0.1)}")
                     }
@@ -394,7 +409,8 @@ open class OpenAPSBoostV2Plugin @Inject constructor(
             insulinDivisor = insulinDivisor,
             ratio = Round.roundTo(ratio, 0.01),
             tdd = tdd,
-            isfDebug = debug.toString()
+            isfDebug = debug.toString(),
+            tddSensShadow = isfShadowResult
         )
     }
 
@@ -970,6 +986,24 @@ open class OpenAPSBoostV2Plugin @Inject constructor(
             riskModel = boostRiskModel,
             mealModel = boostMealModel
         ).also {
+            // ISF shadow telemetry — same pattern as V1. See OpenAPSBoostPlugin for
+            // the derivation. V2's variable_sens flows through the same ratio path,
+            // so the shadow math is identical.
+            val shadow = isfResult.tddSensShadow
+            if (shadow != null && isfResult.ratio > 0.0 && shadow.ratio > 0.0) {
+                val scale = isfResult.ratio / shadow.ratio
+                it.isfShadow_ratioRaw = Round.roundTo(shadow.raw, 0.001)
+                it.isfShadow_ratioEma = Round.roundTo(shadow.ratio, 0.001)
+                it.isfShadow_warmup = Round.roundTo(shadow.warmupFraction, 0.01)
+                it.isfShadow_variableSens = Round.roundTo(isfResult.variableSens * scale, 0.1)
+                it.isfShadow_deltaPct = Round.roundTo((scale - 1.0) * 100.0, 0.01)
+                it.insulinReq?.let { ir ->
+                    it.isfShadow_insulinReq = Round.roundTo(ir / scale, 0.001)
+                }
+                it.units?.let { u ->
+                    it.isfShadow_microBolus = Round.roundTo(u / scale, 0.001)
+                }
+            }
             // V5 silent shadow — runs BEFORE EventAPSCalculationFinished so listeners
             // see the populated rT with boostV5_* fields. V2's dosing decision has
             // already been finalised; V5 cannot affect it.
