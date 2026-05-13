@@ -90,9 +90,37 @@ V5 also does not appear in the AndroidAPS plugin list. Users cannot enable or di
 
 ---
 
+## A second silent observer — the ISF shadow
+
+Boost has a long history of debating one specific question: should the sensitivity ratio (the number that says "the user is currently 10% more sensitive than their 7-day baseline, so dose accordingly") be the **instantaneous** value, or should it be **smoothed** to dampen short-term noise? The publicly-released Boost takes the instantaneous value. A later development branch settled on a smoothed-with-a-3-hour-exponential-average approach. Both have plausible arguments behind them. Neither has been A/B tested cleanly because changing the sensitivity calculation changes everything downstream and no two days are comparable.
+
+This build adds a way to test it without changing dosing. Every cycle, the algorithm now computes **both** the instantaneous sensitivity ratio it actually uses and the smoothed ratio it would have used under the alternative, and publishes both to Nightscout for direct comparison. Like V5, the shadow path is observation-only; the dose the pump delivers is determined by the instantaneous value as before.
+
+Seven fields appear in Nightscout per cycle:
+
+| Field | What it means |
+|---|---|
+| `isfShadow_ratioRaw` | The instantaneous tdd_24h / tdd_7d ratio — the same number Boost actually uses today |
+| `isfShadow_ratioEma` | The 3-hour exponentially-smoothed version of the same ratio |
+| `isfShadow_warmup` | A 0.0–1.0 number that climbs to 1.0 over the first five days of EMA history. While warming up, the shadow leans toward "no smoothing" so the user isn't comparing against an unsettled smoother. |
+| `isfShadow_variableSens` | What `variable_sens` would have been if the smoothed ratio had been used (mg/dL/U) |
+| `isfShadow_insulinReq` | What this cycle's `insulinReq` would have been |
+| `isfShadow_microBolus` | What the delivered microbolus would have been |
+| `isfShadow_deltaPct` | A single-number summary: `(shadow / actual − 1) × 100`. Negative means the smoothed version would have given more insulin this cycle; positive means it would have given less. |
+
+The interesting field to watch is `deltaPct`. In steady-state — TDD this week broadly matches TDD this month — it sits near 0%. When TDD is rising fast (heavy day, illness, bigger meals) the instantaneous ratio responds immediately and the smoothed ratio lags — so `deltaPct` goes mildly **negative**, meaning the smoothed approach would have delivered slightly more insulin. When TDD is falling fast (active day, smaller meals, fasting) the opposite holds and `deltaPct` goes mildly **positive**. The two ratios diverge most during the first few hours of a TDD shift; over a 24-hour window they converge.
+
+Over a week of observation, plotting `isfShadow_deltaPct` against actual outcomes (time-in-range, time-below-70, peak-after-meal) will tell whether the smoothing approach would have improved the user's day or simply produced different doses with similar results. If `deltaPct` ranges within ±5% and outcomes look similar, the instantaneous approach is a perfectly reasonable choice. If `deltaPct` swings to ±15-25% and bigger swings correlate with hypos or highs, the smoothing approach has a real argument behind it.
+
+Note that this is a single-cycle counterfactual, not a full simulation. The shadow says "for this cycle, with everything else held equal, what would the smoothed approach have produced?" It does not re-simulate the entire day under the alternative — that would require running a parallel pump in parallel time, which obviously isn't possible. Differences accumulate over a day in ways the shadow can't see, but in practice over a 24-hour window they remain small (a percent or two) because the ratio difference is small at most points in time.
+
+Like V5 shadow, the ISF shadow does not appear as a setting. It runs invisibly. The fields just show up in Nightscout.
+
+---
+
 ## What the user sees and doesn't see
 
-**Visible immediately in Nightscout**: `mlHypoRisk`, `mlMealLikely`, `mlRiskScale`, `mlMealG3Released`, `mlG3ReleaseSource`, plus the seven `boostV5_*` fields. Useful for understanding what the algorithm is thinking; not useful for tuning anything (these aren't user-controllable knobs).
+**Visible immediately in Nightscout**: `mlHypoRisk`, `mlMealLikely`, `mlRiskScale`, `mlMealG3Released`, `mlG3ReleaseSource`, plus the seven `boostV5_*` fields and the seven `isfShadow_*` fields. Useful for understanding what the algorithm is thinking; not useful for tuning anything (these aren't user-controllable knobs).
 
 **Visible occasionally in the algorithm's "reason" text**: notes like `ML risk scale 65%: SMB 0.45 → 0.29`, or `pre-UAM uncertainty hold: gentler tiers suppressed`, or `Fast-carb conditions met but delta 12.4 > 10 override`. These appear when the brakes or the hold actually fire.
 
@@ -130,8 +158,10 @@ Over a few days, the cumulative effect is what's worth watching: time-below-70 s
 
 V5's fields will populate from the first cycle. There will be no visible effect from V5 in dosing terms because V5 doesn't drive anything. Anyone watching it on a dashboard will see a state machine moving between IDLE and OBSERVING, with the score rising and falling alongside real meal events.
 
+The ISF shadow fields will also populate from the first cycle, but `isfShadow_warmup` will start near 0.0 and climb toward 1.0 over five days. During that period the shadow is leaning conservative and the `deltaPct` numbers will be artificially small. After day five they reflect the actual smoothing-vs-instantaneous difference and become the comparison worth looking at.
+
 ---
 
 ## In summary
 
-Boost decides what to dose. This build adds a probabilistic check, a brake, a pre-meal hold, two small refinements for sustained climbs, and a silent observer that's preparing the ground for the next generation of the algorithm. The user sees a small number of new dashboard fields and a slightly more cautious response near hypos. They do not see a different algorithm. The dose calculation is the same. The safety logic is the same. The change is in judgement at the margins — the kind of refinement that's hard to feel cycle-by-cycle but adds up across thousands of cycles a week.
+Boost decides what to dose. This build adds a probabilistic check, a brake, a pre-meal hold, two small refinements for sustained climbs, a silent observer (V5) that's preparing the ground for the next generation of the algorithm, and a second silent observer (the ISF shadow) that lets the smoothed-vs-instantaneous sensitivity-ratio debate be resolved with the user's own data. The user sees a small number of new dashboard fields and a slightly more cautious response near hypos. They do not see a different algorithm. The dose calculation is the same. The safety logic is the same. The change is in judgement at the margins — the kind of refinement that's hard to feel cycle-by-cycle but adds up across thousands of cycles a week.
