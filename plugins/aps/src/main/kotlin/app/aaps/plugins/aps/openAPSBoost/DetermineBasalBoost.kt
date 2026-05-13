@@ -1266,11 +1266,28 @@ class DetermineBasalBoost @Inject constructor(
                 var fastCarbScale = 1.0
                 val fastCarbRebound: Boolean
                 if (fastCarbConditions && bg < 170.0) {
-                    // Velocity override: extreme rise well above target is a genuine spike
-                    if (glucose_status.delta > 15 && bg > target_bg + 20) {
+                    // Layer D: V4.4.2 velocity + eventualBG escapes.
+                    // - delta threshold lowered from 15 → 10 because glucose_status.delta
+                    //   is AAPS's smoothed delta (averaged across recent readings), not the
+                    //   raw 5-min tick. With recent-low BG history the smoothed delta is
+                    //   materially lower than the displayed tick — raw +20 ticks can
+                    //   correspond to algorithm-internal delta of 12-14, missing >15 by
+                    //   1-3 mg/dL.
+                    // - eventualBG escape added: if oref has already concluded a major
+                    //   overshoot is coming (eBG > target+100), the climb is genuine
+                    //   regardless of smoothed-delta noise. This is a structural escape
+                    //   that releases fast-carb damping at the start of large climbs.
+                    val velocityOverride = glucose_status.delta > 10
+                    val eventualBgOverride = eventualBG > target_bg + 100
+                    if ((velocityOverride || eventualBgOverride) && bg > target_bg + 20) {
                         fastCarbScale = 1.0
                         fastCarbRebound = false
-                        consoleError.add("Fast-carb conditions met but velocity override: delta ${round(glucose_status.delta, 1)} > 15, BG $bg > target+20 — treating as genuine spike")
+                        val trigger = when {
+                            velocityOverride && eventualBgOverride -> "delta ${round(glucose_status.delta, 1)} > 10 + eBG ${round(eventualBG, 0)} > target+100"
+                            velocityOverride -> "delta ${round(glucose_status.delta, 1)} > 10"
+                            else             -> "eBG ${round(eventualBG, 0)} > target+100"
+                        }
+                        consoleError.add("Fast-carb conditions met but $trigger override (BG $bg > target+20) — treating as genuine spike")
                     } else {
                         fastCarbScale = if (bg < 120.0) 0.3
                                         else 0.3 + 0.7 * (bg - 120.0) / 50.0
@@ -1364,9 +1381,17 @@ class DetermineBasalBoost @Inject constructor(
                     consoleError.add("UAM Boost enacted; SMB equals $boostInsulinReq; Original insulin requirement was $insulinReq")
                     rT.reason.append("UAM Boost enacted; SMB equals $boostInsulinReq; ")
                 }
-                // ----- Tier 4: UAM High Boost (high BG > 180 with acceleration) -----
+                // ----- Tier 4: UAM High Boost (high BG > 180 with acceleration OR sustained velocity) -----
                 // Layer B: !mlTierDowngrade gate added.
-                else if (!mlTierDowngrade && delta_accl > 5 && bg > 180 && boostActive && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0) {
+                // Layer D: added `glucose_status.delta > 8` as an alternative trigger.
+                // delta_accl is percentage acceleration, not velocity. Once a climb
+                // stabilises into a sustained high-delta state (delta tracking
+                // shortAvgDelta), delta_accl drops near zero even though BG is
+                // still rising fast. Without this fallback, sustained climbs fall
+                // through to T7/T8 once acceleration plateaus. delta > 8 mg/dL/5min
+                // ≈ +1.6 mg/dL/min is the same magnitude as Tier 5's `delta > 3`
+                // but stricter, gating on a real sustained rise.
+                else if (!mlTierDowngrade && (delta_accl > 5 || glucose_status.delta > 8) && bg > 180 && boostActive && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0) {
                     consoleError.add(">>> TIER 4: UAM High Boost <<<")
                     rT.boostTier = "UAM_HIGH_BOOST"
                     consoleError.add("Insulin required pre-boost is $insulinReq")

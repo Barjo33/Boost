@@ -1241,10 +1241,28 @@ class DetermineBasalBoostV2 @Inject constructor(
                 val reversalScore     = if (glucose_status.longAvgDelta < 0 && glucose_status.delta > 0)
                     glucose_status.delta * Math.abs(glucose_status.longAvgDelta) else 0.0
                 val reversalTriggered = reversalScore > 30.0
-                val fastCarbRebound   = (lowTriggered || reversalTriggered)
+                val rawFastCarbRebound = (lowTriggered || reversalTriggered)
                     && meal_data.mealCOB == 0.0
                     && bg < 170.0
                     && delta_accl > 25.0
+                // Layer D: V4.4.2 velocity + eventualBG escapes. When the underlying
+                // conditions trigger fast-carb suppression, also check whether the
+                // climb is large enough to release the suppression (treating as a
+                // genuine spike rather than a rebound). Mirrors V1/V4.4.2 logic but
+                // applied to V2's binary fastCarbRebound rather than V1's graduated
+                // fastCarbScale.
+                val velocityOverride = glucose_status.delta > 10
+                val eventualBgOverride = eventualBG > target_bg + 100
+                val overrideActive = rawFastCarbRebound && (velocityOverride || eventualBgOverride) && bg > target_bg + 20
+                val fastCarbRebound = rawFastCarbRebound && !overrideActive
+                if (overrideActive) {
+                    val trigger = when {
+                        velocityOverride && eventualBgOverride -> "delta ${round(glucose_status.delta, 1)} > 10 + eBG ${round(eventualBG, 0)} > target+100"
+                        velocityOverride -> "delta ${round(glucose_status.delta, 1)} > 10"
+                        else             -> "eBG ${round(eventualBG, 0)} > target+100"
+                    }
+                    consoleError.add("Fast-carb conditions met but $trigger override (BG $bg > target+20) — treating as genuine spike")
+                }
                 rT.fastCarbProtection = fastCarbRebound
                 if (fastCarbRebound) {
                     val trigger = when {
@@ -1324,9 +1342,12 @@ class DetermineBasalBoostV2 @Inject constructor(
                     consoleError.add("UAM Boost enacted; SMB equals $boostInsulinReq; Original insulin requirement was $insulinReq")
                     rT.reason.append("UAM Boost enacted; SMB equals $boostInsulinReq; ")
                 }
-                // ----- Tier 4: UAM High Boost (high BG > 180 with acceleration) -----
+                // ----- Tier 4: UAM High Boost (high BG > 180 with acceleration OR sustained velocity) -----
                 // Layer B: !mlTierDowngrade gate added.
-                else if (!mlTierDowngrade && delta_accl > 5 && bg > 180 && boostActive && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0) {
+                // Layer D: added `glucose_status.delta > 8` as alternative trigger
+                // for sustained-velocity climbs where delta_accl has plateaued near
+                // zero. See V1 for full rationale.
+                else if (!mlTierDowngrade && (delta_accl > 5 || glucose_status.delta > 8) && bg > 180 && boostActive && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0) {
                     consoleError.add(">>> TIER 4: UAM High Boost <<<")
                     rT.boostTier = "UAM_HIGH_BOOST"
                     consoleError.add("Insulin required pre-boost is $insulinReq")
