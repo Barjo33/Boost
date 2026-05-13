@@ -120,7 +120,12 @@ open class OpenAPSBoostPlugin @Inject constructor(
     private val boostRiskModel: BoostRiskModel,
     private val boostMealModel: BoostMealModel,
     private val profiler: Profiler,
-    private val apsResultProvider: Provider<APSResult>
+    private val apsResultProvider: Provider<APSResult>,
+    // V5 silent shadow — V1 hands the cycle's RT + inputs to V5 after determine_basal
+    // returns so V5 can compute a parallel decision against the same data. V5 itself
+    // is hidden from the plugin list and not user-selectable; this callback is the
+    // only way V5 sees a cycle's data. Provider<> avoids a hard DI cycle.
+    private val boostV5Plugin: Provider<app.aaps.plugins.aps.openAPSBoostV5.OpenAPSBoostV5Plugin>
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -997,6 +1002,22 @@ open class OpenAPSBoostPlugin @Inject constructor(
             riskModel = boostRiskModel,
             mealModel = boostMealModel
         ).also {
+            // V5 silent shadow — runs BEFORE EventAPSCalculationFinished is fired so
+            // any listener sees the populated rT with boostV5_* fields. V5 mutates
+            // the rT in place; failures inside V5 are caught and logged within
+            // runShadow() and cannot affect V1's dosing decision (already finalised
+            // above this line).
+            try {
+                boostV5Plugin.get().runShadow(
+                    rT = it,
+                    glucoseStatus = glucoseStatus,
+                    iobArray = iobArray,
+                    oapsProfile = oapsProfile,
+                    pumpBolusStep = activePlugin.activePump.pumpDescription.bolusStep
+                )
+            } catch (t: Throwable) {
+                aapsLogger.error(LTag.APS, "V5 shadow invocation failed", t)
+            }
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints
             determineBasalResult.autosensResult = autosensResult

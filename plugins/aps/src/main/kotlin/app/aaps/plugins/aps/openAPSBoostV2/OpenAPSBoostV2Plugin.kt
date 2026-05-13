@@ -121,7 +121,10 @@ open class OpenAPSBoostV2Plugin @Inject constructor(
     private val boostRiskModel: app.aaps.plugins.aps.openAPSBoost.BoostRiskModel,
     private val boostMealModel: app.aaps.plugins.aps.openAPSBoost.BoostMealModel,
     private val profiler: Profiler,
-    private val apsResultProvider: Provider<APSResult>
+    private val apsResultProvider: Provider<APSResult>,
+    // V5 silent shadow — same sidecar pattern as V1. V5 sees the cycle's RT after
+    // V2 has finalised its dosing decision and attaches boostV5_* fields for NS.
+    private val boostV5Plugin: Provider<app.aaps.plugins.aps.openAPSBoostV5.OpenAPSBoostV5Plugin>
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -967,6 +970,20 @@ open class OpenAPSBoostV2Plugin @Inject constructor(
             riskModel = boostRiskModel,
             mealModel = boostMealModel
         ).also {
+            // V5 silent shadow — runs BEFORE EventAPSCalculationFinished so listeners
+            // see the populated rT with boostV5_* fields. V2's dosing decision has
+            // already been finalised; V5 cannot affect it.
+            try {
+                boostV5Plugin.get().runShadow(
+                    rT = it,
+                    glucoseStatus = glucoseStatus,
+                    iobArray = iobArray,
+                    oapsProfile = oapsProfile,
+                    pumpBolusStep = activePlugin.activePump.pumpDescription.bolusStep
+                )
+            } catch (t: Throwable) {
+                aapsLogger.error(LTag.APS, "V5 shadow invocation failed", t)
+            }
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints
             determineBasalResult.autosensResult = autosensResult

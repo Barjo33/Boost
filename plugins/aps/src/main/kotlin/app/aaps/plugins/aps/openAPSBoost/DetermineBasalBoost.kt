@@ -807,6 +807,9 @@ class DetermineBasalBoost @Inject constructor(
             minGuardBG = minIOBGuardBG
         }
         minGuardBG = round(minGuardBG, 0)
+        // Expose V1's computed minGuardBG on RT so V5's silent shadow can use the
+        // same predicted-low V1 chose for its hard-gate evaluation.
+        rT.minGuardBG = minGuardBG
 
         var minZTUAMPredBG = minUAMPredBG
         if (minZTGuardBG < threshold) {

@@ -92,5 +92,12 @@ data class OapsProfileBoost(
 
     // Boost debug context (not used by algorithm, displayed in Script Debug)
     var boostDebugReason: String = "",
-    var isfDebugReason: String = ""
+    var isfDebugReason: String = "",
+
+    // V5 silent-shadow inputs. Populated by V1/V2 plugins before invoking
+    // determine_basal so the V5 shadow runner has the activity context it needs.
+    // Default false — when V1/V2 don't set them, V5 treats the user as not
+    // exercising (the calibrated baseline).
+    var v5_exerciseActive: Boolean = false,
+    var v5_inPostExerciseWindow: Boolean = false
 )

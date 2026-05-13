@@ -73,7 +73,24 @@ data class RT(
 
     // Boost ML retrofit (Layer C): G3 pre-UAM uncertainty hold telemetry.
     var mlMealG3Released: Boolean? = null,       // True iff G3 hold conditions met AND a release condition fired
-    var mlG3ReleaseSource: String? = null        // Which release condition fired: "delta_accl" | "bg_threshold" | "meal_model"
+    var mlG3ReleaseSource: String? = null,       // Which release condition fired: "delta_accl" | "bg_threshold" | "meal_model"
+
+    // Boost V5 silent-shadow input bridge: V1/V2 expose their internal minGuardBG
+    // here so V5's hard-gate check (against the LGS threshold) uses the same
+    // predicted-low V1/V2 chose. Null falls back to current BG inside V5 — safe
+    // but more permissive than the V4.4.x-native behaviour.
+    var minGuardBG: Double? = null,
+
+    // Boost V5 silent-shadow telemetry. V5 runs as an observer alongside V1/V2's
+    // acting algorithm; these fields capture what V5 would have done if it were
+    // driving. They do not influence dosing. See OpenAPSBoostV5Plugin.runShadow().
+    var boostV5_score: Double? = null,           // meal_signal_score 0.0-1.0
+    var boostV5_state: String? = null,           // IDLE | OBSERVING | CONFIRMED | COMMITTED | RECOVERING
+    var boostV5_age: Int? = null,                // cycles in current state
+    var boostV5_budget: Double? = null,          // aggression_budget U
+    var boostV5_actionMult: Double? = null,      // action multiplier for the current state
+    var boostV5_finalDose: Double? = null,       // V5's would-have-delivered SMB (U) — direct comparator to rT.units
+    var boostV5_gateReduction: String? = null    // compact summary of which Phase 3 gates fired
 ) {
 
     fun serialize() = Json.encodeToString(serializer(), this)
