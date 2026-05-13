@@ -69,7 +69,11 @@ data class RT(
     var mlMealLikely: Double? = null,            // P(BG peak >= +50 mg/dL in next 90 min), 0.0-1.0
 
     // Boost ML retrofit (Layer B): consumption fields.
-    var mlRiskScale: Double? = null              // SMB-size scaling factor derived from mlHypoRisk (1.0 = no scaling, 0.0 = full block)
+    var mlRiskScale: Double? = null,             // SMB-size scaling factor derived from mlHypoRisk (1.0 = no scaling, 0.0 = full block)
+
+    // Boost ML retrofit (Layer C): G3 pre-UAM uncertainty hold telemetry.
+    var mlMealG3Released: Boolean? = null,       // True iff G3 hold conditions met AND a release condition fired
+    var mlG3ReleaseSource: String? = null        // Which release condition fired: "delta_accl" | "bg_threshold" | "meal_model"
 ) {
 
     fun serialize() = Json.encodeToString(serializer(), this)
