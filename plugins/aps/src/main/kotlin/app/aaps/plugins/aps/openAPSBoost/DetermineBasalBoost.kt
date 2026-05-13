@@ -1116,6 +1116,31 @@ class DetermineBasalBoost @Inject constructor(
                 consoleError.add("ML meal likelihood: ${round(mlMealLikely * 100, 1)}%")
             }
 
+            // ── Layer B: graduated SMB scaling factor ───────────────────────────
+            // riskScale = 1.0 when mlHypoRisk ≤ 0.3, linearly ramps to 0.0 as
+            // risk approaches 1.0. Applied to microBolus after tier selection
+            // (see post-tier block below). When riskModel is unavailable, scale
+            // is 1.0 (no effect, preserves V1 baseline).
+            val riskScale = if (mlHypoRisk != null && mlHypoRisk > 0.3) {
+                val scale = Math.max(0.0, 1.0 - (mlHypoRisk - 0.3) / 0.7)
+                rT.mlRiskScale = round(scale, 2)
+                consoleError.add("Risk scale: ${round(scale * 100, 0)}% (risk ${round(mlHypoRisk * 100, 0)}% > 30% threshold)")
+                scale
+            } else {
+                rT.mlRiskScale = 1.0
+                1.0
+            }
+
+            // Layer B: tier-downgrade gate. When hypo risk exceeds 0.6, the
+            // aggressive tiers (T3 UAM Boost, T4 UAM High Boost, T5 Percent Scale,
+            // T6 Acceleration) are skipped. The algorithm falls through to T7
+            // (Enhanced oref1) or T8 (Regular oref1) which use the standard
+            // insulin-required calculation without acceleration multipliers.
+            val mlTierDowngrade = mlHypoRisk != null && mlHypoRisk > 0.6
+            if (mlTierDowngrade) {
+                consoleError.add("⚠ ML risk ${round(mlHypoRisk!! * 100, 0)}% > 60% — tier downgrade active (skip T3-T6)")
+            }
+
             if (microBolusAllowed && enableSMB && bg > threshold) {
                 val mealInsulinReq = round(meal_data.mealCOB / profile.carb_ratio, 3)
                 var maxBolus: Double
@@ -1261,7 +1286,9 @@ class DetermineBasalBoost @Inject constructor(
                     consoleError.add("Insulin required % (${(1.0 / insulinReqPCT) * 100}%) applied.")
                 }
                 // ----- Tier 3: UAM Boost (strong acceleration with positive delta) -----
-                else if (glucose_status.delta >= 5 && glucose_status.shortAvgDelta >= 3 && uamBoost1 > 1.2 && uamBoost2 > 2 && boostActive && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0) {
+                // Layer B: !mlTierDowngrade gate prevents aggressive UAM Boost firing
+                // when hypo risk exceeds 0.6.
+                else if (!mlTierDowngrade && glucose_status.delta >= 5 && glucose_status.shortAvgDelta >= 3 && uamBoost1 > 1.2 && uamBoost2 > 2 && boostActive && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0) {
                     consoleError.add(">>> TIER 3: UAM Boost <<<")
                     rT.boostTier = "UAM_BOOST"
                     consoleError.add("Insulin required pre-boost is $insulinReq")
@@ -1289,7 +1316,8 @@ class DetermineBasalBoost @Inject constructor(
                     rT.reason.append("UAM Boost enacted; SMB equals $boostInsulinReq; ")
                 }
                 // ----- Tier 4: UAM High Boost (high BG > 180 with acceleration) -----
-                else if (delta_accl > 5 && bg > 180 && boostActive && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0) {
+                // Layer B: !mlTierDowngrade gate added.
+                else if (!mlTierDowngrade && delta_accl > 5 && bg > 180 && boostActive && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0) {
                     consoleError.add(">>> TIER 4: UAM High Boost <<<")
                     rT.boostTier = "UAM_HIGH_BOOST"
                     consoleError.add("Insulin required pre-boost is $insulinReq")
@@ -1308,7 +1336,8 @@ class DetermineBasalBoost @Inject constructor(
                 }
                 // ----- Tier 5: Percent scale (BG 110-180, delta > 3, accelerating) -----
                 // Lower bound raised from 98 to 110: data shows 57% hypo rate when T5 fires at BG 90-110.
-                else if (bg > 110 && bg < 181 && glucose_status.delta > 3 && delta_accl > 0 && eventualBG > target_bg && iob_data.iob < boostMaxIOB && boostActive) {
+                // Layer B: !mlTierDowngrade gate added.
+                else if (!mlTierDowngrade && bg > 110 && bg < 181 && glucose_status.delta > 3 && delta_accl > 0 && eventualBG > target_bg && iob_data.iob < boostMaxIOB && boostActive) {
                     consoleError.add(">>> TIER 5: Percent Scale <<<")
                     rT.boostTier = "PERCENT_SCALE"
                     if (insulinReq > boostMaxIOB - iob_data.iob) {
@@ -1331,7 +1360,8 @@ class DetermineBasalBoost @Inject constructor(
                     consoleError.add("Post percent scale trigger state: $iTimeActive")
                 }
                 // ----- Tier 6: Acceleration bolus (delta_accl > 25) -----
-                else if (delta_accl > 25 && glucose_status.delta > 4 && bg > 110 && iob_data.iob < boostMaxIOB && boostActive && eventualBG > target_bg) {
+                // Layer B: !mlTierDowngrade gate added.
+                else if (!mlTierDowngrade && delta_accl > 25 && glucose_status.delta > 4 && bg > 110 && iob_data.iob < boostMaxIOB && boostActive && eventualBG > target_bg) {
                     consoleError.add(">>> TIER 6: Acceleration Bolus <<<")
                     rT.boostTier = "ACCELERATION"
                     boostInsulinReq = min(boost_scale * boostInsulinReq, boost_max)
@@ -1387,6 +1417,19 @@ class DetermineBasalBoost @Inject constructor(
                         rT.reason.append("Spike override: cap raised from $maxBolus to ${round(spikeOverrideCap, 2)}; ")
                         microBolus = overrideBolus
                     }
+                }
+
+                // ── Layer B: ML risk graduated SMB scaling ──
+                // Apply riskScale AFTER tier selection and spike override, but BEFORE
+                // zero-temp calculation. Preserves tier-logic intent while capping
+                // actual delivery when hypo risk is elevated. The scale is computed
+                // earlier (after mlHypoRisk inference). When riskScale = 1.0 (risk ≤ 0.3
+                // or no model) this is a no-op.
+                if (riskScale < 1.0 && microBolus > 0) {
+                    val preSMB = microBolus
+                    microBolus = Math.floor(microBolus * riskScale * roundSMBTo) / roundSMBTo
+                    consoleError.add("ML risk scale applied: SMB ${round(preSMB, 2)} → ${round(microBolus, 2)} (×${round(riskScale, 2)})")
+                    rT.reason.append("ML risk scale ${round(riskScale * 100, 0)}%: SMB ${round(preSMB, 2)} → ${round(microBolus, 2)}; ")
                 }
 
                 // Zero temp calculation for SMB

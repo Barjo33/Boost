@@ -66,7 +66,10 @@ data class RT(
     // Boost ML retrofit (Layer A): on-device LightGBM risk scores. Logged to NS for
     // observability; not yet consumed by dosing logic (Layer B+ wires consumption).
     var mlHypoRisk: Double? = null,              // P(hypo event in next 4h), 0.0-1.0
-    var mlMealLikely: Double? = null             // P(BG peak >= +50 mg/dL in next 90 min), 0.0-1.0
+    var mlMealLikely: Double? = null,            // P(BG peak >= +50 mg/dL in next 90 min), 0.0-1.0
+
+    // Boost ML retrofit (Layer B): consumption fields.
+    var mlRiskScale: Double? = null              // SMB-size scaling factor derived from mlHypoRisk (1.0 = no scaling, 0.0 = full block)
 ) {
 
     fun serialize() = Json.encodeToString(serializer(), this)
