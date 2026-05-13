@@ -114,6 +114,11 @@ open class OpenAPSBoostPlugin @Inject constructor(
     private val uiInteraction: UiInteraction,
     private val tddCalculator: TddCalculator,
     private val determineBasalBoost: DetermineBasalBoost,
+    // Layer A ML retrofit — both models are @Singleton, lazy-loaded from APK
+    // assets on first inference. Safe to inject unconditionally; absence of the
+    // asset is handled inside the model classes (returns null score).
+    private val boostRiskModel: BoostRiskModel,
+    private val boostMealModel: BoostMealModel,
     private val profiler: Profiler,
     private val apsResultProvider: Provider<APSResult>
 ) : PluginBase(
@@ -986,7 +991,11 @@ open class OpenAPSBoostPlugin @Inject constructor(
             meal_data = mealData,
             microBolusAllowed = microBolusAllowed,
             currentTime = now,
-            flatBGsDetected = flatBGsDetected
+            flatBGsDetected = flatBGsDetected,
+            // Layer A ML retrofit — models compute scores that are emitted to NS
+            // via RT.mlHypoRisk / RT.mlMealLikely. Dosing behaviour unchanged.
+            riskModel = boostRiskModel,
+            mealModel = boostMealModel
         ).also {
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints

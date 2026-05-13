@@ -11,6 +11,8 @@ import app.aaps.core.interfaces.aps.OapsProfileBoost
 import app.aaps.core.interfaces.aps.Predictions
 import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.plugins.aps.openAPSBoost.BoostMealModel
+import app.aaps.plugins.aps.openAPSBoost.BoostRiskModel
 import java.text.DecimalFormat
 import java.time.Instant
 import java.time.ZoneId
@@ -176,7 +178,12 @@ class DetermineBasalBoostV2 @Inject constructor(
     // =====================================================================
     fun determine_basal(
         glucose_status: GlucoseStatus, currenttemp: CurrentTemp, iob_data_array: Array<IobTotal>, profile: OapsProfileBoost, autosens_data: AutosensResult, meal_data: MealData,
-        microBolusAllowed: Boolean, currentTime: Long, flatBGsDetected: Boolean
+        microBolusAllowed: Boolean, currentTime: Long, flatBGsDetected: Boolean,
+        // Layer A ML retrofit — optional models; absence preserves V2 baseline behaviour.
+        // Scores are emitted to RT.mlHypoRisk / RT.mlMealLikely for Nightscout
+        // observability but do NOT influence dosing decisions in Layer A.
+        riskModel: BoostRiskModel? = null,
+        mealModel: BoostMealModel? = null
     ): RT {
         consoleError.clear()
         consoleLog.clear()
@@ -1060,6 +1067,56 @@ class DetermineBasalBoostV2 @Inject constructor(
             rT.insulinReq = insulinReq
 
             val lastBolusAge = round((systemTime - iob_data.lastBolusTime) / 60000.0, 1)
+
+            // ── ML Risk Models (Layer A — observability only) ──────────────────
+            // Compute mlHypoRisk and mlMealLikely scores and emit to Nightscout.
+            // Layer A intentionally does NOT consume these in dosing decisions —
+            // dosing remains identical to V2 baseline. Layer B will wire mlHypoRisk
+            // into graduated SMB scaling and tier downgrade. See
+            // V1-to-V442-Behavioural-Diff.md for the layered plan.
+            //
+            // direction_num bucketing matches commit cd96104559 (training-time
+            // encoding from shared_loader.py): NS trend arrow codes
+            // DoubleDown=-2 ... DoubleUp=+2, mapped from shortAvgDelta thresholds
+            // ±5/±10/±15 mg/dL per 5-min cycle.
+            val directionNumValue = when {
+                glucose_status.shortAvgDelta > 15.0  -> 2.0
+                glucose_status.shortAvgDelta > 10.0  -> 1.5
+                glucose_status.shortAvgDelta > 5.0   -> 1.0
+                glucose_status.shortAvgDelta > -5.0  -> 0.0
+                glucose_status.shortAvgDelta > -10.0 -> -1.0
+                glucose_status.shortAvgDelta > -15.0 -> -1.5
+                else                                 -> -2.0
+            }
+            val mlHypoRisk = riskModel?.predictHypoRisk(
+                cgmMgdl = bg,
+                iobTotal = iob_data.iob,
+                iobBasal = iob_data.basaliob,
+                bgAboveTarget = bg - target_bg,
+                directionNum = directionNumValue,
+                hour = java.time.LocalTime.now().hour,
+                iobActivity = iob_data.activity,
+                insulinReq = insulinReq
+            )
+            if (mlHypoRisk != null) {
+                rT.mlHypoRisk = round(mlHypoRisk, 3)
+                consoleError.add("── ML Risk Model (observability only) ──────")
+                consoleError.add("ML hypo risk: ${round(mlHypoRisk * 100, 1)}%")
+            }
+            val mlMealLikely = mealModel?.predictMealLikelihood(
+                cgmMgdl = bg,
+                iobTotal = iob_data.iob,
+                iobBasal = iob_data.basaliob,
+                bgAboveTarget = bg - target_bg,
+                directionNum = directionNumValue,
+                hour = java.time.LocalTime.now().hour,
+                iobActivity = iob_data.activity,
+                insulinReq = insulinReq
+            )
+            if (mlMealLikely != null) {
+                rT.mlMealLikely = round(mlMealLikely, 3)
+                consoleError.add("ML meal likelihood: ${round(mlMealLikely * 100, 1)}%")
+            }
 
             if (microBolusAllowed && enableSMB && bg > threshold) {
                 val mealInsulinReq = round(meal_data.mealCOB / profile.carb_ratio, 3)

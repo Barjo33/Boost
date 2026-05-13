@@ -1,0 +1,21 @@
+{
+  "features": [
+    "cgm_mgdl",
+    "iob_iob",
+    "iob_basaliob",
+    "bg_above_target",
+    "direction_num",
+    "hour",
+    "iob_activity",
+    "sug_insulinReq"
+  ],
+  "n_trees": 50,
+  "max_depth": 4,
+  "num_leaves": 15,
+  "group_kfold_auc": 0.7011,
+  "louo_auc": 0.6796,
+  "n_train": 2972585,
+  "n_users": 28,
+  "hypo_threshold": 70,
+  "model_size_kb": 148.1
+}

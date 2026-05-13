@@ -61,7 +61,12 @@ data class RT(
     var tddRatio: Double? = null,                // Sensitivity ratio derived from TDD (8h weighted / 7D)
     var insulinReqPctEffective: Double? = null,  // Effective insulin required % used for dosing
     var deltaAcceleration: Double? = null,       // Delta acceleration percentage
-    var boostProfileSwitch: Int? = null          // Effective profile % (activity-adjusted)
+    var boostProfileSwitch: Int? = null,         // Effective profile % (activity-adjusted)
+
+    // Boost ML retrofit (Layer A): on-device LightGBM risk scores. Logged to NS for
+    // observability; not yet consumed by dosing logic (Layer B+ wires consumption).
+    var mlHypoRisk: Double? = null,              // P(hypo event in next 4h), 0.0-1.0
+    var mlMealLikely: Double? = null             // P(BG peak >= +50 mg/dL in next 90 min), 0.0-1.0
 ) {
 
     fun serialize() = Json.encodeToString(serializer(), this)
