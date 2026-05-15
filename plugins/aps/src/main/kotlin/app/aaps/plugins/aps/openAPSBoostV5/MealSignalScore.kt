@@ -129,15 +129,31 @@ private fun clipNormalize(value: Double, lo: Double, hi: Double): Double {
 }
 
 /**
- * Continuous penalty for recent-low BG. Returns 1.0 if recentLowBg ≥ 100 mg/dL, 0.0 at ≤ 70,
+ * Continuous penalty for recent-low BG. Returns 1.0 if recentLowBg ≥ 100 mg/dL, **0.4** at ≤ 70,
  * linear between.
  *
  * Replaces V4's binary G3-hold floor (`recentLowBG ≥ 70` as a binary gate). The continuous
  * version eliminates the cliff at 70 that caused unhelpful tier transitions when BG hovered
  * around 70.
+ *
+ * ## 2026-05-15 floor softening
+ *
+ * The original floor was 0.0, which removed 0.12 from the score ceiling whenever recentLowBg ≤
+ * 70 — i.e., for ~4 hours following every hypo episode. For users with TBR > 5% (the developer's
+ * pump runs 5–7%), this structurally blocked CONFIRMED transitions through ~17% of the day,
+ * even when delta, delta_accl, and mlMealLikely were all firing strongly. Shadow data showed 4
+ * CONFIRMED transitions in 8 days across all V5 cycles — this floor was a load-bearing
+ * contributor to that drought.
+ *
+ * Raising the floor to 0.4 preserves a meaningful penalty (still down 7 pp from the
+ * no-low ceiling) without making CONFIRMED structurally unreachable in the post-low window.
+ * The hypo damper from `mlHypoRisk` and the V5 hard gate (also fixed in this revision) provide
+ * the right counterweights when an actual meal does need to fire post-hypo.
  */
+private const val NOT_RECENTLY_LOW_FLOOR = 0.4
+
 private fun notRecentlyLowPenalty(recentLowBg: Double): Double =
-    clipNormalize(recentLowBg, 70.0, 100.0)
+    max(NOT_RECENTLY_LOW_FLOOR, clipNormalize(recentLowBg, 70.0, 100.0))
 
 /**
  * Smooth peaks at typical meal hours (08:00, 13:00, 19:00). Gaussian-shaped with width 2h.

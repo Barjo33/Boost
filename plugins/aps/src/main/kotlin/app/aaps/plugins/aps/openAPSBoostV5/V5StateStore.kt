@@ -31,6 +31,9 @@ class V5StateStore(private val preferences: Preferences) {
             val state = MealHypothesisState(
                 state = MealHypothesis.valueOf(json.getString("mealHypothesis")),
                 ageCycles = json.getInt("mealHypothesisAge"),
+                // 2026-05-15: peak score added to state. Missing in pre-fix state → default 0.0
+                // (next OBSERVING cycle will populate it from the entry score).
+                maxScoreInObserving = json.optDouble("maxScoreInObserving", 0.0),
             )
             V5PersistedState(
                 mealHypothesis = state,
@@ -46,6 +49,7 @@ class V5StateStore(private val preferences: Preferences) {
         val json = JSONObject()
             .put("mealHypothesis", state.mealHypothesis.state.name)
             .put("mealHypothesisAge", state.mealHypothesis.ageCycles)
+            .put("maxScoreInObserving", state.mealHypothesis.maxScoreInObserving)
             .put("mlMealLikelyNullStreak", state.mlMealLikelyNullStreak)
         preferences.put(StringKey.ApsBoostV5State, json.toString())
     }
