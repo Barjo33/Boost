@@ -154,6 +154,33 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         }
     }
 
+    /**
+     * Short-horizon minGuardBG for V5's hard safety gate (2026-05-15 fix).
+     *
+     * V4.4.x's `rT.minGuardBG` is `min()` taken over the full 4-hour prediction horizon. The
+     * IOB-only forecast tail regularly dips to absurd lows (39 mg/dL is common) even when the
+     * next 30 minutes is fine — reading this value caused V5's `HARD:min_guard_bg` to fire on
+     * **50.4%** of cycles in the shadow window 2026-05-07 → 2026-05-15 (per
+     * `boost_2026-05-14_evening_excursion.md` and the 5-fixes review).
+     *
+     * The hard gate is supposed to mean "imminent hypo, do not dose". 30 minutes is the
+     * appropriate window — a basal cutoff issued now can plausibly prevent a hypo 30 min out;
+     * the 4h-tail forecast is not actionable.
+     *
+     * Returns the min over the next 30 min (6 prediction points) of all available prediction
+     * series, or null if no prediction array is available (caller falls back to V4.4.x's
+     * `rT.minGuardBG`, then to current BG).
+     */
+    private fun shortHorizonMinGuard(rT: RT): Double? {
+        val pred = rT.predBGs ?: return null
+        val series = listOfNotNull(pred.IOB, pred.UAM, pred.ZT, pred.COB)
+        if (series.isEmpty()) return null
+        // Take min over the first 6 points (30 min at 5-min cycles) of every series, then
+        // take the min across all series. Returns the worst-case 30-min-horizon prediction.
+        val mins = series.mapNotNull { it.take(6).minOrNull()?.toDouble() }
+        return mins.minOrNull()
+    }
+
     /** Same compact summary used in the log line and in `v5DecisionToRtJson`'s gate string. */
     private fun formatGateReduction(decision: V5Decision): String {
         val parts = mutableListOf<String>()
@@ -214,7 +241,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             // bug from a previous attempt that did `min(predBGs.IOB+UAM+ZT)` over the full prediction
             // horizon — that picked up the IOB-only forecast tail (e.g. 39 mg/dL) and fired the V5
             // hard gate every cycle even when V4.4.1's own minGuardBG was 92 mg/dL (well above 80).
-            minGuardBg = rT.minGuardBG ?: gs.glucose,
+            minGuardBg = shortHorizonMinGuard(rT) ?: rT.minGuardBG ?: gs.glucose,
             minGuardThreshold = opb.lgsThreshold?.toDouble() ?: 80.0,
             deltaHistory = deltaHistory,
             iob = iob,

@@ -1,32 +1,60 @@
 package app.aaps.plugins.aps.openAPSBoostV5
 
+import kotlin.math.max
+
 /**
  * V5 Phase 1.b — MealHypothesis state machine.
  *
- * Persisted across cycles via two RT fields (`mealHypothesis: String?`, `mealHypothesisAge: Int?`).
- * V4 had no equivalent — meal recognition was implicit in tier-ladder selection. V5 makes the
- * hypothesis a first-class state the algorithm reasons about, then commits doses against.
+ * Persisted across cycles via RT fields (`mealHypothesis: String?`, `mealHypothesisAge: Int?`,
+ * and from 2026-05-15 `maxScoreInObserving: Double?`). V4 had no equivalent — meal recognition
+ * was implicit in tier-ladder selection. V5 makes the hypothesis a first-class state the
+ * algorithm reasons about, then commits doses against.
  *
  * Five states: IDLE → OBSERVING → CONFIRMED → COMMITTED → RECOVERING → IDLE.
  *
- * Transition thresholds are HARDCODED and calibrated by backtest #3
- * (`boost_v5_constants_calibration.md`). They are NOT user-facing knobs.
+ * Transition thresholds are HARDCODED and calibrated against shadow data
+ * (`boost_v5_constants_calibration.md` and the 2026-05-15 V5-fixes review). They are NOT
+ * user-facing knobs.
  *
  * State persistence is non-trivial (state from prior cycles influences this cycle's decision),
  * so all reset paths are explicit: see [resetIfNeeded].
+ *
+ * ## 2026-05-15 fixes applied
+ *
+ * Shadow data review on 2026-05-15 (`boost_2026-05-14_evening_excursion.md`) showed CONFIRMED
+ * fired only 4 times across 8 days because the OBSERVING → CONFIRMED predicate required ALL
+ * three conditions to hold ON THE SAME CYCLE — but score is volatile cycle-to-cycle and peaked
+ * 1–2 cycles before the age gate (CONFIRM_MIN_OBSERVING_AGE=2) opened. By the time age=2 the
+ * score had already retreated.
+ *
+ * Fix: track the max score observed during the current OBSERVING run and use it for the
+ * eligibility check, not the instantaneous score. This preserves the age hysteresis (which
+ * matters for noise rejection) while allowing brief score peaks to drive the transition.
+ *
+ * CONFIRM_SCORE also lowered from 0.66 → 0.55 per the recalibration plan (the original
+ * calibration was against an idealised cohort; p95 of observed scores in production is 0.532).
  */
 
 enum class MealHypothesis { IDLE, OBSERVING, CONFIRMED, COMMITTED, RECOVERING }
 
-/** Persisted state. The plugin reads this from RT each cycle and writes it back after [step]. */
+/**
+ * Persisted state. The plugin reads this from RT each cycle and writes it back after [step].
+ *
+ * @property maxScoreInObserving peak meal_signal_score observed during the current OBSERVING run.
+ *   Reset to 0.0 whenever state transitions OUT of OBSERVING. Allows CONFIRMED to fire on
+ *   accumulated evidence rather than instantaneous score — added 2026-05-15 to fix the
+ *   transient-peak-misses-age-gate issue described in the class docstring.
+ */
 data class MealHypothesisState(
     val state: MealHypothesis = MealHypothesis.IDLE,
     val ageCycles: Int = 0,
+    val maxScoreInObserving: Double = 0.0,
 )
 
-// Calibrated transition thresholds (HARDCODED). Per boost_v5_constants_calibration.md.
+// Calibrated transition thresholds (HARDCODED).
+// Per boost_v5_constants_calibration.md, with 2026-05-15 revisions noted inline.
 internal const val ENTER_OBSERVING_SCORE = 0.44                 // calibrated: 0.40 → 0.44
-internal const val CONFIRM_SCORE = 0.66                         // calibrated: 0.60 → 0.66 (most impactful: -3.6pp false_conf)
+internal const val CONFIRM_SCORE = 0.55                         // 2026-05-15: 0.66 → 0.55 (was at p99 of observed scores; lowered with peak-score tracking)
 internal const val CONFIRM_EVENTUAL_BG_OFFSET_MGDL = 50.0       // eventualBG > target + 50 to confirm
 internal const val CONFIRM_MIN_OBSERVING_AGE = 2                // hysteresis: must observe ≥2 cycles before confirming
 internal const val FALL_BACK_TO_IDLE_SCORE = 0.36               // calibrated: 0.30 → 0.36
@@ -60,41 +88,49 @@ fun step(
     deltaAccl: Double,
     deltaDeclining: Boolean,
 ): MealHypothesisState {
-    val (state, age) = current
+    val (state, age, maxScore) = current
 
     return when (state) {
         MealHypothesis.IDLE ->
-            if (score >= ENTER_OBSERVING_SCORE) MealHypothesisState(MealHypothesis.OBSERVING, 0)
-            else MealHypothesisState(state, age + 1)
+            if (score >= ENTER_OBSERVING_SCORE)
+                MealHypothesisState(MealHypothesis.OBSERVING, 0, score)        // seed peak with entry score
+            else MealHypothesisState(state, age + 1, 0.0)
 
         MealHypothesis.OBSERVING -> {
+            // 2026-05-15: track running max-score in this OBSERVING run, use it for CONFIRMED
+            // eligibility (not the instantaneous score). Score is volatile; peaks 1–2 cycles
+            // before the age gate opens. Tracking the max lets a brief high-score cycle drive
+            // the transition once age conditions are met.
+            val newMax = max(maxScore, score)
             val confirmEligible = age >= CONFIRM_MIN_OBSERVING_AGE &&
-                score >= CONFIRM_SCORE &&
+                newMax >= CONFIRM_SCORE &&
                 eventualBg > targetBg + CONFIRM_EVENTUAL_BG_OFFSET_MGDL
             when {
-                confirmEligible -> MealHypothesisState(MealHypothesis.CONFIRMED, 0)
+                confirmEligible -> MealHypothesisState(MealHypothesis.CONFIRMED, 0, 0.0)
                 score < FALL_BACK_TO_IDLE_SCORE && age >= FALL_BACK_TO_IDLE_AGE ->
-                    MealHypothesisState(MealHypothesis.IDLE, 0)
-                else -> MealHypothesisState(state, age + 1)
+                    MealHypothesisState(MealHypothesis.IDLE, 0, 0.0)
+                else -> MealHypothesisState(state, age + 1, newMax)
             }
         }
 
         MealHypothesis.CONFIRMED ->
-            if (age >= CONFIRMED_TO_COMMITTED_AGE) MealHypothesisState(MealHypothesis.COMMITTED, 0)
-            else MealHypothesisState(state, age + 1)
+            if (age >= CONFIRMED_TO_COMMITTED_AGE)
+                MealHypothesisState(MealHypothesis.COMMITTED, 0, 0.0)
+            else MealHypothesisState(state, age + 1, 0.0)
 
         MealHypothesis.COMMITTED -> {
             // BOTH conditions required to back off — prevents flicker on transient deceleration
             // mid-rise (e.g. CGM noise). V4's tier ladder had this flicker problem.
             val backOff = deltaAccl < RECOVERING_DECEL_THRESHOLD && deltaDeclining
-            if (backOff) MealHypothesisState(MealHypothesis.RECOVERING, 0)
-            else MealHypothesisState(state, age + 1)
+            if (backOff) MealHypothesisState(MealHypothesis.RECOVERING, 0, 0.0)
+            else MealHypothesisState(state, age + 1, 0.0)
         }
 
         MealHypothesis.RECOVERING ->
             // EITHER condition exits to IDLE (more permissive than entry — easier to leave RECOVERING)
-            if (delta < 0 || score < RECOVERING_TO_IDLE_SCORE) MealHypothesisState(MealHypothesis.IDLE, 0)
-            else MealHypothesisState(state, age + 1)
+            if (delta < 0 || score < RECOVERING_TO_IDLE_SCORE)
+                MealHypothesisState(MealHypothesis.IDLE, 0, 0.0)
+            else MealHypothesisState(state, age + 1, 0.0)
     }
 }
 
@@ -119,7 +155,7 @@ fun resetIfNeeded(
     timeJumpMinutes: Double = 0.0,
 ): Pair<MealHypothesisState, Boolean> {
     if (profileSwitched || pumpDisconnected || loopSuspended || timeJumpMinutes > TIME_JUMP_RESET_MINUTES) {
-        return Pair(MealHypothesisState(MealHypothesis.IDLE, 0), true)
+        return Pair(MealHypothesisState(MealHypothesis.IDLE, 0, 0.0), true)
     }
     return Pair(current, false)
 }
