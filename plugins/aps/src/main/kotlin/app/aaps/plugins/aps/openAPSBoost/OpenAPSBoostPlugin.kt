@@ -468,10 +468,10 @@ open class OpenAPSBoostPlugin @Inject constructor(
 
         if (boostActive) {
             val activityBgTarget = 150.0
-            val isActive = recentSteps5Min > activitySteps5
-                || recentSteps15Min > activitySteps15
-                || recentSteps30Min > activitySteps30
-                || recentSteps60Min > activitySteps60
+            val isActive = (activitySteps5  > 0 && recentSteps5Min  > activitySteps5)
+                || (activitySteps15 > 0 && recentSteps15Min > activitySteps15)
+                || (activitySteps30 > 0 && recentSteps30Min > activitySteps30)
+                || (activitySteps60 > 0 && recentSteps60Min > activitySteps60)
 
             // ---- HR-augmented classification (opt-in, additive only) ----
             val hrClassification: HrActivityCalculator.HrClassificationResult? =
