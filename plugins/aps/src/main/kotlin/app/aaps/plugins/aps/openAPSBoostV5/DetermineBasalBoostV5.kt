@@ -64,6 +64,8 @@ data class V5Inputs(
 
     // Cycle context
     val recentLowBg: Double,
+    /** Cumulative BG rise over the last ~30 min, mg/dL. Derived from `shortAvgDelta * 6`. Fix 4 (2026-05-22). */
+    val cumulativeRise30min: Double,
     val hour: Int,
     val exerciseActive: Boolean,
     val inPostExerciseWindow: Boolean,
@@ -127,6 +129,7 @@ class DetermineBasalBoostV5 @Inject constructor(
             recentLowBg = inputs.recentLowBg,
             hour = inputs.hour,
             exerciseActive = inputs.exerciseActive,
+            cumulativeRise30min = inputs.cumulativeRise30min,
             mlMealLikelyNullStreak = nextNullStreak,
         )
 

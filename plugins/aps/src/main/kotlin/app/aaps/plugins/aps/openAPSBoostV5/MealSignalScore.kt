@@ -19,17 +19,35 @@ import kotlin.math.min
  * score-weight knobs — per V5's minimal-settings tenet, users have no basis to choose them.
  */
 
-// Weight constants. Sum = 0.92 (< 1.0 acceptable; score is clipped to [0, 1] regardless).
+// Weight constants. Sum = 1.07 (> 1.0 acceptable; score is clipped to [0, 1] regardless).
 // Calibrated 2026-05-06 per boost_v5_constants_calibration.md sweep results.
+// SCORE_WEIGHT_SUSTAINED_RISE added 2026-05-22 (Fix 4 — slow-meal detection).
 internal const val SCORE_WEIGHT_DELTA = 0.30
 internal const val SCORE_WEIGHT_DELTA_ACCL = 0.16          // calibrated: 0.20 → 0.16 (-1.4pp false_conf)
 internal const val SCORE_WEIGHT_ML_MEAL_LIKELY = 0.20
 internal const val SCORE_WEIGHT_NOT_RECENTLY_LOW = 0.12    // calibrated: 0.15 → 0.12 (-1.3pp false_conf)
 internal const val SCORE_WEIGHT_MEAL_TIME_OF_DAY = 0.10
 internal const val SCORE_WEIGHT_NOT_EXERCISING = 0.04      // calibrated: 0.05 → 0.04
+internal const val SCORE_WEIGHT_SUSTAINED_RISE = 0.15      // Fix 4 (2026-05-22) — catches slow meals
 
 internal const val DELTA_NORMALIZE_HI_MGDL = 20.0          // delta saturates at 20 mg/dL/5min
 internal const val DELTA_ACCL_NORMALIZE_HI_PCT = 30.0      // accl saturates at 30%
+
+/**
+ * Sustained-rise term bounds. A cumulative BG rise of [SUSTAINED_RISE_NORMALIZE_LO_MGDL] over the
+ * last ~30 minutes contributes 0; a rise of [SUSTAINED_RISE_NORMALIZE_HI_MGDL] saturates at 1.0.
+ *
+ * Designed to catch slow-but-sustained meal climbs (≤4 mg/dL per 5-min cycle) that the
+ * single-cycle [DELTA_NORMALIZE_HI_MGDL] = 20 saturator and the [DELTA_ACCL_NORMALIZE_HI_PCT] = 30
+ * saturator both miss. See `boost_v5_fix4_slow_meal_scope.md` (2026-05-22) for the trigger event
+ * (5/15 evening meal: 71 → 168 mg/dL over 2h15m, V5 stuck in OBSERVING throughout).
+ *
+ * Works in concert with Fix 1's peak-score CONFIRMED transition: a sustained rise produces a
+ * steady score bump that doesn't dip cycle-to-cycle, lifting max-score-in-OBSERVING above the
+ * 0.55 threshold even when individual-cycle scores fluctuate just below it.
+ */
+internal const val SUSTAINED_RISE_NORMALIZE_LO_MGDL = 20.0
+internal const val SUSTAINED_RISE_NORMALIZE_HI_MGDL = 60.0
 
 /**
  * Number of consecutive null-mlMealLikely cycles after which the score formula falls back
@@ -49,6 +67,7 @@ data class ScoreComponents(
     val notRecentlyLowTerm: Double,
     val mealTimeOfDayTerm: Double,
     val notExercisingTerm: Double,
+    val sustainedRiseTerm: Double,
 )
 
 data class ScoreResult(
@@ -66,6 +85,8 @@ data class ScoreResult(
  * @param recentLowBg minimum BG in the last 60 min, mg/dL.
  * @param hour hour of day, 0-23.
  * @param exerciseActive true if any exercise mode currently engaged in the activity classifier.
+ * @param cumulativeRise30min approximate cumulative BG rise over the last ~30 min, mg/dL.
+ *        Caller derives from `shortAvgDelta * 6` (Fix 4, 2026-05-22). Clamped non-negative.
  * @param mlMealLikelyNullStreak count of consecutive prior cycles where mlMealLikely was null.
  *        Caller maintains this counter — the score function only reads it.
  */
@@ -76,6 +97,7 @@ fun mealSignalScore(
     recentLowBg: Double,
     hour: Int,
     exerciseActive: Boolean,
+    cumulativeRise30min: Double,
     mlMealLikelyNullStreak: Int = 0,
 ): ScoreResult {
     val deltaTerm = clipNormalize(delta, 0.0, DELTA_NORMALIZE_HI_MGDL)
@@ -83,12 +105,17 @@ fun mealSignalScore(
     val notRecentlyLowTerm = notRecentlyLowPenalty(recentLowBg)
     val mealTimeOfDayTerm = mealTimeOfDayBump(hour)
     val notExercisingTerm = if (exerciseActive) 0.0 else 1.0
+    val sustainedRiseTerm = clipNormalize(
+        cumulativeRise30min,
+        SUSTAINED_RISE_NORMALIZE_LO_MGDL,
+        SUSTAINED_RISE_NORMALIZE_HI_MGDL,
+    )
 
     val renormalize = mlMealLikely == null && mlMealLikelyNullStreak >= ML_MEAL_RENORMALIZE_AFTER_CYCLES
     val mlMealLikelyTerm = mlMealLikely ?: 0.0
 
     val rawScore = if (renormalize) {
-        // Drop ml_meal_likely weight; rescale the remaining 5 to compensate so that the score
+        // Drop ml_meal_likely weight; rescale the remaining 6 to compensate so that the score
         // ceiling stays the same as when ML is available. Without this, a multi-cycle ML outage
         // would silently lower the score and freeze V5 in IDLE.
         ML_MEAL_RENORMALIZE_FACTOR * (
@@ -96,7 +123,8 @@ fun mealSignalScore(
             SCORE_WEIGHT_DELTA_ACCL * deltaAcclTerm +
             SCORE_WEIGHT_NOT_RECENTLY_LOW * notRecentlyLowTerm +
             SCORE_WEIGHT_MEAL_TIME_OF_DAY * mealTimeOfDayTerm +
-            SCORE_WEIGHT_NOT_EXERCISING * notExercisingTerm
+            SCORE_WEIGHT_NOT_EXERCISING * notExercisingTerm +
+            SCORE_WEIGHT_SUSTAINED_RISE * sustainedRiseTerm
         )
     } else {
         SCORE_WEIGHT_DELTA * deltaTerm +
@@ -104,7 +132,8 @@ fun mealSignalScore(
         SCORE_WEIGHT_ML_MEAL_LIKELY * mlMealLikelyTerm +
         SCORE_WEIGHT_NOT_RECENTLY_LOW * notRecentlyLowTerm +
         SCORE_WEIGHT_MEAL_TIME_OF_DAY * mealTimeOfDayTerm +
-        SCORE_WEIGHT_NOT_EXERCISING * notExercisingTerm
+        SCORE_WEIGHT_NOT_EXERCISING * notExercisingTerm +
+        SCORE_WEIGHT_SUSTAINED_RISE * sustainedRiseTerm
     }
 
     val score = max(0.0, min(1.0, rawScore))
@@ -118,6 +147,7 @@ fun mealSignalScore(
             notRecentlyLowTerm = notRecentlyLowTerm,
             mealTimeOfDayTerm = mealTimeOfDayTerm,
             notExercisingTerm = notExercisingTerm,
+            sustainedRiseTerm = sustainedRiseTerm,
         ),
         mlWeightsRenormalized = renormalize,
     )
