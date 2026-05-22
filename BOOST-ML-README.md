@@ -82,55 +82,11 @@ What V5 actually does on this branch is **watch**. Every five-minute cycle, V5 s
 | `boostV5_finalDose` | The microbolus V5 would have delivered (in units) — a direct comparison against the actual delivery |
 | `boostV5_gateReduction` | Which safety gates fired, if any |
 
-The point of running V5 silently is straightforward: **calibration data**. V5 has already had a first round of calibration based on a week of shadow data from a single pump — refining the conditions under which it confirms a meal, sharpening its safety gate, raising its post-hypo floor, and adding a detection mechanism for slower meal-shaped climbs that the original formula missed. The details of those four refinements are described in the next section. The next stage is multi-user shadow observation — collecting score distributions and confirmed-state behaviour across several users so the remaining calibration can be retuned against a broader population before V5 is ever asked to drive a pump.
+The point of running V5 silently is straightforward: **calibration data**. The CONFIRMED-state threshold, the safety-gate window, and the meal-detection components need to be tuned against real-world score distributions across multiple users before V5 is ever asked to drive a pump. Running V5 in parallel with the active algorithm, on multiple users, is what generates that data.
 
 If something goes wrong inside V5 — a bug, a corner case, a thread it doesn't expect — the error is caught and logged. The active algorithm carries on as if V5 wasn't there. V5 cannot affect dosing; the path through which dosing decisions are made does not consult V5.
 
 V5 also does not appear in the AndroidAPS plugin list. Users cannot enable or disable it. It runs because the active Boost plugin calls it at the end of every cycle.
-
----
-
-## V5 calibration so far — what shadow data taught us
-
-The first version of V5 ran in shadow form for eight days and emitted enough Nightscout data to see, in retrospect, where its judgement was off. Four refinements came out of that week. None of them changes how the pump doses — they only change how V5's silent observer reaches its conclusions. The reason they appear in this build is that the multi-user shadow data this build is meant to gather will only be useful if V5 itself is making sensible decisions.
-
-### 1. Confirming a meal on the peak score, not the current score
-
-V5's state machine moves through stages: it watches a developing rise (`OBSERVING`), and if the meal-likelihood score crosses a threshold while in that state, it commits to a meal (`CONFIRMED`). The original implementation required the score to be above the threshold on the exact cycle the transition was evaluated. The trouble is that real meal scores wobble — they peak briefly, dip on a single-cycle noise spike, and recover. A user could see the score touch 0.66 for one cycle, drop to 0.61 on the next, then climb back, and V5 would never confirm because no single cycle had everything aligned.
-
-The refinement: V5 now remembers the highest score it saw during the `OBSERVING` window and uses *that* peak — rather than the current cycle's instantaneous score — for the transition decision. The CONFIRMED threshold was also relaxed from 0.66 to 0.55, reflecting that the underlying score distribution turned out to be lower than the original tuning anticipated.
-
-The practical effect: V5's `boostV5_state` will reach `CONFIRMED` several times per day during normal meal patterns, rather than the once-every-other-day rate the original tuning produced.
-
-### 2. Looking 30 minutes ahead, not four hours, for the safety floor
-
-V5 has a hard safety gate that refuses to commit a dose if the minimum predicted blood glucose value is below a safety floor. The original wiring read the minimum over the full four-hour prediction horizon, which is also what the active algorithm displays. The problem is that the four-hour-tail of the IOB-only forecast routinely dips into the 30s and 40s even when the next 30 minutes is comfortably in range — that's an artefact of how oref projects forward, not an actionable risk. Reading it caused V5's hard gate to fire on roughly half of all cycles.
-
-The refinement: V5 now takes the minimum over the next 30 minutes only — across all four prediction series (IOB, UAM, ZT, COB). That's the window in which a basal cutoff issued now could actually prevent a hypo. The longer-tail forecast remains visible elsewhere; V5 just doesn't gate against it any more.
-
-The practical effect: V5's `boostV5_gateReduction` will report `HARD:min_guard_bg` far less often. It still fires when blood glucose is genuinely projected low over the next 30 minutes — that's the point.
-
-### 3. Staying responsive to meals after a recent hypo
-
-The score formula includes a "recently low" penalty that down-weights the score when blood glucose has been below 70 in the last hour. The original penalty took the score's recent-low contribution to zero for roughly four hours following any hypo episode — meaning if a meal arrived during that window, V5 was structurally blocked from confirming it regardless of how strong the meal signal was.
-
-The refinement: the penalty is still present (a recent hypo should make V5 more cautious), but it now floors at 0.4 rather than 0.0. The recent-low signal is still meaningfully down-weighted, but it no longer wholly extinguishes the meal-detection ceiling. The hypo damper from the ML hypo-risk model and the 30-minute safety gate provide the right counterweights when an actual meal does need to be flagged post-hypo.
-
-The practical effect: users whose time-below-70 sits in the typical 3–7% range will see V5 continue to track meals across the post-hypo windows that used to be a deaf zone.
-
-### 4. Catching the slow meal that the velocity signal misses
-
-V5's score is sensitive to two velocity signals: the current cycle's blood-glucose delta, and the percentage acceleration of that delta. Both saturate at fairly high values, calibrated for the sharp climb shape of a fast-carb meal — perhaps 4 mg/dL per minute. A slower meal, climbing at maybe 1.5–2 mg/dL per minute (mixed-carb, fat-stacked, or grazing), can rise 100 mg/dL over two hours without triggering either velocity-based score component strongly enough to confirm.
-
-The refinement: V5 now also tracks the **cumulative rise over the last 30 minutes**. A cumulative rise of 60 mg/dL or more saturates this new component fully; 20 mg/dL contributes nothing; the contribution is linear in between. This term is **sustained** — it doesn't dip on a single-cycle delta wobble the way the velocity components do — which means it lifts the peak score V5 sees during the meal window and makes the OBSERVING → CONFIRMED transition reachable for slow climbs that the original formula missed.
-
-The practical effect: V5 will now confirm meal events for the kind of meal shape (mixed carbs, slow climb) that real-world meals frequently produce — not just the textbook fast-carb spike.
-
----
-
-## Recap — what these four refinements together mean
-
-None of the four changes how the pump doses. They change which patterns V5 picks out as meal-shaped events, how often it confirms them, and how it phrases its safety hesitation. The data published to Nightscout by V5 will become a richer record of real-world meal and hypo patterns across the users running this build — which is exactly the data needed to push V5 further along its path from silent observer to alpha-stage active algorithm.
 
 ---
 
@@ -200,7 +156,7 @@ In the first few hours, very little will look different. Nightscout will start s
 
 Over a few days, the cumulative effect is what's worth watching: time-below-70 should be modestly lower, peak-after-meal values should be roughly similar, time-in-range should be modestly higher. None of these effects is dramatic. They were never supposed to be. The algorithm was already doing the right thing most of the time. The additions described here are about the tails — the cycles where Boost would have over-dosed near a hypo, or under-dosed at the start of a real meal, or held back while a genuine spike was beginning.
 
-V5's fields will populate from the first cycle. There will be no visible effect from V5 in dosing terms because V5 doesn't drive anything. Anyone watching it on a dashboard will see the state machine moving between IDLE, OBSERVING, and CONFIRMED — landing in CONFIRMED several times across a typical day, alongside real meal events. With the four refinements described above in place, the score will exhibit a recognisable shape: sustained rises during meals, transient bumps during noise that don't reach CONFIRMED, and cleaner behaviour around recent hypos.
+V5's fields will populate from the first cycle. There will be no visible effect from V5 in dosing terms because V5 doesn't drive anything. Anyone watching it on a dashboard will see the state machine moving between IDLE, OBSERVING, and CONFIRMED, with the score rising and falling alongside real meal events.
 
 The ISF shadow fields will also populate from the first cycle, but `isfShadow_warmup` will start near 0.0 and climb toward 1.0 over five days. During that period the shadow is leaning conservative and the `deltaPct` numbers will be artificially small. After day five they reflect the actual smoothing-vs-instantaneous difference and become the comparison worth looking at.
 
@@ -208,4 +164,4 @@ The ISF shadow fields will also populate from the first cycle, but `isfShadow_wa
 
 ## In summary
 
-Boost decides what to dose. This build adds a probabilistic check, a brake, a pre-meal hold, two small refinements for sustained climbs, a silent observer (V5) that's preparing the ground for the next generation of the algorithm — refined across four calibration adjustments based on real-world shadow data — and a second silent observer (the ISF shadow) that lets the smoothed-vs-instantaneous sensitivity-ratio debate be resolved with the user's own data. The user sees a small number of new dashboard fields and a slightly more cautious response near hypos. They do not see a different algorithm. The dose calculation is the same. The safety logic is the same. The change is in judgement at the margins — the kind of refinement that's hard to feel cycle-by-cycle but adds up across thousands of cycles a week.
+Boost decides what to dose. This build adds a probabilistic check, a brake, a pre-meal hold, two small refinements for sustained climbs, a silent observer (V5) that's preparing the ground for the next generation of the algorithm, and a second silent observer (the ISF shadow) that lets the smoothed-vs-instantaneous sensitivity-ratio debate be resolved with the user's own data. The user sees a small number of new dashboard fields and a slightly more cautious response near hypos. They do not see a different algorithm. The dose calculation is the same. The safety logic is the same. The change is in judgement at the margins — the kind of refinement that's hard to feel cycle-by-cycle but adds up across thousands of cycles a week.
