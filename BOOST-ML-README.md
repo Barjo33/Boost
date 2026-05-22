@@ -146,13 +146,11 @@ The decision to validate everything against five real users before any code ship
 
 It does not change the user's basal rates, ISF, CR, target, max IOB, or max bolus. It does not change profile switching. It does not change exercise mode, sleep mode, or any of the time-of-day behaviours. It does not introduce new alerts or notifications. It does not change the way carbs are entered or boluses are confirmed.
 
-It also does not replace the user's responsibility to enter meals as accurately as practical. The meal model is a backup, not a substitute. The hypo model is a brake, not a forecast the user should act on directly. The active algorithm still uses real glucose, real IOB, real time, and real announced carbs to make decisions.
-
 ---
 
 ## What to expect after flashing
 
-In the first few hours, very little will look different. Nightscout will start showing the new fields, glucose will continue trending the way it normally does, and the algorithm will continue dosing the way it normally does. If the user happens to be at moderate hypo risk during that window, they may notice a slightly smaller-than-usual SMB and an `ML risk scale 75%` note in the reason text. If they happen to start a climb shortly after a meal they forgot to enter, they may notice a one-or-two-cycle delay before the algorithm starts firing — that's the pre-meal-tier hold engaging and then releasing once the meal-shaped climb confirms.
+In the first few hours, very little will look different. Nightscout will start showing the new fields, glucose will continue trending the way it normally does, and the algorithm will continue dosing the way it normally does. If the user happens to be at moderate hypo risk during that window, they may notice a slightly smaller-than-usual SMB and an `ML risk scale 75%` note in the reason text. If they happen to start a climb shortly after an unannounced meal, they may notice a one-or-two-cycle delay before the algorithm starts firing — that's the pre-meal-tier hold engaging and then releasing once the meal-shaped climb confirms.
 
 Over a few days, the cumulative effect is what's worth watching: time-below-70 should be modestly lower, peak-after-meal values should be roughly similar, time-in-range should be modestly higher. None of these effects is dramatic. They were never supposed to be. The algorithm was already doing the right thing most of the time. The additions described here are about the tails — the cycles where Boost would have over-dosed near a hypo, or under-dosed at the start of a real meal, or held back while a genuine spike was beginning.
 
