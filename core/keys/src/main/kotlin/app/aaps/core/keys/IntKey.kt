@@ -57,12 +57,12 @@ enum class IntKey(
     ApsDynIsfAdjustmentFactor("DynISFAdjust", 100, 1, 300, dependency = BooleanKey.ApsUseDynamicSensitivity),
 
     // Boost
-    ApsBoostInactivitySteps("boost_inactivity_steps", 500, 1, 1000, defaultedBySM = true),
-    ApsBoostSleepInSteps("boost_sleep_in_steps", 250, 1, 1000, defaultedBySM = true),
-    ApsBoostActivitySteps5("boost_activity_steps_5", 420, 1, 5000, defaultedBySM = true),
-    ApsBoostActivitySteps15("boost_activity_steps_15", 800, 1, 10000, defaultedBySM = true),
-    ApsBoostActivitySteps30("boost_activity_steps_30", 1200, 1, 10000, defaultedBySM = true),
-    ApsBoostActivitySteps60("boost_activity_steps_60", 1800, 1, 10000, defaultedBySM = true),
+    ApsBoostInactivitySteps("boost_inactivity_steps", 500, 0, 1000, defaultedBySM = true),
+    ApsBoostSleepInSteps("boost_sleep_in_steps", 250, 0, 1000, defaultedBySM = true),
+    ApsBoostActivitySteps5("boost_activity_steps_5", 420, 0, 5000, defaultedBySM = true),
+    ApsBoostActivitySteps15("boost_activity_steps_15", 800, 0, 10000, defaultedBySM = true),
+    ApsBoostActivitySteps30("boost_activity_steps_30", 1200, 0, 10000, defaultedBySM = true),
+    ApsBoostActivitySteps60("boost_activity_steps_60", 1800, 0, 10000, defaultedBySM = true),
     ApsBoostDynIsfAdjustmentFactor("DynISFAdjust", 100, 1, 300),
     ApsBoostHrMaxBpm("boost_hr_max_bpm", 180, 150, 220, defaultedBySM = true),
     ApsBoostHrRestingBpm("boost_hr_resting_bpm", 60, 30, 100, defaultedBySM = true),
