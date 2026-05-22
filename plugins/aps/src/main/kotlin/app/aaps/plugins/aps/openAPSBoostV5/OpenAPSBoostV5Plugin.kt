@@ -210,6 +210,12 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         // current delta, deltaDeclining can reliably check the 2-cycle decline pattern.
         val deltaHistory = listOf(gs.longAvgDelta, gs.shortAvgDelta, gs.delta)
 
+        // Fix 4 (2026-05-22): cumulative rise over ~30 min for slow-meal detection. shortAvgDelta
+        // is per-5-min-cycle averaged over the 2.5–17.5 min lookback window (DeltaCalculator).
+        // Multiplying by 6 projects 30 min of accumulated rise at the current cycle's rate.
+        // Clamped non-negative — falling BG produces no sustained-rise signal.
+        val cumulativeRise30min = max(0.0, gs.shortAvgDelta * 6.0)
+
         // baseInsulinReq directly from V4.4.1's computed value. V4.4.1 used the Boost-flavoured
         // formula `(min(minPredBG, eventualBG) - target_bg) / future_sens` with DynISF +
         // 7D-only TDD + EMA sensitivity all baked in. V5 trusts this number.
@@ -255,6 +261,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
                                                // postSmbScale already runs against rT.units; V5 doesn't
                                                // re-run the model in shadow.
             recentLowBg = opb.recentLowBG,
+            cumulativeRise30min = cumulativeRise30min,
             hour = hour,
             exerciseActive = opb.v5_exerciseActive,
             inPostExerciseWindow = opb.v5_inPostExerciseWindow,
