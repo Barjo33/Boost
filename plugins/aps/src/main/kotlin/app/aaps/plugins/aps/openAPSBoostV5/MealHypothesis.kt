@@ -50,6 +50,23 @@ import kotlin.math.max
  * the threshold, mirroring Fix 1's max-score logic. With peak-tracking, the threshold is also
  * lowered 50 → 30 because peak-over-window is naturally higher than snapshot — the original
  * calibration was for snapshot reads.
+ *
+ * ## 2026-05-26 Fix 6 — single-CONFIRMED-per-session guard
+ *
+ * Diagnosed from the 2026-05-25 evening meal trace: V5 fired CONFIRMED 4 times in 20 min during
+ * a single meal climb, producing 8U of cumulative shadow dose (vs V4.4.2's actual 1.5U, which
+ * was already enough to crash BG from 192 → 48 over 1h 40m). Root cause: AAPS re-invokes the
+ * V4.4.2 plugin (and therefore V5's runShadow) every 1-3 min during SMB delivery, not every 5
+ * min as the state machine assumes. Combined with the SharedPreferences async-flush race
+ * (addressed by V5StateStore's in-memory cache, Fix 6 Part A), the state machine could re-enter
+ * OBSERVING after CONFIRMING and re-CONFIRM in the same meal.
+ *
+ * Fix: persist a `committedInSession` flag through CONFIRMED / COMMITTED / RECOVERING. The
+ * OBSERVING → CONFIRMED transition predicate now requires `!committedInSession`. Reset to false
+ * only on the RECOVERING → IDLE exit (session complete) or fresh OBSERVING entry from IDLE.
+ *
+ * Defense in depth: even if the state-persistence race resurfaces, the cached state's
+ * committedInSession flag blocks a second commit-shot for the same meal.
  */
 
 enum class MealHypothesis { IDLE, OBSERVING, CONFIRMED, COMMITTED, RECOVERING }
@@ -65,12 +82,19 @@ enum class MealHypothesis { IDLE, OBSERVING, CONFIRMED, COMMITTED, RECOVERING }
  *   current OBSERVING run, mg/dL. Reset to 0.0 on state transitions out of OBSERVING. Fix 5
  *   (2026-05-22) — same shape as maxScoreInObserving, applied to the eventualBG offset that the
  *   CONFIRMED predicate also requires.
+ * @property committedInSession true once V5 has CONFIRMED in the current meal session. Reset to
+ *   false on entry to OBSERVING from IDLE (fresh session) and on entry to IDLE from RECOVERING
+ *   (session complete). Blocks OBSERVING → CONFIRMED re-firing within the same session — Fix 6
+ *   (2026-05-26), defense-in-depth alongside the V5StateStore in-memory cache. Even if state
+ *   appeared to reset mid-meal due to a persistence race, this flag in the cached state prevents
+ *   a second commit-shot in the same meal.
  */
 data class MealHypothesisState(
     val state: MealHypothesis = MealHypothesis.IDLE,
     val ageCycles: Int = 0,
     val maxScoreInObserving: Double = 0.0,
     val maxEventualBgOffsetInObserving: Double = 0.0,
+    val committedInSession: Boolean = false,
 )
 
 // Calibrated transition thresholds (HARDCODED).
@@ -81,7 +105,7 @@ internal const val CONFIRM_EVENTUAL_BG_OFFSET_MGDL = 30.0       // 2026-05-22: 5
 internal const val CONFIRM_MIN_OBSERVING_AGE = 2                // hysteresis: must observe ≥2 cycles before confirming
 internal const val FALL_BACK_TO_IDLE_SCORE = 0.36               // calibrated: 0.30 → 0.36
 internal const val FALL_BACK_TO_IDLE_AGE = 2                    // hysteresis: ≥2 cycles below threshold to fall back
-internal const val CONFIRMED_TO_COMMITTED_AGE = 1               // CONFIRMED is a single-cycle commit; then COMMITTED
+internal const val CONFIRMED_TO_COMMITTED_AGE = 0               // 2026-05-26 Fix 6: 1 → 0 (true single-cycle commit; previously CONFIRMED stayed for 2 invokes due to age semantics, allowing 2× CONFIRMED-mult doses)
 internal const val RECOVERING_DECEL_THRESHOLD = -5.0            // delta_accl < -5 enters RECOVERING (with delta declining)
 internal const val RECOVERING_TO_IDLE_SCORE = 0.18              // calibrated: 0.20 → 0.18
 
@@ -110,16 +134,20 @@ fun step(
     deltaAccl: Double,
     deltaDeclining: Boolean,
 ): MealHypothesisState {
-    val (state, age, maxScore, maxOffset) = current
+    val state = current.state
+    val age = current.ageCycles
+    val maxScore = current.maxScoreInObserving
+    val maxOffset = current.maxEventualBgOffsetInObserving
+    val committedInSession = current.committedInSession
     val currentOffset = eventualBg - targetBg
 
     return when (state) {
         MealHypothesis.IDLE ->
             if (score >= ENTER_OBSERVING_SCORE)
-                // seed both peaks with the entry-cycle values so the OBSERVING run starts from
-                // observed truth rather than 0
-                MealHypothesisState(MealHypothesis.OBSERVING, 0, score, currentOffset)
-            else MealHypothesisState(state, age + 1, 0.0, 0.0)
+                // Fresh session: seed both peaks with entry-cycle values; committedInSession=false
+                // explicitly (new meal session begins here — Fix 6).
+                MealHypothesisState(MealHypothesis.OBSERVING, 0, score, currentOffset, false)
+            else MealHypothesisState(state, age + 1, 0.0, 0.0, false)
 
         MealHypothesis.OBSERVING -> {
             // 2026-05-15 Fix 1: track running max-score in this OBSERVING run, use it for the
@@ -130,37 +158,48 @@ fun step(
             // 2026-05-22 Fix 5: same treatment for (eventualBg - targetBg). The eventualBG
             // forecast also moves cycle-to-cycle and can be high during the meal-rise window
             // but retreat by the time score + age conditions align. Peak-track it too.
+            //
+            // 2026-05-26 Fix 6: single-CONFIRMED-per-session guard. If this OBSERVING run is a
+            // re-entry within the same meal session (committedInSession=true — meaning V5 already
+            // CONFIRMED in this meal but state appeared to reset mid-stream), block re-CONFIRMING.
+            // The 5/25 evening meal showed V5 CONFIRMED 4 times in 20 min producing 8U total
+            // shadow dose; this guard caps it to a single commit-shot per meal session.
             val newMaxScore = max(maxScore, score)
             val newMaxOffset = max(maxOffset, currentOffset)
             val confirmEligible = age >= CONFIRM_MIN_OBSERVING_AGE &&
                 newMaxScore >= CONFIRM_SCORE &&
-                newMaxOffset >= CONFIRM_EVENTUAL_BG_OFFSET_MGDL
+                newMaxOffset >= CONFIRM_EVENTUAL_BG_OFFSET_MGDL &&
+                !committedInSession
             when {
-                confirmEligible -> MealHypothesisState(MealHypothesis.CONFIRMED, 0, 0.0, 0.0)
+                confirmEligible -> MealHypothesisState(MealHypothesis.CONFIRMED, 0, 0.0, 0.0, true)
                 score < FALL_BACK_TO_IDLE_SCORE && age >= FALL_BACK_TO_IDLE_AGE ->
-                    MealHypothesisState(MealHypothesis.IDLE, 0, 0.0, 0.0)
-                else -> MealHypothesisState(state, age + 1, newMaxScore, newMaxOffset)
+                    MealHypothesisState(MealHypothesis.IDLE, 0, 0.0, 0.0, false)
+                else -> MealHypothesisState(state, age + 1, newMaxScore, newMaxOffset, committedInSession)
             }
         }
 
         MealHypothesis.CONFIRMED ->
             if (age >= CONFIRMED_TO_COMMITTED_AGE)
-                MealHypothesisState(MealHypothesis.COMMITTED, 0, 0.0, 0.0)
-            else MealHypothesisState(state, age + 1, 0.0, 0.0)
+                // Preserve committedInSession through CONFIRMED → COMMITTED so the session lock
+                // survives in case a downstream invoke loops back through OBSERVING.
+                MealHypothesisState(MealHypothesis.COMMITTED, 0, 0.0, 0.0, true)
+            else MealHypothesisState(state, age + 1, 0.0, 0.0, true)
 
         MealHypothesis.COMMITTED -> {
             // BOTH conditions required to back off — prevents flicker on transient deceleration
             // mid-rise (e.g. CGM noise). V4's tier ladder had this flicker problem.
             val backOff = deltaAccl < RECOVERING_DECEL_THRESHOLD && deltaDeclining
-            if (backOff) MealHypothesisState(MealHypothesis.RECOVERING, 0, 0.0, 0.0)
-            else MealHypothesisState(state, age + 1, 0.0, 0.0)
+            if (backOff) MealHypothesisState(MealHypothesis.RECOVERING, 0, 0.0, 0.0, true)
+            else MealHypothesisState(state, age + 1, 0.0, 0.0, true)
         }
 
         MealHypothesis.RECOVERING ->
-            // EITHER condition exits to IDLE (more permissive than entry — easier to leave RECOVERING)
+            // EITHER condition exits to IDLE (more permissive than entry — easier to leave RECOVERING).
+            // On exit to IDLE the session is complete — reset committedInSession=false so the next
+            // meal can CONFIRM normally.
             if (delta < 0 || score < RECOVERING_TO_IDLE_SCORE)
-                MealHypothesisState(MealHypothesis.IDLE, 0, 0.0, 0.0)
-            else MealHypothesisState(state, age + 1, 0.0, 0.0)
+                MealHypothesisState(MealHypothesis.IDLE, 0, 0.0, 0.0, false)
+            else MealHypothesisState(state, age + 1, 0.0, 0.0, true)
     }
 }
 
@@ -185,7 +224,7 @@ fun resetIfNeeded(
     timeJumpMinutes: Double = 0.0,
 ): Pair<MealHypothesisState, Boolean> {
     if (profileSwitched || pumpDisconnected || loopSuspended || timeJumpMinutes > TIME_JUMP_RESET_MINUTES) {
-        return Pair(MealHypothesisState(MealHypothesis.IDLE, 0, 0.0, 0.0), true)
+        return Pair(MealHypothesisState(MealHypothesis.IDLE, 0, 0.0, 0.0, false), true)
     }
     return Pair(current, false)
 }
