@@ -20,13 +20,48 @@ import kotlin.math.round
  *
  * RT NS fields are written separately (to ProcessedDeviceStatusData via the existing pipeline)
  * for observability — see [v5DecisionToRtJson].
+ *
+ * ## 2026-05-26 Fix 6 — in-memory cache for atomic persistence across rapid invokes
+ *
+ * Diagnosed 2026-05-26 from the 2026-05-25 evening meal trace: V5 fired CONFIRMED 4 times in
+ * 20 min during a single meal climb. Root cause: AAPS invokes the V4.4.2 plugin (which calls
+ * `runShadow()` → V5StateStore) MULTIPLE times per 5-min cycle during SMB delivery (every
+ * 1-3 min, not every 5). AAPS `Preferences.put()` writes asynchronously, so a second invoke
+ * arriving within milliseconds of the first reads stale state — including blank — and the
+ * fallback drops V5 back to IDLE, restarting the state machine mid-meal.
+ *
+ * Fix: maintain a `@Volatile` in-memory cache of the most recent persisted state. Load
+ * returns the cache first (always-current within process), falling back to SharedPreferences
+ * only on cold start (cache=null). Save updates both the cache (synchronous) and
+ * SharedPreferences (async-flushed via the preferences interface, for restart-recovery).
+ *
+ * This eliminates the race entirely — every load within the same process sees what the most
+ * recent save wrote, regardless of whether SharedPreferences has flushed yet.
+ *
+ * See `boost_v5_multi_confirmed_investigation.md` for the full diagnosis and trace.
  */
 class V5StateStore(private val preferences: Preferences) {
 
+    /**
+     * Most recent persisted state, held in memory for synchronous read consistency.
+     * Initialised to null (cold-start sentinel — first load() falls through to SharedPreferences).
+     * Updated on every save(). Read by load() ahead of the SharedPreferences path.
+     */
+    @Volatile private var cached: V5PersistedState? = null
+
     fun load(): V5PersistedState {
+        // 2026-05-26 Fix 6: prefer in-memory cache; SharedPreferences only on cold start.
+        cached?.let { return it }
+
         val raw = preferences.get(StringKey.ApsBoostV5State)
-        if (raw.isBlank()) return V5PersistedState()
-        return try {
+        if (raw.isBlank()) {
+            // Cold start with no persisted state: seed cache with default IDLE so subsequent
+            // reads in the same process are consistent.
+            val fresh = V5PersistedState()
+            cached = fresh
+            return fresh
+        }
+        val loaded = try {
             val json = JSONObject(raw)
             val state = MealHypothesisState(
                 state = MealHypothesis.valueOf(json.getString("mealHypothesis")),
@@ -37,6 +72,9 @@ class V5StateStore(private val preferences: Preferences) {
                 // 2026-05-22 Fix 5: peak eventualBG-target offset. Missing in pre-Fix-5 state →
                 // default 0.0 (next OBSERVING cycle will populate it from the entry-cycle offset).
                 maxEventualBgOffsetInObserving = json.optDouble("maxEventualBgOffsetInObserving", 0.0),
+                // 2026-05-26 Fix 6: single-CONFIRMED-per-session guard. Missing in pre-Fix-6
+                // state → default false (next session entry will reset it explicitly).
+                committedInSession = json.optBoolean("committedInSession", false),
             )
             V5PersistedState(
                 mealHypothesis = state,
@@ -46,20 +84,28 @@ class V5StateStore(private val preferences: Preferences) {
             // Corrupt or stale state — fall back to IDLE. Safer than carrying forward unknown state.
             V5PersistedState()
         }
+        cached = loaded
+        return loaded
     }
 
     fun save(state: V5PersistedState) {
+        // 2026-05-26 Fix 6: update in-memory cache synchronously BEFORE the async SharedPreferences
+        // write, so any subsequent load() in the same process sees the new state immediately.
+        cached = state
+
         val json = JSONObject()
             .put("mealHypothesis", state.mealHypothesis.state.name)
             .put("mealHypothesisAge", state.mealHypothesis.ageCycles)
             .put("maxScoreInObserving", state.mealHypothesis.maxScoreInObserving)
             .put("maxEventualBgOffsetInObserving", state.mealHypothesis.maxEventualBgOffsetInObserving)
+            .put("committedInSession", state.mealHypothesis.committedInSession)
             .put("mlMealLikelyNullStreak", state.mlMealLikelyNullStreak)
         preferences.put(StringKey.ApsBoostV5State, json.toString())
     }
 
     /** Force IDLE. Called on user-initiated reset (e.g., from a settings action). */
     fun clear() {
+        cached = null
         preferences.put(StringKey.ApsBoostV5State, "")
     }
 }

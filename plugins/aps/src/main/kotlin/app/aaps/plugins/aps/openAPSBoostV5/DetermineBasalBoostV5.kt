@@ -154,7 +154,29 @@ class DetermineBasalBoostV5 @Inject constructor(
 
         // Phase 2 — single decision rule
         val actionMult = mealActionMultiplier(newHypothesisState.state, inputs.aggressionUserKnob)
-        val insulinToDeliver = budget.budget * actionMult
+        val rawInsulinToDeliver = budget.budget * actionMult
+
+        // Phase 2.5 — Fix 6 dose calibration (2026-05-26)
+        //
+        // Diagnosed from 2026-05-25 evening meal: V5's CONFIRMED commit-shot produces 2.5-3.15U
+        // single doses on slow-meal climbs, calibrated for the sharp-meal case where the 1.8×
+        // CONFIRMED multiplier matches a genuine "catch-up" need. For slow meals (the case
+        // Fix 4+5 was added to detect), 3U commits are dangerously aggressive — V4.4.2's actual
+        // 1.5U delivery on the same climb caused a hypo (BG 192 → 48). V5 dosing 2-3× more
+        // would be catastrophic.
+        //
+        // Two-stage calibration applied here:
+        //   1. Velocity scaling — scale the dose by climb velocity (Fix 4's cumulativeRise30min
+        //      signal). Sharp meals (≥50 mg/dL over 30 min) keep the full dose; slow meals
+        //      (≤25 mg/dL) get 40% of it; linear interpolation between.
+        //   2. State-specific hard cap — regardless of computed dose, CONFIRMED commits cap at
+        //      MAX_CONFIRMED_COMMIT_DOSE_U; COMMITTED holding doses cap at MAX_COMMITTED_DOSE_U.
+        //      These caps are calibrated so V5 cannot deliver more than V4.4.2 would on the same
+        //      cycle, regardless of any upstream bug.
+        val velocityFactor = velocityScaledDoseFactor(inputs.cumulativeRise30min)
+        val velocityScaled = rawInsulinToDeliver * velocityFactor
+        val cappedInsulinToDeliver = applyStateDoseCap(newHypothesisState.state, velocityScaled)
+        val insulinToDeliver = cappedInsulinToDeliver
 
         // Phase 3 — ordered safety gates
         val phase3 = applyPhase3(Phase3Inputs(
@@ -192,4 +214,71 @@ class DetermineBasalBoostV5 @Inject constructor(
             ),
         )
     }
+}
+
+// ===== Fix 6 dose calibration (2026-05-26) =====
+
+/**
+ * Hard upper cap on the CONFIRMED commit-shot dose, in units. The 5/25 evening meal showed
+ * V5's raw CONFIRMED dose reaches 2.5-3.15U for slow-meal climbs at typical baseInsulinReq —
+ * far exceeding what V4.4.2 actually delivers in the same scenario (~1.5U cumulative across
+ * multiple small SMBs), and on a climb where 1.5U already caused a hypo. 1.0U is a safety
+ * ceiling that V5 cannot exceed regardless of upstream multiplier values.
+ */
+internal const val MAX_CONFIRMED_COMMIT_DOSE_U = 1.0
+
+/**
+ * Hard upper cap on COMMITTED holding doses (post-commit-shot, sustaining meal coverage).
+ * V4.4.2's per-cycle SMBs in this phase are typically 0.10-0.20U. Set to 0.25U: matches V4.4.x
+ * per-cycle magnitude, while leaving room for slightly larger holding doses on genuine
+ * sustained climbs. With rapid invokes (every 1-3 min in practice during meal events), this
+ * caps the COMMITTED holding-dose stream to ≤0.25U per invoke.
+ */
+internal const val MAX_COMMITTED_DOSE_U = 0.25
+
+/**
+ * Cumulative-rise (mg/dL over last 30 min, from Fix 4) below this threshold scales the dose
+ * to [VELOCITY_SCALE_FLOOR]. Above [VELOCITY_RISE_HI_MGDL] the dose is unscaled. Linear in
+ * between.
+ */
+internal const val VELOCITY_RISE_LO_MGDL = 25.0
+internal const val VELOCITY_RISE_HI_MGDL = 50.0
+internal const val VELOCITY_SCALE_FLOOR = 0.40
+
+/**
+ * Velocity-aware dose scaling factor. Returns 1.0 for sharp meals (cumulative rise ≥ 50 mg/dL
+ * over 30 min — full V5 dose applies), [VELOCITY_SCALE_FLOOR] for slow meals (≤ 25 mg/dL —
+ * 40% of dose), linear interpolation between.
+ *
+ * Rationale: V5's CONFIRMED 1.8× catch-up multiplier is calibrated for sharp meals where waiting
+ * 2 cycles in OBSERVING genuinely warrants a larger commit. Fix 4+5 unlocked V5 detection on
+ * slow meals where the same 1.8× multiplier produces over-aggressive commits relative to the
+ * actual carb absorption rate. Scaling by the same Fix 4 signal that triggered the detection
+ * is the natural calibration knob.
+ */
+internal fun velocityScaledDoseFactor(cumulativeRise30min: Double): Double {
+    if (cumulativeRise30min >= VELOCITY_RISE_HI_MGDL) return 1.0
+    if (cumulativeRise30min <= VELOCITY_RISE_LO_MGDL) return VELOCITY_SCALE_FLOOR
+    val span = VELOCITY_RISE_HI_MGDL - VELOCITY_RISE_LO_MGDL
+    val frac = (cumulativeRise30min - VELOCITY_RISE_LO_MGDL) / span
+    return VELOCITY_SCALE_FLOOR + (1.0 - VELOCITY_SCALE_FLOOR) * frac
+}
+
+/**
+ * State-specific hard upper cap on the dose. Defense-in-depth: even if the upstream multiplier
+ * stack produces a large value, this clamps it to a known-safe magnitude per state.
+ *
+ * - **CONFIRMED**: capped at [MAX_CONFIRMED_COMMIT_DOSE_U] (1.0 U). The commit-shot is the
+ *   single most dose-impactful decision V5 makes; safety floor it tightly until validation
+ *   data justifies raising the cap.
+ * - **COMMITTED**: capped at [MAX_COMMITTED_DOSE_U] (0.5 U). Multiple of these can fire per
+ *   meal (one per cycle while in COMMITTED state), so per-cycle cap must be smaller.
+ * - **IDLE / OBSERVING / RECOVERING**: no cap; these states either don't dose (IDLE,
+ *   RECOVERING) or use a test-dose multiplier (OBSERVING 0.3×) that doesn't reach dangerous
+ *   magnitudes from any plausible baseInsulinReq.
+ */
+internal fun applyStateDoseCap(state: MealHypothesis, dose: Double): Double = when (state) {
+    MealHypothesis.CONFIRMED -> dose.coerceAtMost(MAX_CONFIRMED_COMMIT_DOSE_U)
+    MealHypothesis.COMMITTED -> dose.coerceAtMost(MAX_COMMITTED_DOSE_U)
+    else -> dose
 }
