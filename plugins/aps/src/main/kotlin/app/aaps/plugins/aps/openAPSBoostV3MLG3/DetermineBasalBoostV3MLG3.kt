@@ -1148,7 +1148,7 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
                 consoleError.add("⚠ ML risk ${round(mlHypoRisk!! * 100, 0)}% > 60% — tier downgrade active (skip tiers 3-6)")
             }
 
-            // v4.4.3 hotfix Fix A (2026-05-28): post-rescue aggressive-tier block
+            // v4.4.3 hotfix Fix A (2026-05-28): post-rescue UAM-tier block
             //
             // Diagnosed from the 2026-05-25 → 2026-05-28 rollercoaster (10 hypo events, 6.0h
             // TBR-70, ~4h algorithm-attributable). After every hypo the user took unannounced
@@ -1156,16 +1156,15 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
             // and fired UAM_BOOST / UAM_HIGH_BOOST aggressively, delivering 6-9U over 2h. That
             // dose stacked into the rescue carbs' tail → next hypo → cycle repeats.
             //
-            // Fix: when recentLowBG < 75 (last 60 min had a low), block the four aggressive
-            // tiers (T3 UAM_BOOST, T4 UAM_HIGH_BOOST, T5 PERCENT_SCALE, T6 ACCELERATION) and
-            // let the algorithm fall through to T7 (ENHANCED_OREF1) or T8 (REGULAR_OREF1)
-            // which use standard oref1 dose magnitudes. The algorithm still doses when truly
-            // warranted; it just doesn't pile on during the rescue-rebound window.
+            // Scope: blocks ONLY T3 (UAM_BOOST) and T4 (UAM_HIGH_BOOST) when recentLowBG < 75.
+            // T5/T6/T7/T8 left alone — they're already milder dose magnitudes and don't drive
+            // the rollercoaster (the 5/27 14:04 8.4U/2h cascade was entirely T3/T4 firing).
+            // G3 hold separately gates T5/T6/T7/T8 in its own pre-UAM uncertainty window.
             //
             // recentLowBG is already a 60-min rolling minimum, so the window auto-expires.
             val inPostRescueWindow = profile.recentLowBG < 75.0
             if (inPostRescueWindow) {
-                consoleError.add("⚠ Post-rescue recovery: recentLowBG ${round(profile.recentLowBG, 0)} < 75 — aggressive tiers T3/T4/T5/T6 blocked")
+                consoleError.add("⚠ Post-rescue recovery: recentLowBG ${round(profile.recentLowBG, 0)} < 75 — UAM tiers T3/T4 blocked")
             }
 
             // ── G3: Pre-UAM Uncertainty Hold ─────────────────────────────────
@@ -1465,7 +1464,7 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
                     consoleError.add("UAM High Boost enacted; SMB equals $boostInsulinReq; Original insulin requirement was $insulinReq")
                 }
                 // ----- Tier 5: Percent scale (BG 98-180, delta > 3, accelerating) -----
-                else if (!mlTierDowngrade && !inPostRescueWindow && !g3HoldActive && bg > 110 && bg < 181 && glucose_status.delta > 3 && delta_accl > 0 && eventualBG > target_bg && iob_data.iob < boostMaxIOB && boostActive) {
+                else if (!mlTierDowngrade && !g3HoldActive && bg > 110 && bg < 181 && glucose_status.delta > 3 && delta_accl > 0 && eventualBG > target_bg && iob_data.iob < boostMaxIOB && boostActive) {
                     consoleError.add(">>> TIER 5: Percent Scale <<<")
                     rT.boostTier = "PERCENT_SCALE"
                     if (insulinReq > boostMaxIOB - iob_data.iob) {
@@ -1492,7 +1491,7 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
                 // delta is rising (hypo rebound). Without this, a rebound from <70
                 // with delta > 4 and delta_accl > 25 would trigger an acceleration
                 // bolus INTO a hypo — a safety regression.
-                else if (!mlTierDowngrade && !inPostRescueWindow && !g3HoldActive && delta_accl > 25 && glucose_status.delta > 4 && bg > 110 && iob_data.iob < boostMaxIOB && boostActive && eventualBG > target_bg) {
+                else if (!mlTierDowngrade && !g3HoldActive && delta_accl > 25 && glucose_status.delta > 4 && bg > 110 && iob_data.iob < boostMaxIOB && boostActive && eventualBG > target_bg) {
                     consoleError.add(">>> TIER 6: Acceleration Bolus <<<")
                     rT.boostTier = "ACCELERATION"
                     boostInsulinReq = min(boost_scale * boostInsulinReq, boost_max)
