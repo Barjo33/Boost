@@ -11,6 +11,7 @@ import androidx.preference.PreferenceManager
 import androidx.preference.PreferenceScreen
 import androidx.preference.SwitchPreference
 import app.aaps.core.data.aps.SMBDefaults
+import app.aaps.core.data.model.BS
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.TT
@@ -1177,6 +1178,23 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
         aapsLogger.debug(LTag.APS, "flatBGsDetected:    $flatBGsDetected")
         aapsLogger.debug(LTag.APS, "BoostActive:        ${activityResult.boostActive}")
 
+        // v4.4.3 hotfix Fix B (2026-05-28): compute cumulative SMB volume delivered in the
+        // last 60 min. Pulled directly from the persistence layer rather than synthesised from
+        // IOB calc — IOB is decay-adjusted, but the rolling-window cap wants raw delivered
+        // amounts. Filters to BS.Type.SMB so manual user boluses don't contribute (user-initiated
+        // dose is explicit consent and shouldn't be subject to algorithm self-cap).
+        val cumulativeSmbCap60Min = preferences.get(DoubleKey.ApsBoostCumulativeSmbCap60Min)
+        val recentSmbVolume60Min = try {
+            val sixtyMinAgo = now - 60 * 60 * 1000L
+            persistenceLayer.getBolusesFromTimeToTime(sixtyMinAgo, now, ascending = true)
+                .filter { it.type == BS.Type.SMB && it.isValid }
+                .sumOf { it.amount }
+        } catch (e: Exception) {
+            aapsLogger.warn(LTag.APS, "BoostV3MLG3 recent SMB volume query failed (${e.message}) — falling back to 0.0 (cap will not engage this cycle)")
+            0.0
+        }
+        aapsLogger.debug(LTag.APS, "BoostV3MLG3 cumulative SMB last 60min: ${recentSmbVolume60Min}U / cap ${cumulativeSmbCap60Min}U")
+
         determineBasalBoostV3MLG3.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -1188,7 +1206,9 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
             currentTime = now,
             flatBGsDetected = flatBGsDetected,
             riskModel = boostRiskModel,
-            mealModel = boostMealModel
+            mealModel = boostMealModel,
+            recentSmbVolume60Min = recentSmbVolume60Min,
+            cumulativeSmbCap60Min = cumulativeSmbCap60Min
         ).also {
             // Populate deviation sensitivity fields on the RT for Nightscout upload + UI
             it.deviationSensRatio = isfResult.deviationSensRatio
@@ -1398,6 +1418,7 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostPercentScale, dialogMessage = R.string.boost_percent_scale_summary, title = R.string.boost_percent_scale_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostScale, dialogMessage = R.string.boost_scale_summary, title = R.string.boost_scale_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostMaxIob, dialogMessage = R.string.boost_max_iob_summary, title = R.string.boost_max_iob_title))
+            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostCumulativeSmbCap60Min, dialogMessage = R.string.boost_cumulative_smb_cap_summary, title = R.string.boost_cumulative_smb_cap_title))
             addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.ApsBoostStartTime, dialogMessage = R.string.boost_start_summary, title = R.string.boost_start_title))
             addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.ApsBoostEndTime, dialogMessage = R.string.boost_end_summary, title = R.string.boost_end_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostEnablePercentScale, summary = R.string.boost_enable_percent_scale_summary, title = R.string.boost_enable_percent_scale_title))

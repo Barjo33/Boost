@@ -176,7 +176,17 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
         glucose_status: GlucoseStatus, currenttemp: CurrentTemp, iob_data_array: Array<IobTotal>, profile: OapsProfileBoost, autosens_data: AutosensResult, meal_data: MealData,
         microBolusAllowed: Boolean, currentTime: Long, flatBGsDetected: Boolean,
         riskModel: BoostRiskModel? = null,
-        mealModel: BoostMealModel? = null
+        mealModel: BoostMealModel? = null,
+        // v4.4.3 hotfix (2026-05-28): rollercoaster protection
+        // Total SMB insulin delivered in the last 60 min (sum of BS.Type.SMB amounts from
+        // the persistence layer). Passed in by the plugin to avoid coupling determine_basal
+        // to the DB layer. 0.0 disables Fix B (cumulative-SMB lockout).
+        recentSmbVolume60Min: Double = 0.0,
+        // Hard upper bound on cumulative SMB delivery in any 60-min rolling window. When
+        // recentSmbVolume60Min ≥ this value, microBolus is forced to 0.0 for this cycle
+        // regardless of tier or scaling. Setting this to 0.0 (via the preference min) is
+        // the documented way to disable Fix B.
+        cumulativeSmbCap60Min: Double = 1.5
     ): RT {
         consoleError.clear()
         consoleLog.clear()
@@ -1138,6 +1148,26 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
                 consoleError.add("⚠ ML risk ${round(mlHypoRisk!! * 100, 0)}% > 60% — tier downgrade active (skip tiers 3-6)")
             }
 
+            // v4.4.3 hotfix Fix A (2026-05-28): post-rescue aggressive-tier block
+            //
+            // Diagnosed from the 2026-05-25 → 2026-05-28 rollercoaster (10 hypo events, 6.0h
+            // TBR-70, ~4h algorithm-attributable). After every hypo the user took unannounced
+            // rescue carbs; BG rebounded fast; V4.4.2 caught the rebound as a meal-shape climb
+            // and fired UAM_BOOST / UAM_HIGH_BOOST aggressively, delivering 6-9U over 2h. That
+            // dose stacked into the rescue carbs' tail → next hypo → cycle repeats.
+            //
+            // Fix: when recentLowBG < 75 (last 60 min had a low), block the four aggressive
+            // tiers (T3 UAM_BOOST, T4 UAM_HIGH_BOOST, T5 PERCENT_SCALE, T6 ACCELERATION) and
+            // let the algorithm fall through to T7 (ENHANCED_OREF1) or T8 (REGULAR_OREF1)
+            // which use standard oref1 dose magnitudes. The algorithm still doses when truly
+            // warranted; it just doesn't pile on during the rescue-rebound window.
+            //
+            // recentLowBG is already a 60-min rolling minimum, so the window auto-expires.
+            val inPostRescueWindow = profile.recentLowBG < 75.0
+            if (inPostRescueWindow) {
+                consoleError.add("⚠ Post-rescue recovery: recentLowBG ${round(profile.recentLowBG, 0)} < 75 — aggressive tiers T3/T4/T5/T6 blocked")
+            }
+
             // ── G3: Pre-UAM Uncertainty Hold ─────────────────────────────────
             // Suppress non-UAM tier SMB sizing when an unannounced rise is
             // starting and UAM-tier conditions are not yet met, giving the
@@ -1299,7 +1329,14 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
                     // delta. This is a structural escape: very-large eBG = the algorithm has
                     // already concluded a major overshoot is coming, fast-carb damping is moot.
                     val velocityOverride = glucose_status.delta > 10
-                    val eventualBgOverride = eventualBG > target_bg + 100
+                    // v4.4.3 hotfix Fix D (2026-05-28): the eventualBgOverride was structurally
+                    // wrong for post-rescue rebounds. After a hypo + unannounced rescue carbs,
+                    // eventualBG climbs to target+100 within 1-2 cycles of the rebound starting,
+                    // which lifted the fast-carb protection exactly when it was needed. Gating
+                    // the override on `recentLowBG >= 75.0` keeps spike-catching behaviour for
+                    // legitimate climbs (no recent hypo) while preserving fast-carb protection
+                    // during the post-rescue window.
+                    val eventualBgOverride = eventualBG > target_bg + 100 && profile.recentLowBG >= 75.0
                     if ((velocityOverride || eventualBgOverride) && bg > target_bg + 20) {
                         fastCarbScale = 1.0
                         fastCarbRebound = false
@@ -1373,7 +1410,7 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
                     consoleError.add("Insulin required % (${(1.0 / insulinReqPCT) * 100}%) applied.")
                 }
                 // ----- Tier 3: UAM Boost (strong acceleration with positive delta) -----
-                else if (!mlTierDowngrade && glucose_status.delta >= 5 && glucose_status.shortAvgDelta >= 3 && uamBoost1 > 1.2 && uamBoost2 > 2 && boostActive && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0) {
+                else if (!mlTierDowngrade && !inPostRescueWindow && glucose_status.delta >= 5 && glucose_status.shortAvgDelta >= 3 && uamBoost1 > 1.2 && uamBoost2 > 2 && boostActive && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0) {
                     consoleError.add(">>> TIER 3: UAM Boost <<<")
                     rT.boostTier = "UAM_BOOST"
                     consoleError.add("Insulin required pre-boost is $insulinReq")
@@ -1410,7 +1447,7 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
                 // catches sustained climbs that have plateaued in acceleration but are still
                 // climbing rapidly. delta > 8 mg/dL/5min ≈ +1.6 mg/dL/min is the same magnitude
                 // as Tier 5's `delta > 3` but stricter, gating on a real sustained rise.
-                else if (!mlTierDowngrade && (delta_accl > 5 || glucose_status.delta > 8) && bg > 180 && boostActive && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0) {
+                else if (!mlTierDowngrade && !inPostRescueWindow && (delta_accl > 5 || glucose_status.delta > 8) && bg > 180 && boostActive && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0) {
                     consoleError.add(">>> TIER 4: UAM High Boost <<<")
                     rT.boostTier = "UAM_HIGH_BOOST"
                     consoleError.add("Insulin required pre-boost is $insulinReq")
@@ -1428,7 +1465,7 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
                     consoleError.add("UAM High Boost enacted; SMB equals $boostInsulinReq; Original insulin requirement was $insulinReq")
                 }
                 // ----- Tier 5: Percent scale (BG 98-180, delta > 3, accelerating) -----
-                else if (!mlTierDowngrade && !g3HoldActive && bg > 110 && bg < 181 && glucose_status.delta > 3 && delta_accl > 0 && eventualBG > target_bg && iob_data.iob < boostMaxIOB && boostActive) {
+                else if (!mlTierDowngrade && !inPostRescueWindow && !g3HoldActive && bg > 110 && bg < 181 && glucose_status.delta > 3 && delta_accl > 0 && eventualBG > target_bg && iob_data.iob < boostMaxIOB && boostActive) {
                     consoleError.add(">>> TIER 5: Percent Scale <<<")
                     rT.boostTier = "PERCENT_SCALE"
                     if (insulinReq > boostMaxIOB - iob_data.iob) {
@@ -1455,7 +1492,7 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
                 // delta is rising (hypo rebound). Without this, a rebound from <70
                 // with delta > 4 and delta_accl > 25 would trigger an acceleration
                 // bolus INTO a hypo — a safety regression.
-                else if (!mlTierDowngrade && !g3HoldActive && delta_accl > 25 && glucose_status.delta > 4 && bg > 110 && iob_data.iob < boostMaxIOB && boostActive && eventualBG > target_bg) {
+                else if (!mlTierDowngrade && !inPostRescueWindow && !g3HoldActive && delta_accl > 25 && glucose_status.delta > 4 && bg > 110 && iob_data.iob < boostMaxIOB && boostActive && eventualBG > target_bg) {
                     consoleError.add(">>> TIER 6: Acceleration Bolus <<<")
                     rT.boostTier = "ACCELERATION"
                     boostInsulinReq = min(boost_scale * boostInsulinReq, boost_max)
@@ -1560,6 +1597,25 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
                     val preSMB = microBolus
                     microBolus = Math.floor(microBolus * riskScale * roundSMBTo) / roundSMBTo
                     consoleError.add("ML risk scale applied: SMB ${round(preSMB, 2)} → ${round(microBolus, 2)} (×${round(riskScale, 2)})")
+                }
+
+                // v4.4.3 hotfix Fix B (2026-05-28): cumulative-SMB window cap.
+                //
+                // Independent of tier or scaling, cap cumulative SMB delivery to
+                // [cumulativeSmbCap60Min] U per rolling 60-min window. Suspends SMB this cycle
+                // when the cap is reached; the next cycle's check re-evaluates as older SMBs
+                // age out of the window. This is the load-bearing safety net for the
+                // 2026-05-21 / 2026-05-25 late-tail SMB cascade pattern.
+                //
+                // Plugin computes [recentSmbVolume60Min] from PersistenceLayer.getBoluses…
+                // filtered by BS.Type.SMB. Setting [cumulativeSmbCap60Min] = 0.0 disables
+                // the check (preference min). Default 1.5U/60min calibrated against
+                // observed late-tail crash events.
+                if (cumulativeSmbCap60Min > 0.0 && recentSmbVolume60Min >= cumulativeSmbCap60Min && microBolus > 0) {
+                    consoleError.add("⚠ Cumulative SMB cap reached: ${round(recentSmbVolume60Min, 2)}U delivered in last 60 min ≥ ${round(cumulativeSmbCap60Min, 2)}U — SMB suspended this cycle")
+                    rT.reason.append("Cumulative SMB cap ${round(recentSmbVolume60Min, 2)}U/${round(cumulativeSmbCap60Min, 2)}U reached — SMB suspended; ")
+                    microBolus = 0.0
+                    rT.boostTier = "CUMULATIVE_SMB_CAP"
                 }
 
                 // Zero temp calculation for SMB
