@@ -67,4 +67,8 @@ enum class StringKey(
 
     // V5 persisted state (JSON blob: mealHypothesis, age, mlMealLikelyNullStreak)
     ApsBoostV5State("boost_v5_state", "", defaultedBySM = true),
+
+    // ISF shadow persisted state (JSON blob: EMA value + timestamps for warmup computation)
+    // Used by BoostIsfShadow to persist EMA(τ=3h) sensitivity ratio across plugin restarts.
+    ApsBoostIsfShadowState("boost_isf_shadow_state", "", defaultedBySM = true),
 }
