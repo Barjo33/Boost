@@ -10,6 +10,7 @@ import androidx.preference.PreferenceScreen
 import androidx.preference.SwitchPreference
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.configuration.Constants
+import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.TT
 import app.aaps.core.data.plugin.PluginType
@@ -842,8 +843,12 @@ open class OpenAPSBoostPlugin @Inject constructor(
 
         // 6. Recent BG nadir + braking signal (for fast-carb detection)
         val now60MinAgo = System.currentTimeMillis() - 60 * 60 * 1000L
+        val now45MinAgo = System.currentTimeMillis() - 45 * 60 * 1000L
         val recentBgReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(now60MinAgo, System.currentTimeMillis(), true)
         val recentLowBG = recentBgReadings.minOfOrNull { it.value }?.toDouble() ?: 999.0
+        // v4.4.4 hotfix Fix A v2 (ported to V1 2026-06-01): 45-min rolling minimum used only by
+        // Fix A post-rescue tier gating. See V3MLG3 plugin/determine_basal for backtest rationale.
+        val recentLowBG45Min = recentBgReadings.filter { it.timestamp >= now45MinAgo }.minOfOrNull { it.value }?.toDouble() ?: 999.0
         // Braking product: max(|delta2| × (delta2 - delta1)) across consecutive triplets
         // where delta2 < 0 (still falling) and delta2 > delta1 (deceleration).
         // High values indicate rapid carb absorption arresting a fall — fast-carb signal
@@ -989,6 +994,22 @@ open class OpenAPSBoostPlugin @Inject constructor(
         aapsLogger.debug(LTag.APS, "flatBGsDetected:    $flatBGsDetected")
         aapsLogger.debug(LTag.APS, "BoostActive:        ${activityResult.boostActive}")
 
+        // v4.4.3 hotfix Fix B (ported to V1 2026-06-01): compute cumulative SMB volume delivered
+        // in the last 60 min. Pulled from PersistenceLayer rather than synthesised from IOB —
+        // IOB is decay-adjusted, but the rolling-window cap wants raw delivered amounts.
+        // Filters to BS.Type.SMB so manual user boluses don't contribute.
+        val cumulativeSmbCap60Min = preferences.get(DoubleKey.ApsBoostCumulativeSmbCap60Min)
+        val recentSmbVolume60Min = try {
+            val sixtyMinAgo = now - 60 * 60 * 1000L
+            persistenceLayer.getBolusesFromTimeToTime(sixtyMinAgo, now, ascending = true)
+                .filter { it.type == BS.Type.SMB && it.isValid }
+                .sumOf { it.amount }
+        } catch (e: Exception) {
+            aapsLogger.warn(LTag.APS, "Boost V1 recent SMB volume query failed (${e.message}) — falling back to 0.0 (cap will not engage this cycle)")
+            0.0
+        }
+        aapsLogger.debug(LTag.APS, "Boost V1 cumulative SMB last 60min: ${recentSmbVolume60Min}U / cap ${cumulativeSmbCap60Min}U")
+
         determineBasalBoost.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -999,7 +1020,10 @@ open class OpenAPSBoostPlugin @Inject constructor(
             microBolusAllowed = microBolusAllowed,
             currentTime = now,
             flatBGsDetected = flatBGsDetected,
-            riskModel = boostRiskModel
+            riskModel = boostRiskModel,
+            recentSmbVolume60Min = recentSmbVolume60Min,
+            cumulativeSmbCap60Min = cumulativeSmbCap60Min,
+            recentLowBG45Min = recentLowBG45Min
         ).also {
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints

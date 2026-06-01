@@ -173,7 +173,15 @@ class DetermineBasalBoost @Inject constructor(
     fun determine_basal(
         glucose_status: GlucoseStatus, currenttemp: CurrentTemp, iob_data_array: Array<IobTotal>, profile: OapsProfileBoost, autosens_data: AutosensResult, meal_data: MealData,
         microBolusAllowed: Boolean, currentTime: Long, flatBGsDetected: Boolean,
-        riskModel: app.aaps.plugins.aps.openAPSBoostV3ML.BoostRiskModel? = null
+        riskModel: app.aaps.plugins.aps.openAPSBoostV3ML.BoostRiskModel? = null,
+        // v4.4.3 hotfix Fix B (ported to V1 2026-06-01): cumulative SMB cap per 60-min window.
+        // Plugin computes recentSmbVolume60Min from PersistenceLayer.getBoluses filtered by
+        // BS.Type.SMB. Setting cumulativeSmbCap60Min = 0.0 disables.
+        recentSmbVolume60Min: Double = 0.0,
+        cumulativeSmbCap60Min: Double = 1.5,
+        // v4.4.4 hotfix Fix A v2 (ported to V1 2026-06-01): 45-min rolling minimum BG used only
+        // by Fix A post-rescue tier gating. Default 999.0 = disabled (legacy callers).
+        recentLowBG45Min: Double = 999.0
     ): RT {
         consoleError.clear()
         consoleLog.clear()
@@ -1217,6 +1225,15 @@ class DetermineBasalBoost @Inject constructor(
 
                 var microBolus: Double
 
+                // v4.4.4 hotfix Fix A v2 (ported to V1 2026-06-01): post-rescue tier block.
+                // Blocks T3 (UAM_BOOST), T4 (UAM_HIGH_BOOST), and T5 (PERCENT_SCALE) when the
+                // 45-min rolling-min BG is below 75. See DetermineBasalBoostV3MLG3 for full
+                // backtest rationale — same 45-min window and tier scope as v4.4.4 acting layer.
+                val inPostRescueWindow = recentLowBG45Min < 75.0
+                if (inPostRescueWindow) {
+                    consoleError.add("⚠ Post-rescue recovery: recentLowBG45Min ${round(recentLowBG45Min, 0)} < 75 — UAM tiers T3/T4 + T5 PERCENT_SCALE blocked")
+                }
+
                 // Decision tree debug
                 consoleError.add("── Tier Decision ───────────────────────────")
                 consoleError.add("bg=$bg | delta=${round(glucose_status.delta, 1)} | shortAvg=${round(glucose_status.shortAvgDelta, 1)} | delta_accl=$delta_accl")
@@ -1242,7 +1259,8 @@ class DetermineBasalBoost @Inject constructor(
                     consoleError.add("Insulin required % (${(1.0 / insulinReqPCT) * 100}%) applied.")
                 }
                 // ----- Tier 3: UAM Boost (strong acceleration with positive delta) -----
-                else if (!mlTierDowngrade && glucose_status.delta >= 5 && glucose_status.shortAvgDelta >= 3 && uamBoost1 > 1.2 && uamBoost2 > 2 && boostActive && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0) {
+                // v4.4.4 Fix A v2: gated on !inPostRescueWindow to prevent dosing into rebound climbs
+                else if (!mlTierDowngrade && !inPostRescueWindow && glucose_status.delta >= 5 && glucose_status.shortAvgDelta >= 3 && uamBoost1 > 1.2 && uamBoost2 > 2 && boostActive && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0) {
                     consoleError.add(">>> TIER 3: UAM Boost <<<")
                     rT.boostTier = "UAM_BOOST"
                     consoleError.add("Insulin required pre-boost is $insulinReq")
@@ -1270,7 +1288,8 @@ class DetermineBasalBoost @Inject constructor(
                     rT.reason.append("UAM Boost enacted; SMB equals $boostInsulinReq; ")
                 }
                 // ----- Tier 4: UAM High Boost (high BG > 180 with acceleration) -----
-                else if (!mlTierDowngrade && delta_accl > 5 && bg > 180 && boostActive && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0) {
+                // v4.4.4 Fix A v2: gated on !inPostRescueWindow to prevent dosing into rebound climbs
+                else if (!mlTierDowngrade && !inPostRescueWindow && delta_accl > 5 && bg > 180 && boostActive && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0) {
                     consoleError.add(">>> TIER 4: UAM High Boost <<<")
                     rT.boostTier = "UAM_HIGH_BOOST"
                     consoleError.add("Insulin required pre-boost is $insulinReq")
@@ -1289,7 +1308,8 @@ class DetermineBasalBoost @Inject constructor(
                 }
                 // ----- Tier 5: Percent scale (BG 110-180, delta > 3, accelerating) -----
                 // Lower bound raised from 98 to 110: data shows 57% hypo rate when T5 fires at BG 90-110.
-                else if (!mlTierDowngrade && bg > 110 && bg < 181 && glucose_status.delta > 3 && delta_accl > 0 && eventualBG > target_bg && iob_data.iob < boostMaxIOB && boostActive) {
+                // v4.4.4 Fix A v2: gated on !inPostRescueWindow to prevent dosing into rebound climbs
+                else if (!mlTierDowngrade && !inPostRescueWindow && bg > 110 && bg < 181 && glucose_status.delta > 3 && delta_accl > 0 && eventualBG > target_bg && iob_data.iob < boostMaxIOB && boostActive) {
                     consoleError.add(">>> TIER 5: Percent Scale <<<")
                     rT.boostTier = "PERCENT_SCALE"
                     if (insulinReq > boostMaxIOB - iob_data.iob) {
@@ -1375,6 +1395,18 @@ class DetermineBasalBoost @Inject constructor(
                     val preSMB = microBolus
                     microBolus = Math.floor(microBolus * riskScale * roundSMBTo) / roundSMBTo
                     consoleError.add("ML risk scale applied: SMB ${round(preSMB, 2)} → ${round(microBolus, 2)} (×${round(riskScale, 2)})")
+                }
+
+                // v4.4.3 hotfix Fix B (ported to V1 2026-06-01): cumulative-SMB window cap.
+                // Hard upper bound on cumulative SMB delivery in any rolling 60-min window. Plugin
+                // computes [recentSmbVolume60Min] from PersistenceLayer.getBoluses filtered by
+                // BS.Type.SMB. Setting [cumulativeSmbCap60Min] = 0.0 disables. See V3MLG3 for
+                // full backtest rationale.
+                if (cumulativeSmbCap60Min > 0.0 && recentSmbVolume60Min >= cumulativeSmbCap60Min && microBolus > 0) {
+                    consoleError.add("⚠ Cumulative SMB cap reached: ${round(recentSmbVolume60Min, 2)}U delivered in last 60 min ≥ ${round(cumulativeSmbCap60Min, 2)}U — SMB suspended this cycle")
+                    rT.reason.append("Cumulative SMB cap ${round(recentSmbVolume60Min, 2)}U/${round(cumulativeSmbCap60Min, 2)}U reached — SMB suspended; ")
+                    microBolus = 0.0
+                    rT.boostTier = "CUMULATIVE_SMB_CAP"
                 }
 
                 // Zero temp calculation for SMB
