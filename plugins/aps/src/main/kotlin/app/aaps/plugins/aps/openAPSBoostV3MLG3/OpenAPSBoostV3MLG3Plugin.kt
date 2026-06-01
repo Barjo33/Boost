@@ -1005,8 +1005,18 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
 
         // 6. Recent BG nadir + braking signal (for fast-carb detection)
         val now60MinAgo = System.currentTimeMillis() - 60 * 60 * 1000L
+        val now45MinAgo = System.currentTimeMillis() - 45 * 60 * 1000L
         val recentBgReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(now60MinAgo, System.currentTimeMillis(), true)
         val recentLowBG = recentBgReadings.minOfOrNull { it.value }?.toDouble() ?: 999.0
+        // v4.4.4 hotfix: 45-min window for Fix A post-rescue tier gating.
+        // Backtest on 14 days (29 severe secondary-hypo events with nadir <60):
+        //   v1 60-min T3/T4:        catches 3/29 severe events
+        //   v2 30-min T3/T4/T5:     catches 8/29
+        //   v2 45-min T3/T4/T5:     catches 10/29 (incl. 2026-05-31 21:25 PERCENT_SCALE 1.80U)
+        //   v2 60-min T3/T4/T5:     catches 10/29 (same as 45, but 7 more good firings blocked)
+        // 45 is the sweet spot — 30 misses the 21:25 event (last <75 reading was 31 min prior),
+        // 60 adds no severe-event coverage. See analysis/fix_a_v2_window_backtest.py.
+        val recentLowBG45Min = recentBgReadings.filter { it.timestamp >= now45MinAgo }.minOfOrNull { it.value }?.toDouble() ?: 999.0
         // Braking product: max(|delta2| × (delta2 - delta1)) across consecutive triplets
         // where delta2 < 0 (still falling) and delta2 > delta1 (deceleration).
         // High values indicate rapid carb absorption arresting a fall — fast-carb signal
@@ -1208,7 +1218,8 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
             riskModel = boostRiskModel,
             mealModel = boostMealModel,
             recentSmbVolume60Min = recentSmbVolume60Min,
-            cumulativeSmbCap60Min = cumulativeSmbCap60Min
+            cumulativeSmbCap60Min = cumulativeSmbCap60Min,
+            recentLowBG45Min = recentLowBG45Min
         ).also {
             // Populate deviation sensitivity fields on the RT for Nightscout upload + UI
             it.deviationSensRatio = isfResult.deviationSensRatio

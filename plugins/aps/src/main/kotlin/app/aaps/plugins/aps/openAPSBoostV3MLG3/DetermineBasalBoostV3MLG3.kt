@@ -186,7 +186,11 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
         // recentSmbVolume60Min ≥ this value, microBolus is forced to 0.0 for this cycle
         // regardless of tier or scaling. Setting this to 0.0 (via the preference min) is
         // the documented way to disable Fix B.
-        cumulativeSmbCap60Min: Double = 1.5
+        cumulativeSmbCap60Min: Double = 1.5,
+        // v4.4.4 hotfix: 45-min rolling minimum BG used by Fix A only. profile.recentLowBG
+        // remains the 60-min value used by lowTriggered / eventualBgOverride / G3 hold gates.
+        // Default 999.0 = effectively disabled (legacy callers, V5 shadow path).
+        recentLowBG45Min: Double = 999.0
     ): RT {
         consoleError.clear()
         consoleLog.clear()
@@ -1148,23 +1152,33 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
                 consoleError.add("⚠ ML risk ${round(mlHypoRisk!! * 100, 0)}% > 60% — tier downgrade active (skip tiers 3-6)")
             }
 
-            // v4.4.3 hotfix Fix A (2026-05-28): post-rescue UAM-tier block
+            // v4.4.4 hotfix Fix A v2 (2026-06-01): post-rescue tier block — 45-min window + T5
             //
-            // Diagnosed from the 2026-05-25 → 2026-05-28 rollercoaster (10 hypo events, 6.0h
-            // TBR-70, ~4h algorithm-attributable). After every hypo the user took unannounced
-            // rescue carbs; BG rebounded fast; V4.4.2 caught the rebound as a meal-shape climb
-            // and fired UAM_BOOST / UAM_HIGH_BOOST aggressively, delivering 6-9U over 2h. That
-            // dose stacked into the rescue carbs' tail → next hypo → cycle repeats.
+            // Backtest on 14 days of data covering 29 severe secondary-hypo events (nadir <60):
+            //   v1 60-min T3/T4:        catches 3/29 severe events
+            //   v2 30-min T3/T4/T5:     catches 8/29  (adds 2026-05-27 + 2026-05-28 events)
+            //   v2 45-min T3/T4/T5:     catches 10/29 (adds 2026-05-31 21:25/21:34 — the smoking gun)
+            //   v2 60-min T3/T4/T5:     catches 10/29 — same coverage as 45, but 7 more good firings blocked
             //
-            // Scope: blocks ONLY T3 (UAM_BOOST) and T4 (UAM_HIGH_BOOST) when recentLowBG < 75.
-            // T5/T6/T7/T8 left alone — they're already milder dose magnitudes and don't drive
-            // the rollercoaster (the 5/27 14:04 8.4U/2h cascade was entirely T3/T4 firing).
-            // G3 hold separately gates T5/T6/T7/T8 in its own pre-UAM uncertainty window.
+            // Two changes from v4.4.3:
+            //   1. Window: 60 → 45 min (recentLowBG45Min, computed in plugin)
+            //   2. Scope:  T3/T4 → T3/T4/T5 (PERCENT_SCALE)
             //
-            // recentLowBG is already a 60-min rolling minimum, so the window auto-expires.
-            val inPostRescueWindow = profile.recentLowBG < 75.0
+            // T5 addition driven by 2026-05-31 21:25 event: 1.80U PERCENT_SCALE bolus at BG=112,
+            // 31 min after the user emerged from a hypo (nadir 54). Drove a secondary hypo with
+            // nadir 35 around 00:09 the next day. Fix A v1 didn't block it because T5 wasn't in
+            // scope, and a strict 30-min window would also miss it (last <75 reading was 31 min
+            // earlier). 45 min has the needed margin.
+            //
+            // T6 (ACCELERATION) and T7/T8 (REGULAR/ENHANCED OREF1) deliberately NOT added —
+            // T6 requires BG > 180 already (well above any post-rescue rebound), and T7/T8 are
+            // milder OREF1-class doses that don't drive the rollercoaster pattern.
+            //
+            // recentLowBG45Min is a 45-min rolling minimum. profile.recentLowBG (60-min) is
+            // still used by lowTriggered, eventualBgOverride, and G3 hold gates.
+            val inPostRescueWindow = recentLowBG45Min < 75.0
             if (inPostRescueWindow) {
-                consoleError.add("⚠ Post-rescue recovery: recentLowBG ${round(profile.recentLowBG, 0)} < 75 — UAM tiers T3/T4 blocked")
+                consoleError.add("⚠ Post-rescue recovery: recentLowBG45Min ${round(recentLowBG45Min, 0)} < 75 — UAM tiers T3/T4 + T5 PERCENT_SCALE blocked")
             }
 
             // ── G3: Pre-UAM Uncertainty Hold ─────────────────────────────────
@@ -1464,7 +1478,8 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
                     consoleError.add("UAM High Boost enacted; SMB equals $boostInsulinReq; Original insulin requirement was $insulinReq")
                 }
                 // ----- Tier 5: Percent scale (BG 98-180, delta > 3, accelerating) -----
-                else if (!mlTierDowngrade && !g3HoldActive && bg > 110 && bg < 181 && glucose_status.delta > 3 && delta_accl > 0 && eventualBG > target_bg && iob_data.iob < boostMaxIOB && boostActive) {
+                // v4.4.4 Fix A v2: gated on !inPostRescueWindow to prevent dosing into rebound climbs
+                else if (!mlTierDowngrade && !g3HoldActive && !inPostRescueWindow && bg > 110 && bg < 181 && glucose_status.delta > 3 && delta_accl > 0 && eventualBG > target_bg && iob_data.iob < boostMaxIOB && boostActive) {
                     consoleError.add(">>> TIER 5: Percent Scale <<<")
                     rT.boostTier = "PERCENT_SCALE"
                     if (insulinReq > boostMaxIOB - iob_data.iob) {
