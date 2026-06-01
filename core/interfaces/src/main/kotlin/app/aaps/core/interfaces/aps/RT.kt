@@ -94,6 +94,17 @@ data class RT(
     var boostV5_actionMult: Double? = null,      // action multiplier for the current state
     var boostV5_finalDose: Double? = null,       // V5's would-have-delivered SMB (U) — direct comparator to rT.units
     var boostV5_gateReduction: String? = null,   // compact summary of which Phase 3 gates fired
+
+    // Boost ISF shadow telemetry — V4.4.2-style TDD-anchored EMA(τ=3h) sensitivity ratio
+    // computed in parallel with V1/V2's instantaneous ratio so the EMA overlay's actual
+    // contribution can be measured without changing dosing.
+    var isfShadow_ratioRaw: Double? = null,          // raw tdd_24h / tdd_7d (also what V1/V2 use today)
+    var isfShadow_ratioEma: Double? = null,          // V4.4.2's smoothed ratio (bounded by autosens)
+    var isfShadow_warmup: Double? = null,            // 0.0-1.0, cold-start blend factor
+    var isfShadow_variableSens: Double? = null,      // implied variable_sens if the EMA ratio had been used (mg/dL/U)
+    var isfShadow_insulinReq: Double? = null,        // implied insulinReq under shadow variable_sens (U)
+    var isfShadow_microBolus: Double? = null,        // implied microBolus under shadow insulinReq, same tier (U)
+    var isfShadow_deltaPct: Double? = null           // (shadow/actual - 1) × 100 on variable_sens — single-number summary
 ) {
 
     fun serialize() = Json.encodeToString(serializer(), this)

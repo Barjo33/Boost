@@ -173,7 +173,11 @@ class DetermineBasalBoost @Inject constructor(
     fun determine_basal(
         glucose_status: GlucoseStatus, currenttemp: CurrentTemp, iob_data_array: Array<IobTotal>, profile: OapsProfileBoost, autosens_data: AutosensResult, meal_data: MealData,
         microBolusAllowed: Boolean, currentTime: Long, flatBGsDetected: Boolean,
-        riskModel: app.aaps.plugins.aps.openAPSBoostV3ML.BoostRiskModel? = null,
+        // Layer A ML retrofit — optional models; absence preserves V1 baseline behaviour.
+        // Scores are emitted to RT.mlHypoRisk / RT.mlMealLikely for Nightscout
+        // observability but do NOT influence dosing decisions in Layer A.
+        riskModel: BoostRiskModel? = null,
+        mealModel: BoostMealModel? = null,
         // v4.4.3 hotfix Fix B (ported to V1 2026-06-01): cumulative SMB cap per 60-min window.
         // Plugin computes recentSmbVolume60Min from PersistenceLayer.getBoluses filtered by
         // BS.Type.SMB. Setting cumulativeSmbCap60Min = 0.0 disables.
@@ -811,6 +815,9 @@ class DetermineBasalBoost @Inject constructor(
             minGuardBG = minIOBGuardBG
         }
         minGuardBG = round(minGuardBG, 0)
+        // Expose V1's computed minGuardBG on RT so V5's silent shadow can use the
+        // same predicted-low V1 chose for its hard-gate evaluation.
+        rT.minGuardBG = minGuardBG
 
         var minZTUAMPredBG = minUAMPredBG
         if (minZTGuardBG < threshold) {
@@ -1070,26 +1077,61 @@ class DetermineBasalBoost @Inject constructor(
 
             val lastBolusAge = round((systemTime - iob_data.lastBolusTime) / 60000.0, 1)
 
-            // ── ML Hypo Risk Model ──────────────────────────────
+            // ── ML Risk Models (Layer A — observability only) ──────────────────
+            // Compute mlHypoRisk and mlMealLikely scores and emit to Nightscout.
+            // Layer A intentionally does NOT consume these in dosing decisions —
+            // dosing remains identical to V1 baseline. Layer B will wire mlHypoRisk
+            // into graduated SMB scaling and tier downgrade. See
+            // V1-to-V442-Behavioural-Diff.md for the layered plan.
+            //
+            // direction_num bucketing matches commit cd96104559 (training-time
+            // encoding from shared_loader.py): NS trend arrow codes
+            // DoubleDown=-2 ... DoubleUp=+2, mapped from shortAvgDelta thresholds
+            // ±5/±10/±15 mg/dL per 5-min cycle.
+            val directionNumValue = when {
+                glucose_status.shortAvgDelta > 15.0  -> 2.0
+                glucose_status.shortAvgDelta > 10.0  -> 1.5
+                glucose_status.shortAvgDelta > 5.0   -> 1.0
+                glucose_status.shortAvgDelta > -5.0  -> 0.0
+                glucose_status.shortAvgDelta > -10.0 -> -1.0
+                glucose_status.shortAvgDelta > -15.0 -> -1.5
+                else                                 -> -2.0
+            }
             val mlHypoRisk = riskModel?.predictHypoRisk(
                 cgmMgdl = bg,
                 iobTotal = iob_data.iob,
                 iobBasal = iob_data.basaliob,
                 bgAboveTarget = bg - target_bg,
-                directionNum = if (abs(glucose_status.shortAvgDelta) > 0.001)
-                    (glucose_status.delta - glucose_status.shortAvgDelta) / abs(glucose_status.shortAvgDelta)
-                    .coerceIn(-2.0, 2.0)
-                else 0.0,
+                directionNum = directionNumValue,
                 hour = java.time.LocalTime.now().hour,
                 iobActivity = iob_data.activity,
                 insulinReq = insulinReq
             )
             if (mlHypoRisk != null) {
                 rT.mlHypoRisk = round(mlHypoRisk, 3)
-                consoleError.add("── ML Risk Model ───────────────────────────")
+                consoleError.add("── ML Risk Model (observability only) ──────")
                 consoleError.add("ML hypo risk: ${round(mlHypoRisk * 100, 1)}%")
             }
+            val mlMealLikely = mealModel?.predictMealLikelihood(
+                cgmMgdl = bg,
+                iobTotal = iob_data.iob,
+                iobBasal = iob_data.basaliob,
+                bgAboveTarget = bg - target_bg,
+                directionNum = directionNumValue,
+                hour = java.time.LocalTime.now().hour,
+                iobActivity = iob_data.activity,
+                insulinReq = insulinReq
+            )
+            if (mlMealLikely != null) {
+                rT.mlMealLikely = round(mlMealLikely, 3)
+                consoleError.add("ML meal likelihood: ${round(mlMealLikely * 100, 1)}%")
+            }
 
+            // ── Layer B: graduated SMB scaling factor ───────────────────────────
+            // riskScale = 1.0 when mlHypoRisk ≤ 0.3, linearly ramps to 0.0 as
+            // risk approaches 1.0. Applied to microBolus after tier selection
+            // (see post-tier block below). When riskModel is unavailable, scale
+            // is 1.0 (no effect, preserves V1 baseline).
             val riskScale = if (mlHypoRisk != null && mlHypoRisk > 0.3) {
                 val scale = Math.max(0.0, 1.0 - (mlHypoRisk - 0.3) / 0.7)
                 rT.mlRiskScale = round(scale, 2)
@@ -1100,9 +1142,63 @@ class DetermineBasalBoost @Inject constructor(
                 1.0
             }
 
+            // Layer B: tier-downgrade gate. When hypo risk exceeds 0.6, the
+            // aggressive tiers (T3 UAM Boost, T4 UAM High Boost, T5 Percent Scale,
+            // T6 Acceleration) are skipped. The algorithm falls through to T7
+            // (Enhanced oref1) or T8 (Regular oref1) which use the standard
+            // insulin-required calculation without acceleration multipliers.
             val mlTierDowngrade = mlHypoRisk != null && mlHypoRisk > 0.6
             if (mlTierDowngrade) {
-                consoleError.add("⚠ ML risk ${round(mlHypoRisk!! * 100, 0)}% > 60% — tier downgrade active (skip tiers 3-6)")
+                consoleError.add("⚠ ML risk ${round(mlHypoRisk!! * 100, 0)}% > 60% — tier downgrade active (skip T3-T6)")
+            }
+
+            // ── Layer C: G3 pre-UAM uncertainty hold ───────────────────────────
+            // Suppresses non-UAM tier SMB sizing (T5/T6/T7/T8) when an unannounced
+            // rise is starting and UAM-tier conditions (T3/T4) are not yet met,
+            // giving meal-detection logic time to engage. T3 and T4 fire normally
+            // when their conditions are met (they're evaluated before G3-gated tiers
+            // in the if-else chain).
+            //
+            // Hold-active conditions (all required):
+            //   COB < 1.0                      — no logged carbs
+            //   recentLowBG ≥ 70               — not in hypo recovery
+            //   delta ≥ 5 mg/dL                — BG rising (not drift/noise)
+            //   shortAvgDelta ≥ 3 mg/dL        — sustained across ≥2 cycles
+            //
+            // Release conditions — any one releases the hold:
+            //   (1) delta_accl > 10 — deterministic acceleration signal
+            //   (2) bg > 160 && delta > 5 — safety backstop (already high, still rising)
+            //   (3) mlMealLikely > 0.50 — ML signal
+            val g3HoldConditionsMet =
+                meal_data.mealCOB < 1.0 &&
+                profile.recentLowBG >= 70.0 &&
+                glucose_status.delta >= 5.0 &&
+                glucose_status.shortAvgDelta >= 3.0
+            val mealModelReleases = mlMealLikely != null && mlMealLikely > 0.50
+            val accelerationReleases = delta_accl > 10.0
+            val bgThresholdReleases = bg > 160.0 && glucose_status.delta > 5.0
+            val g3Released = mealModelReleases || accelerationReleases || bgThresholdReleases
+            val g3HoldActive = g3HoldConditionsMet && !g3Released
+
+            if (g3HoldConditionsMet && g3Released) {
+                rT.mlMealG3Released = true
+                rT.mlG3ReleaseSource = when {
+                    accelerationReleases -> "delta_accl"
+                    bgThresholdReleases  -> "bg_threshold"
+                    else                 -> "meal_model"
+                }
+                consoleError.add("── G3 Pre-UAM Hold RELEASED by ${rT.mlG3ReleaseSource} ──")
+                val parts = mutableListOf<String>()
+                if (accelerationReleases) parts.add("delta_accl=${round(delta_accl, 1)}>10")
+                if (bgThresholdReleases) parts.add("BG=${bg.toInt()}>160 + delta=${round(glucose_status.delta, 1)}>5")
+                if (mealModelReleases) parts.add("mlMealLikely=${round(mlMealLikely!! * 100, 1)}%>50%")
+                consoleError.add("Trigger: ${parts.joinToString("; ")}")
+            }
+            if (g3HoldActive) {
+                consoleError.add("── G3 Pre-UAM Uncertainty Hold ─────────────")
+                consoleError.add("BG rising from near-target, COB=0, awaiting UAM engagement")
+                consoleError.add("delta=${round(glucose_status.delta,1)} shortAvg=${round(glucose_status.shortAvgDelta,1)} recentLow=${round(profile.recentLowBG,0)} delta_accl=${round(delta_accl,1)}")
+                consoleError.add("If T3/T4 (UAM) eligible they will still fire; T5/T6/T7/T8 suppressed this cycle")
             }
 
             if (microBolusAllowed && enableSMB && bg > threshold) {
@@ -1181,11 +1277,36 @@ class DetermineBasalBoost @Inject constructor(
                 var fastCarbScale = 1.0
                 val fastCarbRebound: Boolean
                 if (fastCarbConditions && bg < 170.0) {
-                    // Velocity override: extreme rise well above target is a genuine spike
-                    if (glucose_status.delta > 15 && bg > target_bg + 20) {
+                    // Layer D: V4.4.2 velocity + eventualBG escapes.
+                    // - delta threshold lowered from 15 → 10 because glucose_status.delta
+                    //   is AAPS's smoothed delta (averaged across recent readings), not the
+                    //   raw 5-min tick. With recent-low BG history the smoothed delta is
+                    //   materially lower than the displayed tick — raw +20 ticks can
+                    //   correspond to algorithm-internal delta of 12-14, missing >15 by
+                    //   1-3 mg/dL.
+                    // - eventualBG escape added: if oref has already concluded a major
+                    //   overshoot is coming (eBG > target+100), the climb is genuine
+                    //   regardless of smoothed-delta noise. This is a structural escape
+                    //   that releases fast-carb damping at the start of large climbs.
+                    //
+                    // v4.4.3 hotfix Fix D (ported to V1 ML-Beta 2026-06-01): the eventualBgOverride
+                    // is structurally wrong for post-rescue rebounds. After a hypo + unannounced
+                    // rescue carbs, eventualBG climbs to target+100 within 1-2 cycles of the
+                    // rebound starting, which lifted the fast-carb protection exactly when it
+                    // was needed. Gating on `profile.recentLowBG >= 75.0` preserves spike-catching
+                    // behaviour for legitimate climbs while keeping fast-carb damping active
+                    // during the post-rescue window.
+                    val velocityOverride = glucose_status.delta > 10
+                    val eventualBgOverride = eventualBG > target_bg + 100 && profile.recentLowBG >= 75.0
+                    if ((velocityOverride || eventualBgOverride) && bg > target_bg + 20) {
                         fastCarbScale = 1.0
                         fastCarbRebound = false
-                        consoleError.add("Fast-carb conditions met but velocity override: delta ${round(glucose_status.delta, 1)} > 15, BG $bg > target+20 — treating as genuine spike")
+                        val trigger = when {
+                            velocityOverride && eventualBgOverride -> "delta ${round(glucose_status.delta, 1)} > 10 + eBG ${round(eventualBG, 0)} > target+100"
+                            velocityOverride -> "delta ${round(glucose_status.delta, 1)} > 10"
+                            else             -> "eBG ${round(eventualBG, 0)} > target+100"
+                        }
+                        consoleError.add("Fast-carb conditions met but $trigger override (BG $bg > target+20) — treating as genuine spike")
                     } else {
                         fastCarbScale = if (bg < 120.0) 0.3
                                         else 0.3 + 0.7 * (bg - 120.0) / 50.0
@@ -1259,7 +1380,9 @@ class DetermineBasalBoost @Inject constructor(
                     consoleError.add("Insulin required % (${(1.0 / insulinReqPCT) * 100}%) applied.")
                 }
                 // ----- Tier 3: UAM Boost (strong acceleration with positive delta) -----
-                // v4.4.4 Fix A v2: gated on !inPostRescueWindow to prevent dosing into rebound climbs
+                // Layer B: !mlTierDowngrade gate prevents aggressive UAM Boost firing
+                // when hypo risk exceeds 0.6.
+                // v4.4.4 Fix A v2: !inPostRescueWindow guard prevents dosing into rebound climbs.
                 else if (!mlTierDowngrade && !inPostRescueWindow && glucose_status.delta >= 5 && glucose_status.shortAvgDelta >= 3 && uamBoost1 > 1.2 && uamBoost2 > 2 && boostActive && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0) {
                     consoleError.add(">>> TIER 3: UAM Boost <<<")
                     rT.boostTier = "UAM_BOOST"
@@ -1287,9 +1410,18 @@ class DetermineBasalBoost @Inject constructor(
                     consoleError.add("UAM Boost enacted; SMB equals $boostInsulinReq; Original insulin requirement was $insulinReq")
                     rT.reason.append("UAM Boost enacted; SMB equals $boostInsulinReq; ")
                 }
-                // ----- Tier 4: UAM High Boost (high BG > 180 with acceleration) -----
-                // v4.4.4 Fix A v2: gated on !inPostRescueWindow to prevent dosing into rebound climbs
-                else if (!mlTierDowngrade && !inPostRescueWindow && delta_accl > 5 && bg > 180 && boostActive && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0) {
+                // ----- Tier 4: UAM High Boost (high BG > 180 with acceleration OR sustained velocity) -----
+                // Layer B: !mlTierDowngrade gate added.
+                // Layer D: added `glucose_status.delta > 8` as an alternative trigger.
+                // delta_accl is percentage acceleration, not velocity. Once a climb
+                // stabilises into a sustained high-delta state (delta tracking
+                // shortAvgDelta), delta_accl drops near zero even though BG is
+                // still rising fast. Without this fallback, sustained climbs fall
+                // through to T7/T8 once acceleration plateaus. delta > 8 mg/dL/5min
+                // ≈ +1.6 mg/dL/min is the same magnitude as Tier 5's `delta > 3`
+                // but stricter, gating on a real sustained rise.
+                // v4.4.4 Fix A v2: !inPostRescueWindow guard added.
+                else if (!mlTierDowngrade && !inPostRescueWindow && (delta_accl > 5 || glucose_status.delta > 8) && bg > 180 && boostActive && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0) {
                     consoleError.add(">>> TIER 4: UAM High Boost <<<")
                     rT.boostTier = "UAM_HIGH_BOOST"
                     consoleError.add("Insulin required pre-boost is $insulinReq")
@@ -1308,8 +1440,9 @@ class DetermineBasalBoost @Inject constructor(
                 }
                 // ----- Tier 5: Percent scale (BG 110-180, delta > 3, accelerating) -----
                 // Lower bound raised from 98 to 110: data shows 57% hypo rate when T5 fires at BG 90-110.
-                // v4.4.4 Fix A v2: gated on !inPostRescueWindow to prevent dosing into rebound climbs
-                else if (!mlTierDowngrade && !inPostRescueWindow && bg > 110 && bg < 181 && glucose_status.delta > 3 && delta_accl > 0 && eventualBG > target_bg && iob_data.iob < boostMaxIOB && boostActive) {
+                // Layer B: !mlTierDowngrade gate added. Layer C: !g3HoldActive gate added.
+                // v4.4.4 Fix A v2: !inPostRescueWindow guard added.
+                else if (!mlTierDowngrade && !g3HoldActive && !inPostRescueWindow && bg > 110 && bg < 181 && glucose_status.delta > 3 && delta_accl > 0 && eventualBG > target_bg && iob_data.iob < boostMaxIOB && boostActive) {
                     consoleError.add(">>> TIER 5: Percent Scale <<<")
                     rT.boostTier = "PERCENT_SCALE"
                     if (insulinReq > boostMaxIOB - iob_data.iob) {
@@ -1332,7 +1465,8 @@ class DetermineBasalBoost @Inject constructor(
                     consoleError.add("Post percent scale trigger state: $iTimeActive")
                 }
                 // ----- Tier 6: Acceleration bolus (delta_accl > 25) -----
-                else if (!mlTierDowngrade && delta_accl > 25 && glucose_status.delta > 4 && iob_data.iob < boostMaxIOB && boostActive && eventualBG > target_bg) {
+                // Layer B: !mlTierDowngrade gate added. Layer C: !g3HoldActive gate added.
+                else if (!mlTierDowngrade && !g3HoldActive && delta_accl > 25 && glucose_status.delta > 4 && bg > 110 && iob_data.iob < boostMaxIOB && boostActive && eventualBG > target_bg) {
                     consoleError.add(">>> TIER 6: Acceleration Bolus <<<")
                     rT.boostTier = "ACCELERATION"
                     boostInsulinReq = min(boost_scale * boostInsulinReq, boost_max)
@@ -1353,7 +1487,9 @@ class DetermineBasalBoost @Inject constructor(
                     rT.reason.append("Acceleration bolus triggered; SMB equals $boostInsulinReq; ")
                 }
                 // ----- Tier 7: Enhanced oref1 (mild acceleration) -----
-                else if (boostActive && glucose_status.delta > 0 && delta_accl >= 0.5) {
+                // Layer C: !g3HoldActive gate added. (T7 is not gated by mlTierDowngrade —
+                // T7/T8 are the conservative tiers that mlTierDowngrade falls through TO.)
+                else if (!g3HoldActive && boostActive && glucose_status.delta > 0 && delta_accl >= 0.5) {
                     consoleError.add(">>> TIER 7: Enhanced oref1 <<<")
                     rT.boostTier = "ENHANCED_OREF1"
                     if (insulinReq > boostMaxIOB - iob_data.iob) {
@@ -1363,11 +1499,20 @@ class DetermineBasalBoost @Inject constructor(
                     rT.reason.append("Enhanced oref1 triggered; SMB equals $microBolus; ")
                 }
                 // ----- Tier 8: Regular oref1 (default fallback) -----
-                else {
+                // Layer C: gated by !g3HoldActive. When G3 hold is active, fall through
+                // to the G3-hold branch below (microBolus = 0, tier = NONE).
+                else if (!g3HoldActive) {
                     consoleError.add(">>> TIER 8: Regular oref1 (fallback) <<<")
                     rT.boostTier = "REGULAR_OREF1"
                     microBolus = Math.floor(min(insulinReq / insulinReqPCT, maxBolus) * roundSMBTo) / roundSMBTo
                     rT.reason.append("Regular oref1 triggered; SMB equals $microBolus; ")
+                }
+                // ----- G3 hold: T5/T6/T7/T8 all suppressed; no SMB this cycle. -----
+                else {
+                    rT.boostTier = "NONE"
+                    microBolus = 0.0
+                    rT.reason.append("G3 pre-UAM uncertainty hold: T5/6/7/8 suppressed; ")
+                    consoleError.add(">>> G3 HOLD: SMB suppressed (T5/6/7/8 gated by uncertainty hold) <<<")
                 }
 
                 // =====================================================================
@@ -1390,11 +1535,17 @@ class DetermineBasalBoost @Inject constructor(
                     }
                 }
 
-                // ── ML Risk: Graduated SMB scaling ──
+                // ── Layer B: ML risk graduated SMB scaling ──
+                // Apply riskScale AFTER tier selection and spike override, but BEFORE
+                // zero-temp calculation. Preserves tier-logic intent while capping
+                // actual delivery when hypo risk is elevated. The scale is computed
+                // earlier (after mlHypoRisk inference). When riskScale = 1.0 (risk ≤ 0.3
+                // or no model) this is a no-op.
                 if (riskScale < 1.0 && microBolus > 0) {
                     val preSMB = microBolus
                     microBolus = Math.floor(microBolus * riskScale * roundSMBTo) / roundSMBTo
                     consoleError.add("ML risk scale applied: SMB ${round(preSMB, 2)} → ${round(microBolus, 2)} (×${round(riskScale, 2)})")
+                    rT.reason.append("ML risk scale ${round(riskScale * 100, 0)}%: SMB ${round(preSMB, 2)} → ${round(microBolus, 2)}; ")
                 }
 
                 // v4.4.3 hotfix Fix B (ported to V1 2026-06-01): cumulative-SMB window cap.
