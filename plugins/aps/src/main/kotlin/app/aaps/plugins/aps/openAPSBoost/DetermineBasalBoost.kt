@@ -1288,8 +1288,16 @@ class DetermineBasalBoost @Inject constructor(
                     //   overshoot is coming (eBG > target+100), the climb is genuine
                     //   regardless of smoothed-delta noise. This is a structural escape
                     //   that releases fast-carb damping at the start of large climbs.
+                    //
+                    // v4.4.3 hotfix Fix D (ported to V1 ML-Beta 2026-06-01): the eventualBgOverride
+                    // is structurally wrong for post-rescue rebounds. After a hypo + unannounced
+                    // rescue carbs, eventualBG climbs to target+100 within 1-2 cycles of the
+                    // rebound starting, which lifted the fast-carb protection exactly when it
+                    // was needed. Gating on `profile.recentLowBG >= 75.0` preserves spike-catching
+                    // behaviour for legitimate climbs while keeping fast-carb damping active
+                    // during the post-rescue window.
                     val velocityOverride = glucose_status.delta > 10
-                    val eventualBgOverride = eventualBG > target_bg + 100
+                    val eventualBgOverride = eventualBG > target_bg + 100 && profile.recentLowBG >= 75.0
                     if ((velocityOverride || eventualBgOverride) && bg > target_bg + 20) {
                         fastCarbScale = 1.0
                         fastCarbRebound = false
