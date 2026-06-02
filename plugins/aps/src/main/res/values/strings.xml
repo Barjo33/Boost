@@ -147,6 +147,14 @@
     <string name="boost_night_mode_disable_with_low_tt_title">Disable Night Mode with low temp target</string>
     <string name="boost_night_mode_disable_with_low_tt_summary">Allow SMBs during Night Mode when temp target is below profile target</string>
     <string name="boost_night_mode_smb_disabled">SMB disabled by Boost Night Mode</string>
+    <string name="boost_night_mode_auto_by_sleep_title">Auto-detect sleep (HR + steps)</string>
+    <string name="boost_night_mode_auto_by_sleep_summary">When ON, sleep state (heart rate + steps) drives Night Mode in addition to the time window. Engages early (PRE_SLEEP) ApsBoostPreSleepLeadMin before nightStart to limit IOB before bed; stays active past nightEnd if still sleeping. Wake requires BOTH HR rise and step activity (BG trend alone does not wake). Requires a HR source (Wear OS / Garmin).</string>
+    <string name="boost_pre_sleep_lead_min_title">Pre-sleep lead time (minutes)</string>
+    <string name="boost_pre_sleep_lead_min_summary">How many minutes before Night Mode Start to enter PRE_SLEEP and engage Night Mode SMB suppression. Default 60.</string>
+    <string name="boost_sleep_hysteresis_min_title">Sleep confirmation window (minutes)</string>
+    <string name="boost_sleep_hysteresis_min_summary">HR + steps conditions must hold for this many minutes before SLEEPING is confirmed. Default 10.</string>
+    <string name="boost_wake_hr_hysteresis_min_title">Wake confirmation window (minutes)</string>
+    <string name="boost_wake_hr_hysteresis_min_summary">HR > 1.25× resting AND steps ≥ 100 must both hold for this many minutes before exiting SLEEPING. Default 5.</string>
 
     <string name="boost_post_exercise_recovery_title">Post-Exercise Recovery</string>
     <string name="boost_post_exercise_recovery_enabled_title">Enable Post-Exercise Recovery</string>
