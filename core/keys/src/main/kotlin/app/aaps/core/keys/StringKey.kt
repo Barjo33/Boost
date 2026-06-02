@@ -74,4 +74,9 @@ enum class StringKey(
 
     // Sleep state machine persisted state (JSON blob: SleepState, hysteresis counters, entry ts)
     ApsBoostSleepState("boost_sleep_state", "", defaultedBySM = true),
+
+    // Rolling 28-day sleep history (JSON blob with closed sessions + current openSleepStartMs)
+    // Drives circular-mean sleep_start / wake-time learning; PRE_SLEEP fires
+    // preSleepLeadMin before the learned average once ≥7 sessions exist.
+    ApsBoostSleepHistory("boost_sleep_history", "", defaultedBySM = true),
 }

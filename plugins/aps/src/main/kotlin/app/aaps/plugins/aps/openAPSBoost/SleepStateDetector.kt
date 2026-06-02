@@ -163,8 +163,9 @@ object SleepStateDetector {
 
         when (prev.state) {
             SleepState.AWAKE -> {
-                // Sleep candidacy check — possible even from AWAKE when we're inside outer window
-                if (inOuterWindow && qualifiesAsSleepCandidate(avgHr, sleepCap, inputs.stepsLast15Min, inputs.mlMealLikely)) {
+                // Sleep candidacy check — possible from AWAKE when in outer window OR in pre-sleep window
+                // (so an unusually-early sleep onset within the PRE_SLEEP lead time is detected promptly).
+                if ((inOuterWindow || inPreSleep) && qualifiesAsSleepCandidate(avgHr, sleepCap, inputs.stepsLast15Min, inputs.mlMealLikely)) {
                     if (newState.sleepCandidateSinceMs == null) {
                         newState.sleepCandidateSinceMs = inputs.nowMs
                         debug.append(" | sleep-candidate-started")

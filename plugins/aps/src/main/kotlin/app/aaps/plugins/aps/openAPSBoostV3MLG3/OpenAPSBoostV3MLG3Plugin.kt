@@ -1254,10 +1254,17 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
             // ApsBoostSleepState. Cached for next isNightModeActive() call. HR + sleep
             // telemetry emitted onto rT for NS devicestatus upload.
             try {
-                val nightStartMin = parseTimeToMinutesOfDay(preferences.get(StringKey.ApsBoostNightModeStart))
-                val nightEndMin = parseTimeToMinutesOfDay(preferences.get(StringKey.ApsBoostNightModeEnd))
+                val configuredNightStartMin = parseTimeToMinutesOfDay(preferences.get(StringKey.ApsBoostNightModeStart))
+                val configuredNightEndMin = parseTimeToMinutesOfDay(preferences.get(StringKey.ApsBoostNightModeEnd))
                 val nowLocal = java.time.LocalTime.now()
                 val minOfDay = nowLocal.hour * 60 + nowLocal.minute
+
+                // Auto-tune from learned 28-day history if ≥7 sessions exist; otherwise fall back.
+                val localOffsetMs = java.time.ZoneId.systemDefault().rules.getOffset(java.time.Instant.now()).totalSeconds * 1000L
+                val agg = app.aaps.plugins.aps.openAPSBoost.SleepHistoryTracker.aggregate(sleepHistoryCached, localOffsetMs)
+                val effectiveNightStartMin = agg.sleepStartMinAvg ?: configuredNightStartMin
+                val effectiveNightEndMin = agg.wakeMinAvg ?: configuredNightEndMin
+
                 val hrReadingsForSleep = persistenceLayer.getHeartRatesFromTime(now - 30 * 60_000L)
                 val sleepResult = app.aaps.plugins.aps.openAPSBoost.SleepStateDetector.evaluate(
                     prev = sleepStateCached,
@@ -1269,21 +1276,44 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
                         hrResting = hrRestingBpm,
                         stepsLast15Min = recentSteps15Min,
                         mlMealLikely = it.mlMealLikely,
-                        nightStartMin = nightStartMin,
-                        nightEndMin = nightEndMin,
+                        nightStartMin = effectiveNightStartMin,
+                        nightEndMin = effectiveNightEndMin,
                         preSleepLeadMin = preferences.get(IntKey.ApsBoostPreSleepLeadMin),
                         minSleepHysteresisMin = preferences.get(IntKey.ApsBoostSleepHysteresisMin),
                         wakeHrHysteresisMin = preferences.get(IntKey.ApsBoostWakeHrHysteresisMin)
                     ),
                     aapsLogger = aapsLogger
                 )
+                val prevSleepState = sleepStateCached.state
                 sleepStateCached = sleepResult.newState
                 if (sleepResult.transitioned) {
                     preferences.put(StringKey.ApsBoostSleepState, sleepResult.newState.serialize())
                     aapsLogger.debug(LTag.APS, "Sleep state transitioned → ${sleepResult.newState.state} (${sleepResult.debug})")
+
+                    val newState = sleepResult.newState.state
+                    val historyChanged = when {
+                        prevSleepState != app.aaps.plugins.aps.openAPSBoost.SleepStateDetector.SleepState.SLEEPING &&
+                            newState == app.aaps.plugins.aps.openAPSBoost.SleepStateDetector.SleepState.SLEEPING -> {
+                            sleepHistoryCached = app.aaps.plugins.aps.openAPSBoost.SleepHistoryTracker.onSleepStart(sleepHistoryCached, now)
+                            true
+                        }
+                        prevSleepState == app.aaps.plugins.aps.openAPSBoost.SleepStateDetector.SleepState.SLEEPING &&
+                            newState != app.aaps.plugins.aps.openAPSBoost.SleepStateDetector.SleepState.SLEEPING -> {
+                            sleepHistoryCached = app.aaps.plugins.aps.openAPSBoost.SleepHistoryTracker.onWake(sleepHistoryCached, now)
+                            true
+                        }
+                        else -> false
+                    }
+                    if (historyChanged) {
+                        preferences.put(StringKey.ApsBoostSleepHistory, sleepHistoryCached.serialize())
+                    }
                 }
                 it.sleepState = sleepResult.newState.state.name
                 it.sleepStateEnteredAtMs = sleepResult.newState.enteredAtMs.takeIf { v -> v > 0 }
+                it.sleepLearnedStartMin = agg.sleepStartMinAvg
+                it.sleepLearnedWakeMin = agg.wakeMinAvg
+                it.sleepLearnedDurationMin = agg.sleepDurationMinAvg
+                it.sleepLearnedSessionCount = agg.sessionCount
                 val latestHr = hrReadingsForSleep.maxByOrNull { hr -> hr.timestamp }
                 if (latestHr != null && latestHr.isValid) {
                     it.hrBpmLatest = Round.roundTo(latestHr.beatsPerMinute, 0.1)
@@ -1295,7 +1325,11 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
                 it.hrReadingsCount15m = hrReadingsForSleep.count { hr ->
                     hr.isValid && hr.timestamp > now - 15 * 60_000L
                 }
-                it.reason.append("sleep=${sleepResult.newState.state}; ")
+                it.reason.append("sleep=${sleepResult.newState.state}")
+                if (agg.sleepStartMinAvg != null) {
+                    it.reason.append(" learned=${formatClockMin(agg.sleepStartMinAvg!!)}→${formatClockMin(agg.wakeMinAvg ?: 0)}/${agg.sessionCount}d")
+                }
+                it.reason.append("; ")
             } catch (t: Throwable) {
                 aapsLogger.error(LTag.APS, "Sleep state evaluation failed", t)
             }
@@ -1367,10 +1401,18 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
     // ---- Sleep state (2026-06-02) — see V1 plugin for design notes ----
     @Volatile private var sleepStateCached: app.aaps.plugins.aps.openAPSBoost.SleepStateDetector.State =
         app.aaps.plugins.aps.openAPSBoost.SleepStateDetector.State.deserialize(preferences.get(StringKey.ApsBoostSleepState))
+    @Volatile private var sleepHistoryCached: app.aaps.plugins.aps.openAPSBoost.SleepHistoryTracker.History =
+        app.aaps.plugins.aps.openAPSBoost.SleepHistoryTracker.History.deserialize(preferences.get(StringKey.ApsBoostSleepHistory))
 
     /** Returns minute-of-day [0..1439] for an "HH:mm" / "H:mm" string. */
     private fun parseTimeToMinutesOfDay(timeStr: String): Int =
         (parseTimeToMillis(timeStr) / 60_000L).toInt()
+
+    /** Format a minute-of-day [0..1439] as "HH:mm" for telemetry. */
+    private fun formatClockMin(min: Int): String {
+        val m = ((min % 1440) + 1440) % 1440
+        return "%02d:%02d".format(m / 60, m % 60)
+    }
 
     private fun isNightModeActive(): Boolean {
         val currentTimeMillis = System.currentTimeMillis()
