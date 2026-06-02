@@ -95,6 +95,17 @@ data class RT(
     var boostV5_finalDose: Double? = null,       // V5's would-have-delivered SMB (U) — direct comparator to rT.units
     var boostV5_gateReduction: String? = null,   // compact summary of which Phase 3 gates fired
 
+    // HR + sleep telemetry (2026-06-02) — emitted into NS devicestatus for retrospective
+    // sleep-model tuning. Cadence = one observation per Boost cycle (~5 min), which
+    // matches sleep-analysis granularity. Wear OS samples HR every 1 min; here we
+    // emit the duration-weighted 5-min avg, sufficient for sleep state evaluation.
+    var hrBpmLatest: Double? = null,                 // most recent HR reading at cycle time
+    var hrBpmAvg5m: Double? = null,                  // duration-weighted average over last 5 min
+    var hrBpmAvg15m: Double? = null,                 // duration-weighted average over last 15 min
+    var hrReadingsCount15m: Int? = null,             // number of HR records seen in 15-min window
+    var sleepState: String? = null,                  // AWAKE | PRE_SLEEP | SLEEPING
+    var sleepStateEnteredAtMs: Long? = null,         // when current sleep state was entered (UTC ms)
+
     // Boost ISF shadow telemetry — V4.4.2-style TDD-anchored EMA(τ=3h) sensitivity ratio
     // computed in parallel with V1/V2's instantaneous ratio so the EMA overlay's actual
     // contribution can be measured without changing dosing.

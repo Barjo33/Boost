@@ -1103,6 +1103,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 val nightEndMin = parseTimeToMinutesOfDay(preferences.get(StringKey.ApsBoostNightModeEnd))
                 val nowLocal = java.time.LocalTime.now()
                 val minOfDay = nowLocal.hour * 60 + nowLocal.minute
+                // 30-min window for HR — sufficient for both 5-min and 15-min avgs and sleep eval.
                 val hrReadingsForSleep = persistenceLayer.getHeartRatesFromTime(now - 30 * 60_000L)
                 val sleepResult = SleepStateDetector.evaluate(
                     prev = sleepStateCached,
@@ -1127,7 +1128,23 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     preferences.put(StringKey.ApsBoostSleepState, sleepResult.newState.serialize())
                     aapsLogger.debug(LTag.APS, "Sleep state transitioned → ${sleepResult.newState.state} (${sleepResult.debug})")
                 }
-                // Telemetry: emit current sleep state into rT.reason so it shows on NS
+
+                // ── NS upload: HR + sleep telemetry ─────────────────────────────
+                // Emit into rT so the existing devicestatus uploader picks them up.
+                it.sleepState = sleepResult.newState.state.name
+                it.sleepStateEnteredAtMs = sleepResult.newState.enteredAtMs.takeIf { v -> v > 0 }
+                val latestHr = hrReadingsForSleep.maxByOrNull { hr -> hr.timestamp }
+                if (latestHr != null && latestHr.isValid) {
+                    it.hrBpmLatest = Round.roundTo(latestHr.beatsPerMinute, 0.1)
+                }
+                val avg5 = SleepStateDetector.averageHr(hrReadingsForSleep, now, 5)
+                val avg15 = SleepStateDetector.averageHr(hrReadingsForSleep, now, 15)
+                if (avg5 != null) it.hrBpmAvg5m = Round.roundTo(avg5, 0.1)
+                if (avg15 != null) it.hrBpmAvg15m = Round.roundTo(avg15, 0.1)
+                it.hrReadingsCount15m = hrReadingsForSleep.count { hr ->
+                    hr.isValid && hr.timestamp > now - 15 * 60_000L
+                }
+
                 it.reason.append("sleep=${sleepResult.newState.state}; ")
             } catch (t: Throwable) {
                 aapsLogger.error(LTag.APS, "Sleep state evaluation failed", t)
