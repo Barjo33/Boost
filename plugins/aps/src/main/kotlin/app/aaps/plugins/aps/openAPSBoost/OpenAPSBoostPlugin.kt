@@ -517,7 +517,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
                         nowMillis = now,
                         hrWindowMinutes = hrWindowMinutes,
                         hrMax = hrMaxBpm,
-                        hrResting = hrRestingBpm,
+                        // Use learned daytime baseline if banked (≥7 nights); fallback to configured.
+                        // This gives a more accurate Karvonen HRR for exercise classification.
+                        hrResting = hrLearnedDaytimeBpmCached ?: hrRestingBpm,
                         stepsLast15Min = recentSteps15Min,
                         stressDetection = hrStressDetection,
                         aapsLogger = aapsLogger,
@@ -1116,6 +1118,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 val agg = SleepHistoryTracker.aggregate(sleepHistoryCached, localOffsetMs)
                 val effectiveNightStartMin = agg.sleepStartMinAvg ?: configuredNightStartMin
                 val effectiveNightEndMin = agg.wakeMinAvg ?: configuredNightEndMin
+                // Learned resting HR (sleep p10 median, ≥7 sessions) overrides the configured static value
+                // for sleep state evaluation; fallback is the existing user-set hrRestingBpm.
+                val effectiveHrResting = agg.restingHrBpm ?: hrRestingBpm
 
                 // 30-min window for HR — sufficient for both 5-min and 15-min avgs and sleep eval.
                 val hrReadingsForSleep = persistenceLayer.getHeartRatesFromTime(now - 30 * 60_000L)
@@ -1126,7 +1131,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
                         minuteOfDay = minOfDay,
                         hrReadings = hrReadingsForSleep,
                         hrWindowMinutes = 5,
-                        hrResting = hrRestingBpm,
+                        hrResting = effectiveHrResting,
                         stepsLast15Min = recentSteps15Min,
                         mlMealLikely = it.mlMealLikely,
                         nightStartMin = effectiveNightStartMin,
@@ -1153,7 +1158,25 @@ open class OpenAPSBoostPlugin @Inject constructor(
                         }
                         prevSleepState == SleepStateDetector.SleepState.SLEEPING &&
                             newState != SleepStateDetector.SleepState.SLEEPING -> {
-                            sleepHistoryCached = SleepHistoryTracker.onWake(sleepHistoryCached, now)
+                            // Fetch HR over the just-ended sleep period for restingHrP10
+                            val sleepStartMs = sleepHistoryCached.openSleepStartMs ?: 0L
+                            val sleepHrSamples = if (sleepStartMs > 0) {
+                                persistenceLayer.getHeartRatesFromTimeToTime(sleepStartMs, now)
+                                    .filter { hr -> hr.isValid && hr.beatsPerMinute > 0 }
+                                    .map { hr -> hr.beatsPerMinute }
+                            } else emptyList()
+                            // Fetch HR over the awake period preceding this sleep for daytimeHrP10
+                            val priorWakeMs = SleepHistoryTracker.lastWakeMs(sleepHistoryCached)
+                            val daytimeHrSamples = if (priorWakeMs != null && sleepStartMs > priorWakeMs) {
+                                persistenceLayer.getHeartRatesFromTimeToTime(priorWakeMs, sleepStartMs)
+                                    .filter { hr -> hr.isValid && hr.beatsPerMinute > 0 }
+                                    .map { hr -> hr.beatsPerMinute }
+                            } else emptyList()
+                            sleepHistoryCached = SleepHistoryTracker.onWake(
+                                sleepHistoryCached, now,
+                                sleepHrBpms = sleepHrSamples,
+                                daytimeHrBpms = daytimeHrSamples
+                            )
                             true
                         }
                         else -> false
@@ -1170,6 +1193,10 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 it.sleepLearnedWakeMin = agg.wakeMinAvg
                 it.sleepLearnedDurationMin = agg.sleepDurationMinAvg
                 it.sleepLearnedSessionCount = agg.sessionCount
+                it.hrLearnedRestingBpm = agg.restingHrBpm
+                it.hrLearnedDaytimeBpm = agg.daytimeHrBpm
+                // Update cache for next cycle's HrActivityCalculator.classify call
+                hrLearnedDaytimeBpmCached = agg.daytimeHrBpm
                 val latestHr = hrReadingsForSleep.maxByOrNull { hr -> hr.timestamp }
                 if (latestHr != null && latestHr.isValid) {
                     it.hrBpmLatest = Round.roundTo(latestHr.beatsPerMinute, 0.1)
@@ -1269,6 +1296,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
         SleepStateDetector.State.deserialize(preferences.get(StringKey.ApsBoostSleepState))
     @Volatile private var sleepHistoryCached: SleepHistoryTracker.History =
         SleepHistoryTracker.History.deserialize(preferences.get(StringKey.ApsBoostSleepHistory))
+    // Cached learned daytime baseline (used by HrActivityCalculator in current cycle from prior
+    // cycle's aggregate computation — 5-min lag is acceptable, baseline changes slowly).
+    @Volatile private var hrLearnedDaytimeBpmCached: Int? = null
 
     private fun isNightModeActive(): Boolean {
         val currentTimeMillis = System.currentTimeMillis()

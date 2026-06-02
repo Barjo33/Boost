@@ -37,8 +37,21 @@ object SleepHistoryTracker {
     private const val WINDOW_MS = WINDOW_DAYS * 24L * 60L * 60L * 1000L
     private const val MIN_SESSIONS_FOR_LEARNED = 7
 
-    /** A closed sleep session. */
-    data class Session(val sleepStartMs: Long, val wakeMs: Long)
+    /**
+     * A closed sleep session.
+     *
+     * @param sleepHrP10      p10 of HR samples during the sleep period (null if insufficient data) —
+     *                        approximates true resting HR (deep sleep floor)
+     * @param daytimeHrP10    p10 of HR samples during the preceding awake period (null if no
+     *                        previous session or insufficient data) — active baseline used for
+     *                        exercise classification
+     */
+    data class Session(
+        val sleepStartMs: Long,
+        val wakeMs: Long,
+        val sleepHrP10: Int? = null,
+        val daytimeHrP10: Int? = null
+    )
 
     /**
      * Carrier struct persisted to SharedPreferences.
@@ -53,7 +66,12 @@ object SleepHistoryTracker {
         fun serialize(): String {
             val arr = JSONArray()
             for (s in sessions) {
-                arr.put(JSONObject().put("sleepStartMs", s.sleepStartMs).put("wakeMs", s.wakeMs))
+                val o = JSONObject()
+                    .put("sleepStartMs", s.sleepStartMs)
+                    .put("wakeMs", s.wakeMs)
+                if (s.sleepHrP10 != null) o.put("sleepHrP10", s.sleepHrP10)
+                if (s.daytimeHrP10 != null) o.put("daytimeHrP10", s.daytimeHrP10)
+                arr.put(o)
             }
             return JSONObject()
                 .put("sessions", arr)
@@ -70,7 +88,12 @@ object SleepHistoryTracker {
                     val list = mutableListOf<Session>()
                     for (i in 0 until arr.length()) {
                         val o = arr.getJSONObject(i)
-                        list.add(Session(o.getLong("sleepStartMs"), o.getLong("wakeMs")))
+                        list.add(Session(
+                            sleepStartMs = o.getLong("sleepStartMs"),
+                            wakeMs = o.getLong("wakeMs"),
+                            sleepHrP10 = if (o.has("sleepHrP10")) o.getInt("sleepHrP10") else null,
+                            daytimeHrP10 = if (o.has("daytimeHrP10")) o.getInt("daytimeHrP10") else null
+                        ))
                     }
                     val openVal = j.opt("openSleepStartMs")
                     val open = if (openVal == null || openVal == JSONObject.NULL) null else (openVal as Number).toLong()
@@ -85,16 +108,24 @@ object SleepHistoryTracker {
     /**
      * Aggregate metrics from the rolling history.
      *
-     * @param sleepStartMinAvg  Circular-mean clock-minute of sleep onset (0..1439), null if insufficient data
-     * @param wakeMinAvg        Circular-mean clock-minute of wake (0..1439), null if insufficient data
-     * @param sleepDurationMinAvg  Mean sleep duration in minutes, null if insufficient data
-     * @param sessionCount      Number of closed sessions inside the 28-day window
+     * @param sleepStartMinAvg      Circular-mean clock-minute of sleep onset (0..1439), null if insufficient data
+     * @param wakeMinAvg            Circular-mean clock-minute of wake (0..1439), null if insufficient data
+     * @param sleepDurationMinAvg   Mean sleep duration in minutes, null if insufficient data
+     * @param sessionCount          Number of closed sessions inside the 28-day window
+     * @param restingHrBpm          Median of per-session sleepHrP10 — true resting HR. null if insufficient data.
+     * @param daytimeHrBpm          Median of per-session daytimeHrP10 — active baseline (for exercise calcs). null if insufficient data.
+     * @param restingHrSampleCount  Number of sessions contributing non-null sleepHrP10
+     * @param daytimeHrSampleCount  Number of sessions contributing non-null daytimeHrP10
      */
     data class Aggregate(
         val sleepStartMinAvg: Int?,
         val wakeMinAvg: Int?,
         val sleepDurationMinAvg: Int?,
-        val sessionCount: Int
+        val sessionCount: Int,
+        val restingHrBpm: Int? = null,
+        val daytimeHrBpm: Int? = null,
+        val restingHrSampleCount: Int = 0,
+        val daytimeHrSampleCount: Int = 0
     )
 
     /** Called by the plugin when SleepStateDetector transitions AWAKE→SLEEPING. */
@@ -105,22 +136,55 @@ object SleepHistoryTracker {
     /**
      * Called by the plugin when SleepStateDetector transitions SLEEPING→AWAKE. Closes the
      * open session, appends to history, and trims old sessions outside the rolling window.
+     *
+     * @param sleepHrBpms     HR samples (BPM) collected during the just-ended sleep period.
+     *                        Used to compute sleepHrP10. Pass empty list if unavailable.
+     * @param daytimeHrBpms   HR samples (BPM) collected during the awake period BEFORE this
+     *                        sleep (since the previous session's wakeMs). Used to compute
+     *                        daytimeHrP10. Pass empty list if no prior session.
+     *
      * Returns the updated history (caller persists).
      */
-    fun onWake(h: History, wakeMs: Long): History {
+    fun onWake(
+        h: History,
+        wakeMs: Long,
+        sleepHrBpms: List<Double> = emptyList(),
+        daytimeHrBpms: List<Double> = emptyList()
+    ): History {
         val open = h.openSleepStartMs ?: return h.copy()      // no open session; nothing to do
         val newSessions = h.sessions.toMutableList()
-        newSessions.add(Session(open, wakeMs))
+        newSessions.add(
+            Session(
+                sleepStartMs = open,
+                wakeMs = wakeMs,
+                sleepHrP10 = p10(sleepHrBpms),
+                daytimeHrP10 = p10(daytimeHrBpms)
+            )
+        )
         // Trim sessions whose start is older than the rolling window
         val cutoff = wakeMs - WINDOW_MS
         newSessions.removeAll { it.sleepStartMs < cutoff }
         return History(newSessions, openSleepStartMs = null)
     }
 
+    /** Returns wakeMs of the latest closed session, or null if none. Plugin uses this to bound the daytime window. */
+    fun lastWakeMs(h: History): Long? = h.sessions.maxByOrNull { it.wakeMs }?.wakeMs
+
     /** Compute aggregates over the rolling window. */
     fun aggregate(h: History, localOffsetMs: Long): Aggregate {
+        val restingHrSamples = h.sessions.mapNotNull { it.sleepHrP10 }
+        val daytimeHrSamples = h.sessions.mapNotNull { it.daytimeHrP10 }
+        val restingHr = if (restingHrSamples.size >= MIN_SESSIONS_FOR_LEARNED) median(restingHrSamples) else null
+        val daytimeHr = if (daytimeHrSamples.size >= MIN_SESSIONS_FOR_LEARNED) median(daytimeHrSamples) else null
+
         if (h.sessions.size < MIN_SESSIONS_FOR_LEARNED) {
-            return Aggregate(null, null, null, h.sessions.size)
+            return Aggregate(
+                sleepStartMinAvg = null, wakeMinAvg = null,
+                sleepDurationMinAvg = null, sessionCount = h.sessions.size,
+                restingHrBpm = restingHr, daytimeHrBpm = daytimeHr,
+                restingHrSampleCount = restingHrSamples.size,
+                daytimeHrSampleCount = daytimeHrSamples.size
+            )
         }
         val sleepStartMin = h.sessions.map { msToMinOfDay(it.sleepStartMs, localOffsetMs) }
         val wakeMin = h.sessions.map { msToMinOfDay(it.wakeMs, localOffsetMs) }
@@ -129,8 +193,34 @@ object SleepHistoryTracker {
             sleepStartMinAvg = circularMean(sleepStartMin),
             wakeMinAvg = circularMean(wakeMin),
             sleepDurationMinAvg = if (durations.isNotEmpty()) durations.sum() / durations.size else null,
-            sessionCount = h.sessions.size
+            sessionCount = h.sessions.size,
+            restingHrBpm = restingHr,
+            daytimeHrBpm = daytimeHr,
+            restingHrSampleCount = restingHrSamples.size,
+            daytimeHrSampleCount = daytimeHrSamples.size
         )
+    }
+
+    /**
+     * Compute the p10 (10th percentile) of a list of HR values (BPM). Returns null when the
+     * sample is too small to be representative (< [minSamples]).
+     *
+     * Used at session-close time to summarise a sleep period's "deep-sleep floor" or an
+     * awake period's "active baseline" in a single robust statistic.
+     */
+    fun p10(values: List<Double>, minSamples: Int = 30): Int? {
+        val valid = values.filter { it.isFinite() && it > 0 }
+        if (valid.size < minSamples) return null
+        val sorted = valid.sorted()
+        val idx = ((sorted.size - 1) * 0.10).toInt().coerceIn(0, sorted.size - 1)
+        return sorted[idx].toInt()
+    }
+
+    /** Integer median (lower of two middles for even-count). */
+    private fun median(values: List<Int>): Int? {
+        if (values.isEmpty()) return null
+        val sorted = values.sorted()
+        return sorted[sorted.size / 2]
     }
 
     /**

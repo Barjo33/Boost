@@ -110,6 +110,9 @@ data class RT(
     var sleepLearnedWakeMin: Int? = null,            // circular-mean wake clock-min (0..1439)
     var sleepLearnedDurationMin: Int? = null,        // mean sleep duration (min)
     var sleepLearnedSessionCount: Int? = null,       // sessions in 28-day window
+    // Learned HR baselines (median of per-session p10, ≥7 valid sessions)
+    var hrLearnedRestingBpm: Int? = null,            // true resting (deep-sleep floor)
+    var hrLearnedDaytimeBpm: Int? = null,            // active-baseline (used by exercise calcs)
 
     // Boost ISF shadow telemetry — V4.4.2-style TDD-anchored EMA(τ=3h) sensitivity ratio
     // computed in parallel with V1/V2's instantaneous ratio so the EMA overlay's actual
