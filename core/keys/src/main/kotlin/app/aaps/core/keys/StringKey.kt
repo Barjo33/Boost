@@ -71,4 +71,7 @@ enum class StringKey(
     // ISF shadow persisted state (JSON blob: EMA value + timestamps for warmup computation)
     // Used by BoostIsfShadow to persist EMA(τ=3h) sensitivity ratio across plugin restarts.
     ApsBoostIsfShadowState("boost_isf_shadow_state", "", defaultedBySM = true),
+
+    // Sleep state machine persisted state (JSON blob: SleepState, hysteresis counters, entry ts)
+    ApsBoostSleepState("boost_sleep_state", "", defaultedBySM = true),
 }

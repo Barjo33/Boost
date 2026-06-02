@@ -679,6 +679,10 @@ open class OpenAPSBoostPlugin @Inject constructor(
         }
     }
 
+    /** Returns minute-of-day [0..1439] for a "HH:mm" or "H:mm" string. Defaults to 0 on parse error. */
+    private fun parseTimeToMinutesOfDay(timeStr: String): Int =
+        (parseTimeToMillis(timeStr) / 60_000L).toInt()
+
     // ---- Main invoke ----
 
     override fun invoke(initiator: String, tempBasalFallback: Boolean) {
@@ -1089,6 +1093,45 @@ open class OpenAPSBoostPlugin @Inject constructor(
             } catch (t: Throwable) {
                 aapsLogger.error(LTag.APS, "V5 shadow invocation failed", t)
             }
+
+            // 2026-06-02: Sleep state evaluation. Runs at end of invoke so we have
+            // mlMealLikely from this cycle. State persists across plugin restarts via
+            // StringKey.ApsBoostSleepState. Updates sleepStateCached so the next
+            // isNightModeActive() call sees the fresh state.
+            try {
+                val nightStartMin = parseTimeToMinutesOfDay(preferences.get(StringKey.ApsBoostNightModeStart))
+                val nightEndMin = parseTimeToMinutesOfDay(preferences.get(StringKey.ApsBoostNightModeEnd))
+                val nowLocal = java.time.LocalTime.now()
+                val minOfDay = nowLocal.hour * 60 + nowLocal.minute
+                val hrReadingsForSleep = persistenceLayer.getHeartRatesFromTime(now - 30 * 60_000L)
+                val sleepResult = SleepStateDetector.evaluate(
+                    prev = sleepStateCached,
+                    inputs = SleepStateDetector.Inputs(
+                        nowMs = now,
+                        minuteOfDay = minOfDay,
+                        hrReadings = hrReadingsForSleep,
+                        hrWindowMinutes = 5,
+                        hrResting = hrRestingBpm,
+                        stepsLast15Min = recentSteps15Min,
+                        mlMealLikely = it.mlMealLikely,
+                        nightStartMin = nightStartMin,
+                        nightEndMin = nightEndMin,
+                        preSleepLeadMin = preferences.get(IntKey.ApsBoostPreSleepLeadMin),
+                        minSleepHysteresisMin = preferences.get(IntKey.ApsBoostSleepHysteresisMin),
+                        wakeHrHysteresisMin = preferences.get(IntKey.ApsBoostWakeHrHysteresisMin)
+                    ),
+                    aapsLogger = aapsLogger
+                )
+                sleepStateCached = sleepResult.newState
+                if (sleepResult.transitioned) {
+                    preferences.put(StringKey.ApsBoostSleepState, sleepResult.newState.serialize())
+                    aapsLogger.debug(LTag.APS, "Sleep state transitioned → ${sleepResult.newState.state} (${sleepResult.debug})")
+                }
+                // Telemetry: emit current sleep state into rT.reason so it shows on NS
+                it.reason.append("sleep=${sleepResult.newState.state}; ")
+            } catch (t: Throwable) {
+                aapsLogger.error(LTag.APS, "Sleep state evaluation failed", t)
+            }
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints
             determineBasalResult.autosensResult = autosensResult
@@ -1161,6 +1204,12 @@ open class OpenAPSBoostPlugin @Inject constructor(
     private var lastNightModeRun: Long = 0
     private var lastNightModeResult: Boolean = false
 
+    // ---- Sleep state (2026-06-02) ----
+    // Updated at end of invoke() once HR + steps + mlMealLikely are known. Read by
+    // isNightModeActiveImpl() when ApsBoostNightModeAutoBySleep is enabled.
+    @Volatile private var sleepStateCached: SleepStateDetector.State =
+        SleepStateDetector.State.deserialize(preferences.get(StringKey.ApsBoostSleepState))
+
     private fun isNightModeActive(): Boolean {
         val currentTimeMillis = System.currentTimeMillis()
         val timeAligned = currentTimeMillis - (currentTimeMillis % 1000)
@@ -1184,7 +1233,14 @@ open class OpenAPSBoostPlugin @Inject constructor(
         val active = if (end > start) now in start until end
         else (now in (start - 86400000) until end || now in start until (end + 86400000))
 
-        if (!active) return false
+        // 2026-06-02 HYBRID: when ApsBoostNightModeAutoBySleep is on, sleep state can both
+        // EXTEND the active window (still SLEEPING past nightEnd) and ENABLE it early
+        // (PRE_SLEEP within the lead window, or SLEEPING during the outer window). When
+        // off, behaviour is the legacy time-window check.
+        val autoBySleep = preferences.get(BooleanKey.ApsBoostNightModeAutoBySleep)
+        val sleepActive = autoBySleep && sleepStateCached.state != SleepStateDetector.SleepState.AWAKE
+
+        if (!active && !sleepActive) return false
 
         // Disable night mode when COB > 0
         if (preferences.get(BooleanKey.ApsBoostNightModeDisableWithCob)) {

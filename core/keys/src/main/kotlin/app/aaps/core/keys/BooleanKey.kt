@@ -75,6 +75,10 @@ enum class BooleanKey(
     ApsBoostNightModeEnabled("boost_night_mode_enabled", false, defaultedBySM = true),
     ApsBoostNightModeDisableWithCob("boost_night_mode_disable_with_cob", false, defaultedBySM = true),
     ApsBoostNightModeDisableWithLowTt("boost_night_mode_disable_with_low_tt", false, defaultedBySM = true),
+    // Sleep detection hybrid (2026-06-02): when on, sleep state (HR + steps + clock) drives
+    // night mode in HYBRID with the existing time window. PRE_SLEEP also engages night-mode
+    // SMB suppression early so the user doesn't carry excess IOB into the night.
+    ApsBoostNightModeAutoBySleep("boost_night_mode_auto_by_sleep", false, defaultedBySM = true),
     ApsBoostBypassVersionCheck("boost_bypass_version_check", false, defaultedBySM = true),
     ApsBoostPostExerciseRecoveryEnabled("boost_post_exercise_recovery_enabled", false, defaultedBySM = true),
     ApsBoostHrIntegrationEnabled("boost_hr_integration_enabled", false, defaultedBySM = true),
