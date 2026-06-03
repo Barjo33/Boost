@@ -6,7 +6,7 @@ import app.aaps.plugins.aps.loop.LoopPlugin
 import app.aaps.plugins.aps.openAPSAMA.OpenAPSAMAPlugin
 import app.aaps.plugins.aps.openAPSAutoISF.OpenAPSAutoISFPlugin
 import app.aaps.plugins.aps.openAPSBoost.OpenAPSBoostPlugin
-import app.aaps.plugins.aps.openAPSBoostV2.OpenAPSBoostV2Plugin
+// import app.aaps.plugins.aps.openAPSBoostV2.OpenAPSBoostV2Plugin  // V2 disabled 2026-06-03
 import app.aaps.plugins.aps.openAPSSMB.OpenAPSSMBPlugin
 import app.aaps.plugins.automation.AutomationPlugin
 import app.aaps.plugins.configuration.configBuilder.ConfigBuilderPlugin
@@ -275,11 +275,10 @@ abstract class PluginsListModule {
     @IntKey(230)
     abstract fun bindOpenAPSBoostPlugin(plugin: OpenAPSBoostPlugin): PluginBase
 
-    @Binds
-    @AllConfigs
-    @IntoMap
-    @IntKey(235)
-    abstract fun bindOpenAPSBoostV2Plugin(plugin: OpenAPSBoostV2Plugin): PluginBase
+    // V2 disabled 2026-06-03 — superseded by V3 / V3MLG3; binding removed so V2 is
+    // not registered with the plugin manager and does not appear in the UI.
+    // @Binds @AllConfigs @IntoMap @IntKey(235)
+    // abstract fun bindOpenAPSBoostV2Plugin(plugin: OpenAPSBoostV2Plugin): PluginBase
 
     @Binds
     @AllConfigs

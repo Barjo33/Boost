@@ -1,4 +1,4 @@
-# AndroidAPS - Boost V2
+# AndroidAPS - Boost
 
 * Check the wiki: https://wiki.aaps.app
 * Everyone who's been looping with AndroidAPS needs to fill out the form after 3 days of looping https://docs.google.com/forms/d/14KcMjlINPMJHVt28MDRupa4sz4DDIooI4SrW0P3HSN8/viewform?c=0&w=1
@@ -7,13 +7,9 @@
 
 [![Support Server](https://img.shields.io/discord/629952586895851530.svg?label=Discord&logo=Discord&colorB=7289da&style=for-the-badge)](https://discord.gg/aUzQ8q5zQd)
 
-***Boost and Boost V2 based on AAPS 3.4.2.1***
+***Boost based on AAPS 3.4.2.1***
 
-Boost V2 is a variant of the Boost plugin that uses **Chris Wilson's DynISF V2 formula** for ISF calculation.
-
-> ⚠️ **Boost V2 is not ready for live use.** Do not use Boost V2 as your active APS plugin. It should only be run **in parallel** alongside the standard Boost plugin (via Config Builder) on a development or secondary phone so that you can compare its loop outputs and logs against Boost before any consideration of switching. No live dosing decisions should be based on Boost V2 at this stage.
-
-All Boost-specific settings, including Dynamic ISF, Night Mode, and Step Counting, are now consolidated within the Boost and Boost V2 preferences screen as sub-screens.
+All Boost-specific settings, including Dynamic ISF, Night Mode, and Step Counting, are consolidated within the Boost preferences screen as sub-screens.
 
 This release also includes a **new Boost Overview UI** — a redesigned home screen tailored for Boost users, with at-a-glance algorithm status, larger graphs, and tappable detail panels. See the [Boost Overview UI](#boost-overview-ui) section below.
 
@@ -25,7 +21,7 @@ This release also includes a **new Boost Overview UI** — a redesigned home scr
 
 ### Calibration SMB Block
 
-When a CGM calibration is detected, Boost and Boost V2 now automatically suppress SMBs for 15 minutes. Calibration can cause the sensor to temporarily report erratic or inaccurate glucose values, making the algorithm's decisions unreliable during the stabilisation period. The block applies only to SMBs — temp basal adjustments continue normally throughout.
+When a CGM calibration is detected, Boost now automatically suppress SMBs for 15 minutes. Calibration can cause the sensor to temporarily report erratic or inaccurate glucose values, making the algorithm's decisions unreliable during the stabilisation period. The block applies only to SMBs — temp basal adjustments continue normally throughout.
 
 Calibrations are detected from two sources: native CGM sources (Dexcom, Glunovo, Intelligo) that insert a `FINGER_STICK_BG_VALUE` therapy event into AAPS, and the AAPS Calibration dialog when a value is confirmed. Calibrations performed directly within xDrip+ and not entered via AAPS are invisible to the system and cannot be detected.
 
@@ -35,7 +31,7 @@ No settings are required. The block is always active and cannot be disabled.
 
 ### Post-Exercise Recovery Mode
 
-After exercise ends, Boost and Boost V2 can automatically set a recovery TempTarget and reduce SMB aggressiveness for a configurable period. Post-exercise hypoglycaemia is one of the most common risks in closed-loop T1D management: glucose uptake by exercised muscle continues for up to two hours after aerobic exercise stops (immediate risk), and glycogen replenishment drives ongoing glucose uptake overnight (delayed risk).
+After exercise ends, Boost can automatically set a recovery TempTarget and reduce SMB aggressiveness for a configurable period. Post-exercise hypoglycaemia is one of the most common risks in closed-loop T1D management: glucose uptake by exercised muscle continues for up to two hours after aerobic exercise stops (immediate risk), and glycogen replenishment drives ongoing glucose uptake overnight (delayed risk).
 
 **How it works:**
 
@@ -60,7 +56,7 @@ All four values are user-configurable in the **Post-Exercise Recovery** sub-scre
 
 ### Heart Rate Integration
 
-Boost and Boost V2 can now use heart rate data alongside step counts for more accurate exercise detection and classification. Steps alone cannot detect resistance training (low steps, elevated HR), stress/illness (elevated HR without movement), or distinguish vigorous aerobic exercise from a brisk walk.
+Boost can now use heart rate data alongside step counts for more accurate exercise detection and classification. Steps alone cannot detect resistance training (low steps, elevated HR), stress/illness (elevated HR without movement), or distinguish vigorous aerobic exercise from a brisk walk.
 
 Heart rate data is read from AAPS's built-in HR recording mechanism (populated by paired watches/wearables). Each reading is a 1-minute duration-weighted average of beats per minute stored in the AAPS database.
 
@@ -136,7 +132,7 @@ Several improvements to how Boost detects and responds to exercise:
 
 When fast-acting carbohydrates are eaten to treat a low (a rescue carb event), the subsequent glucose rise can look identical to an unannounced meal from the algorithm's perspective — rapid rise, no COB entry, high UAM boost factors. Without a logged carb entry, Boost would previously fire its aggressive UAM and acceleration tiers during this recovery, risking insulin stacking onto what is actually a carb-driven rebound.
 
-This release adds fast-carb rebound detection to both Boost and Boost V2. Each loop cycle, AAPS computes the minimum CGM reading over the last 60 minutes (`recentLowBG`) and passes it to the dosing algorithm. If the following conditions are all true simultaneously, the algorithm concludes a fast-carb rescue rebound is in progress:
+This release adds fast-carb rebound detection to both Boost. Each loop cycle, AAPS computes the minimum CGM reading over the last 60 minutes (`recentLowBG`) and passes it to the dosing algorithm. If the following conditions are all true simultaneously, the algorithm concludes a fast-carb rescue rebound is in progress:
 
 - `recentLowBG` was below 100 mg/dL (BG was in low-normal range within the last hour)
 - No carbs are currently logged (`mealCOB = 0`)
@@ -167,55 +163,19 @@ Two signals are used — either is sufficient, with `delta_accl > 25` and `COB =
 
 This combination was validated against a labelled dataset of 21 events (12 fast-carb, 9 meal): it correctly identified 12/12 fast-carb events (with corrected per-cycle lookback). The 3–4 false positives were all unlogged meals eaten after a low — cases the algorithm cannot distinguish from fast-carb rebounds, but where the clinical consequence (Tier 7 giving a modest dose instead of Tier 3) is lower-risk than the alternative.
 
-This protection applies to both the **Boost** and **Boost V2** plugins.
+This protection applies to the **Boost** plugin.
 
 ---
 
 ### Reorganised Settings
 
-The Boost and Boost V2 settings screens have been restructured into clearly separated expandable sections: **Default AAPS Settings**, **Boost Controls**, **Dynamic ISF Controls**, **Exercise Settings** (with nested Step Count, Heart Rate Integration, and Post-Exercise Recovery), **Night Mode**, **Safety Settings**, and **Advanced Settings**. Previously all settings were in a single flat list with a few sub-screens. See the [Settings](#settings) section below for the full layout.
+The Boost settings screens have been restructured into clearly separated expandable sections: **Default AAPS Settings**, **Boost Controls**, **Dynamic ISF Controls**, **Exercise Settings** (with nested Step Count, Heart Rate Integration, and Post-Exercise Recovery), **Night Mode**, **Safety Settings**, and **Advanced Settings**. Previously all settings were in a single flat list with a few sub-screens. See the [Settings](#settings) section below for the full layout.
 
 ---
 
 ### Boost Overview UI
 
 A new home screen designed specifically for Boost, replacing the standard AAPS Overview with a layout that puts algorithm decisions front and centre. See [Boost Overview UI](#boost-overview-ui) for full details.
-
----
-
-## What's different in Boost V2?
-
-Boost V2 replaces the DynISF calculation with a new formula. Everything else — the Boost tiers, COB handling, step counting, night mode, and all SMB sizing logic — is identical to the standard Boost plugin.
-
-**DynISF V1 (original Boost):**
-```
-ISF = 1800 / (TDD × ln(BG / insulinDivisor + 1))
-```
-The V1 formula uses a **BG impact on ISF** slider (formerly "velocity") that dampens how much BG affects the ISF adjustment. At 50%, only half the BG-driven ISF change is applied.
-
-**DynISF V2 (Boost V2):**
-```
-ISF = 2300 / (ln(BG / insulinDivisor + 1) × TDD² × 0.02)
-```
-The V2 formula squares the TDD term and uses a fixed 0.02 scaling factor. There is no velocity or dampening slider — the full BG-driven adjustment is always applied.
-
-### Key differences at a glance
-
-| | Boost (V1) | Boost V2 |
-|---|---|---|
-| **Numerator** | 1800 | 2300 |
-| **TDD term** | TDD (linear) | TDD² (squared) |
-| **BG impact dampening** | User-adjustable | None — always full effect |
-| **TDD sensitivity** | 10% TDD change ≈ 10% ISF change | 10% TDD change ≈ 21% ISF change |
-
-### Important: TDD sensitivity
-
-Because TDD is squared in the V2 formula, ISF is **much more responsive to TDD changes** than in V1. A 10% increase in TDD produces roughly a 21% decrease in ISF (more aggressive dosing). This means:
-
-* V2 will self-adjust more aggressively as your TDD changes day to day.
-* It is strongly recommended to **log-compare V1 and V2 output side by side** before running V2 live.
-* TDD data is mandatory for. If TDD data is incomplete, ISF falls back to your profile ISF.
-* **Start with an adjustment factor of 100%** and adjust from there.
 
 ---
 
@@ -271,7 +231,7 @@ The Boost Overview reads algorithm data directly from the last APS run result. F
 
 ###Dynamic ISF in Boost Plugin
 
-Dynamic ISF settings are located within the Boost and Boost V2 plugin preferences sub-screen.
+Dynamic ISF settings are located within the Boost plugin preferences sub-screen.
 
 ### Settings
 
@@ -282,43 +242,15 @@ The following settings are available in the Dynamic ISF sub-screen:
 * *DynISF normal target* — Reference BG target for the ISF calculation. Default: 99.
 * *DynISF BG cap* — BG above this value is softened to reduce ISF aggressiveness at very high BG. Default: 210.
 * *TDD adjustment factor (%)* — Scales the blended TDD value up or down before ISF calculation. This number is likely to need reducing.
-* *BG impact on ISF ** — Controls how much of the BG-driven ISF adjustment is applied. At 100%, the full logarithmic scaling is used. At lower values, the ISF is dampened toward your profile value. 
-
-###Dynamic ISF V2 in Boost2 Plugin
-
-Dynamic ISF V2 settings are located within the Boost V2 preferences under the **Dynamic ISF V2 (TDD²-based)** sub-screen. Within this, there is a switch to enable or disable TDD-based ISF calculation. If disabled, your profile ISF will be used.
-
-### Settings
-
-The following settings are available in the Dynamic ISF V2 sub-screen:
-
-* *Use TDD-based ISF* — Enable or disable TDD-based ISF calculation. When disabled, profile ISF is used directly. TDD data is required for V2 — falls back to profile ISF if data is incomplete.
-* *Adjust Sensitivity* — Adjust sensitivity ratio using 24h TDD / 7D TDD, similar to Autosens. Recommended to start with this off.
-* *DynISF normal target * — Reference BG target for the ISF calculation. Default: 99.
-* *DynISF BG cap* — BG above this value is softened to reduce ISF aggressiveness at very high BG. Default: 210.
-* *TDD adjustment factor (%)* — Scales the blended TDD value up or down before ISF calculation. **Start at 100%** and adjust from there. Do not carry over your V1 adjustment factor.
-
-Note that the **BG impact on ISF** slider from V1 is not present in V2. The full BG-driven adjustment is always applied.
+* *BG impact on ISF* — Controls how much of the BG-driven ISF adjustment is applied. At 100%, the full logarithmic scaling is used. At lower values, the ISF is dampened toward your profile value.
 
 Traditional Autosens is deprecated in this code and sensitivityRatio is calculated using 'Eight hour weighted average TDD / 7-day average TDD', if the "Adjust Sensitivity" option is selected.
-
-Boost V2 uses a similar version of DynamicISF for making predictions, however, unlike the hardcoded quanta for the different values of insulin peak, when free-peak is used, it scales between the highest and lowest values.
-
-The ISF for dosing decisions within Boost V2 is slightly different to the prediction ISF. The calculation is intended to mimic the effects of higher insulin sensitivity at lower glucose levels, and runs as follows:
-
-1. With COB and increasing deltas, use 75% of the predicted BG and 25% of the current BG.
-2. If current BG is accelerating fast, BG is below 180 mg/dl (10 mmol/l) and eventual BG is higher than current, use 50% of both eventual and current BG.
-3. If BG is above 180 mg/dl and almost flat (all deltas between -2 and +2), use 25% min predicted BG and 75% current BG.
-4. If BG is increasing and delta acceleration is above 1%, or eventual BG is greater than current BG, use current BG.
-5. If BG is not increasing, use minimum predicted BG.
-
-In V2, the dosing ISF applies the full scaler ratio with no velocity dampening. This means the ISF used for dosing will always reflect the complete BG-driven adjustment.
 
 ---
 
 ## Night Mode
 
-Night Mode is located within both the **Boost and Boost V2** preferences under the **Night Mode** sub-screen. This enables SMBs to be disabled overnight in certain circumstances. The settings are:
+Night Mode is located within both the **Boost** preferences under the **Night Mode** sub-screen. This enables SMBs to be disabled overnight in certain circumstances. The settings are:
 
 * *Enable Night Mode* — Master switch to enable or disable the feature.
 * *BG Offset* — When Night Mode is enabled, this is the value above your target at which point SMBs will be re-enabled.
@@ -338,21 +270,21 @@ The end time can run over midnight, so you can set a start time of 07:00 and an 
 
 ## Boost
 
-You can use Boost and Boost V2 when announcing carbs or without announcing carbs. With COB there is an additional piece of bolusing code that operates for the first 40 mins of COB. If you prefer to manually bolus, it fully supports that with no other code.
+You can use Boost when announcing carbs or without announcing carbs. With COB there is an additional piece of bolusing code that operates for the first 40 mins of COB. If you prefer to manually bolus, it fully supports that with no other code.
 
 It also has variable insulin percentage determined by the user, and while boost time is valid, the algorithm can bolus up to a maximum bolus defined by the user in preferences.
 
 The intention of this code is to deliver an early, larger bolus when rises are detected to initiate UAM deviations and to allow the algorithm to be more aggressive. Other than Boost, it relies on oref1 adjusted to use the variable ISF function based on TDD.
 
-All of the additional code outside of the standard SMB calculation requires a time period to be specified within which it is active. The default time settings disable the code. The time period is specified in hours using a 24 hour clock in the Boost and Boost V2 preferences section.
+All of the additional code outside of the standard SMB calculation requires a time period to be specified within which it is active. The default time settings disable the code. The time period is specified in hours using a 24 hour clock in the Boost preferences section.
 
-**COB:** ***Note: Boost and Boost V2 are not designed to be used with eCarbs. This may result in additional, unexpected bolusing. Do not use it.***
+**COB:** ***Note: Boost are not designed to be used with eCarbs. This may result in additional, unexpected bolusing. Do not use it.***
 
-With Carbs on Board, Boost and Boost V2 have a 25 minute window to deliver the equivalent of a mealtime bolus and **are allowed to go higher than your Boost Bolus Cap**, up to `InsulinRequired / insulin required percent` calculated by the oref1 algorithm, taking carbs into account. In the following period up to 40 mins after the carbs are added, it can do additional larger boluses, as long as there is a delta > 5 and COB > 0. The max allowed is the greater of the Boost Bolus Cap or the "COB cap", which is calculated as `COB / Carb Ratio`.
+With Carbs on Board, Boost have a 25 minute window to deliver the equivalent of a mealtime bolus and **are allowed to go higher than your Boost Bolus Cap**, up to `InsulinRequired / insulin required percent` calculated by the oref1 algorithm, taking carbs into account. In the following period up to 40 mins after the carbs are added, it can do additional larger boluses, as long as there is a delta > 5 and COB > 0. The max allowed is the greater of the Boost Bolus Cap or the "COB cap", which is calculated as `COB / Carb Ratio`.
 
-During normal use, you should set your Boost Bolus Cap to be the max that Boost or Boost V2 delivers when Boost is enabled and no COB are entered.
+During normal use, you should set your Boost Bolus Cap to be the max that Boost delivers when Boost is enabled and no COB are entered.
 
-Boost and Boost V2 outside the first 40 mins of COB, or with 0 COB, have six phases:
+Boost outside the first 40 mins of COB, or with 0 COB, have six phases:
 
 1. **Boost bolus (UAM Boost)**
 2. **High Boost Bolus (UAM High Boost)**
@@ -367,7 +299,7 @@ When an initial rise is detected with a meal, but no announced COB, delta, short
 
 The user defined Boost Scale Value can be used to increase the boost bolus if the user requires, however, users should be aware that this increases the risk of hypos when small rises occur.
 
-Both Boost and Boost V2 use the percent scale value to increase the early bolus size.
+Both Boost use the percent scale value to increase the early bolus size.
 
 If **Boost Scale Value** is less than 3, Boost is enabled.
 
@@ -379,7 +311,7 @@ If glucose levels are above 180 mg/dl (10 mmol/l), and glucose acceleration is g
 
 ### Boost Percentage Scale
 
-Boost Percentage Scale is a feature that allows Boost V2 to scale the SMB from a user entered multiple of insulin required at 108 mg/dl (6 mmol/l) to the user entered *Boost insulin required percent* at 180 mg/dl (10 mmol/l). It can be enabled via a switch in the preferences. It is only active when [Delta - Short Average Delta] is positive, meaning that it only happens when delta variation is accelerating.
+Boost Percentage Scale is a feature that allows Boost to scale the SMB from a user entered multiple of insulin required at 108 mg/dl (6 mmol/l) to the user entered *Boost insulin required percent* at 180 mg/dl (10 mmol/l). It can be enabled via a switch in the preferences. It is only active when [Delta - Short Average Delta] is positive, meaning that it only happens when delta variation is accelerating.
 
 ### Acceleration Bolus
 
@@ -403,7 +335,7 @@ Enhanced oref1 only fires when deltas are increasing above a rate of 0.5%. This 
 
 ## Settings
 
-The **Boost and Boost V2** settings share the following configuration. Note that the default settings are designed to disable most of the functions, and you will need to adjust them.
+The **Boost** settings share the following configuration. Note that the default settings are designed to disable most of the functions, and you will need to adjust them.
 
 For a detailed walkthrough of how each setting affects dosing across the Boost tier system, see the **[Boost Tuning Guide](https://tim2000s.github.io/Boost-in-AAPS_3.4/boost_tuning_guide.html)**. The guide explains the relationship between settings with scenario-based examples.
 
@@ -440,26 +372,24 @@ The settings with the largest effect on post prandial outcomes are *Boost insuli
 
 *Percent scale factor* — This is the max amount that the Boost and Percent Scale functions can multiply the insulin required by at lower glucose levels. A larger number here leads to more insulin.
 
-*SMBMinutes settings* — When there is no longer any acceleration in glucose delta values, the algorithm reverts to standard oref1 code and uses SMBminutes values as its max SMB size. When using Boost or Boost V2 these values should generally be set to less than the default 30 mins. A max of 15 or 20 is usually best.
+*SMBMinutes settings* — When there is no longer any acceleration in glucose delta values, the algorithm reverts to standard oref1 code and uses SMBminutes values as its max SMB size. When using Boost these values should generally be set to less than the default 30 mins. A max of 15 or 20 is usually best.
 
 **Recommended Settings**
 
-Start with the same settings as Boost V1. Because the V2 formula amplifies TDD changes, you may find V2 doses more aggressively on days with higher TDD and less aggressively on lower TDD days. Monitor closely and adjust as needed.
-
-* *TDD adjustment factor* — **Start at 100%**. This is the most important setting to get right first. Increase if V2 is under-dosing, decrease if over-dosing. Small changes (5–10%) have a meaningful effect due to the squared TDD term.
+* *TDD adjustment factor* — **Start at 100%**. This is the most important setting to get right first. Increase if under-dosing, decrease if over-dosing.
 * *Boost Bolus Cap* — Start at 2.5% of TDD and increase to no more than 15% of 7 day average total daily dose.
 * *Percent scale factor* — Once you are familiar with the percentage scale factor, the values can be increased up to 500% with associated increase in hypo risk with rises that are not linked to food.
 * *UAM Boost max IOB* — Start at 5% of TDD and be aware that max IOB is a safety feature, and higher values create greater risk of hypo.
 * *Max Minutes of basal to limit SMB to* — 15 mins. This controls the maximum SMB size when Boost is not active. 15 mins is recommended; higher values allow larger SMBs outside Boost hours.
 * *Max minutes of basal to limit SMB to for UAM* — 20 mins. This is only used overnight when IOB is large enough to trigger UAM, so it doesn't need to be a large value.
 * *Boost insulin required percent* — Recommended not to exceed 75%. Start at 50% and increase as necessary.
-* *Target* — Set a target of 120 mg/dl (6.5 mmol/l) to get started with Boost or Boost V2. This provides a cushion as you adjust settings. Values below 100 mg/dl (5.5 mmol/l) are not recommended.
+* *Target* — Set a target of 120 mg/dl (6.5 mmol/l) to get started with Boost. This provides a cushion as you adjust settings. Values below 100 mg/dl (5.5 mmol/l) are not recommended.
 
 ---
 
 ## Post-Exercise Recovery Settings
 
-Located in the **Post-Exercise Recovery** sub-screen within Boost and Boost V2 preferences.
+Located in the **Post-Exercise Recovery** sub-screen within Boost preferences.
 
 * *Enable Post-Exercise Recovery* — Master switch. When off, no recovery TempTarget or SMB reduction is applied.
 * *Recovery window (hours)* — How long the recovery window lasts after exercise ends. Default: 2 hours. Range: 0.5–8 hours. When HR integration is enabled, this is used as the baseline and multiplied per exercise type.
@@ -471,7 +401,7 @@ Located in the **Post-Exercise Recovery** sub-screen within Boost and Boost V2 p
 
 ## Heart Rate Integration Settings
 
-Located in the **Heart Rate Integration** sub-screen within Boost and Boost V2 preferences.
+Located in the **Heart Rate Integration** sub-screen within Boost preferences.
 
 Requires a Wear OS or Garmin watch paired with AAPS that is recording heart rate data.
 
@@ -485,33 +415,31 @@ Requires a Wear OS or Garmin watch paired with AAPS that is recording heart rate
 
 ## Stepcount Features
 
-The three stepcount features are located in both the **Boost and Boost V2** preferences under the **Step Count Settings** sub-screen:
+The three stepcount features are located in the **Boost** preferences under the **Step Count Settings** sub-screen:
 
 1. **Inactivity Detection** — Determines when the stepcount is below a user defined limit over the previous hour, and increases basal and DynamicISF adjustment factor by a user defined percentage. The defaults are 400 steps and increase to 130%. Inactivity detection does not work when Sleep-in protection is active.
 
 2. **Sleep-in Protection** — Checks stepcount for a user defined period (in hours) after the Boost start time, and if it is below a user defined threshold, extends the time during which Boost and Percent Scale are disabled. The defaults are 2 hours and 250 steps. The maximum value for this is 18 hours. Inactivity detection doesn't work while sleep-in is active.
 
-3. **Activity Detection** — Allows a user to set the number of steps in the past 5 mins, 30 mins and hour as triggers for activity. If any of these are true, it will set a user defined lower percentage, to reduce basal and DynamicISF adjustment factor. For the five minute setting, it will wait for 15 mins to revert to non-activity. The other two settings wait for the value for the period to drop below the threshold. The defaults are 420 steps for 5 mins (which corresponds to the 5 minute activity trigger on a Garmin), 1200 for 30 mins and 1800 for 60 mins. Profile decrease is set to 80%.
+3. **Activity Detection** — Allows a user to set the number of steps in the past 5, 15, 30 and 60 minutes as triggers for activity. If any of these are true, it will set a user defined lower percentage, to reduce basal and DynamicISF adjustment factor. For the five minute setting, it will wait for 15 mins to revert to non-activity. The other windows wait for the rolling value to drop below their threshold. The defaults are 420 steps for 5 mins (which corresponds to the 5 minute activity trigger on a Garmin), 800 for 15 mins, 1200 for 30 mins, and 1800 for 60 mins. Profile decrease is set to 80%.
 
 Both activity detection settings are overridden by a percentage profile switch.
 
-There are no enable/disable buttons for these settings, however, in both activity detection settings, *if the % value is set to 100, they have no effect*. Similarly, *if the Sleep-in protection hours are set to 0, it has no effect*.
+### Disabling individual step features
+
+Each step-based feature can be turned off independently by setting its **step threshold to 0**:
+
+* **Activity Detection (5 / 15 / 30 / 60 min):** setting any individual window to `0` disables that window — the algorithm will not use it as an activity trigger. Setting **all four** to `0` disables activity detection entirely. The corresponding settings are *Activity steps 5 min*, *Activity steps 15 min*, *Activity steps 30 min*, *Activity steps 60 min*.
+* **Inactivity Detection:** setting *Inactivity steps* to `0` disables inactivity-driven profile increases (the comparison `steps < 0` can never be true for a non-negative step count).
+* **Sleep-in Protection:** setting *Sleep-in steps* to `0` disables sleep-in extension. Setting *Sleep-in hours* to `0` has the same effect.
+
+In addition, the percentage knobs still apply: if the *Activity %* or *Inactivity %* is set to `100`, the corresponding profile adjustment has no effect even when the trigger fires.
 
 ---
 
 ## BG Source Compatibility **WARNING - SAFETY RISK**
 
-There is a setting in both the **Boost and Boost V2** preferences called **"Allow all BG sources for SMBs"**. This switch allows SMBs always, regardless of BG source, across both plugins. If you are using a Libre sensor or any other source that does not natively support advanced filtering, you will need to enable this setting. Please make sure you are using a sensor collection app that is providing glucose data every five minutes, and enable at least the Average Smoothing plugin.
-
----
-
-## Running V1 and V2 side by side
-
-Boost V2 is registered as a separate plugin in AAPS. You can switch between Boost and Boost V2 in the Config Builder. Only one can be active at a time, but both are available for selection.
-
-> ⚠️ **Do not use Boost V2 for live dosing.** It is currently available for parallel observation only — run it on a development or secondary phone alongside Boost to compare log outputs. Do not make it your active plugin until it has been explicitly cleared for live use.
-
-The standalone DynISF V2 plugin can also be used independently with OpenAPSSMB if you want the updated formula without the Boost tier system.
+There is a setting in the **Boost** preferences called **"Allow all BG sources for SMBs"**. This switch allows SMBs always, regardless of BG source. If you are using a Libre sensor or any other source that does not natively support advanced filtering, you will need to enable this setting. Please make sure you are using a sensor collection app that is providing glucose data every five minutes, and enable at least the Average Smoothing plugin.
 
 ---
 

@@ -2,6 +2,10 @@
 .gradle
 /local.properties
 .DS_Store
+# Local signing keystore credentials — never commit secrets
+keystore.properties
+# Local Claude Code state — should not be in version control
+.claude/
 */jacoco.exec
 */output-metadata.json
 /build
