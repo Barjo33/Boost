@@ -92,6 +92,23 @@ data class RT(
     var boostV5_finalDose: Double? = null,       // V5's would-have-delivered SMB (U) — direct comparator to rT.units
     var boostV5_gateReduction: String? = null,   // compact summary of which Phase 3 gates fired
 
+    // HR + sleep telemetry (2026-06-02) — emitted into NS devicestatus for retrospective
+    // sleep-model tuning. Cadence = one observation per Boost cycle (~5 min).
+    var hrBpmLatest: Double? = null,                 // most recent HR reading at cycle time
+    var hrBpmAvg5m: Double? = null,                  // duration-weighted average over last 5 min
+    var hrBpmAvg15m: Double? = null,                 // duration-weighted average over last 15 min
+    var hrReadingsCount15m: Int? = null,             // number of HR records seen in 15-min window
+    var sleepState: String? = null,                  // AWAKE | PRE_SLEEP | SLEEPING
+    var sleepStateEnteredAtMs: Long? = null,         // when current sleep state was entered (UTC ms)
+    // 28-day learned sleep schedule — null until ≥7 sessions recorded
+    var sleepLearnedStartMin: Int? = null,           // circular-mean sleep-onset clock-min (0..1439)
+    var sleepLearnedWakeMin: Int? = null,            // circular-mean wake clock-min (0..1439)
+    var sleepLearnedDurationMin: Int? = null,        // mean sleep duration (min)
+    var sleepLearnedSessionCount: Int? = null,       // sessions in 28-day window
+    // Learned HR baselines (median of per-session p10, ≥7 valid sessions)
+    var hrLearnedRestingBpm: Int? = null,            // true resting (deep-sleep floor)
+    var hrLearnedDaytimeBpm: Int? = null,            // active-baseline (used by exercise calcs)
+
     // Boost ISF shadow telemetry — V4.4.2-style TDD-anchored EMA(τ=3h) sensitivity ratio
     // computed in parallel with V1/V2's instantaneous ratio so the EMA overlay's actual
     // contribution can be measured without changing dosing.

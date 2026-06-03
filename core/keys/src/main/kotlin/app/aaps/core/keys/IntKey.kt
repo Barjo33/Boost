@@ -67,6 +67,12 @@ enum class IntKey(
     ApsBoostHrMaxBpm("boost_hr_max_bpm", 180, 150, 220, defaultedBySM = true),
     ApsBoostHrRestingBpm("boost_hr_resting_bpm", 60, 30, 100, defaultedBySM = true),
     ApsBoostHrWindowMinutes("boost_hr_window_minutes", 15, 5, 60, defaultedBySM = true),
+    // Sleep detection knobs (2026-06-02)
+    ApsBoostPreSleepLeadMin("boost_pre_sleep_lead_min", 60, 0, 180, defaultedBySM = true),
+    ApsBoostSleepHysteresisMin("boost_sleep_hysteresis_min", 10, 5, 30, defaultedBySM = true),
+    ApsBoostWakeHrHysteresisMin("boost_wake_hr_hysteresis_min", 5, 2, 15, defaultedBySM = true),
+    // Health Connect poll cadence (minutes between sync attempts)
+    ApsBoostHealthConnectPollMin("boost_health_connect_poll_min", 5, 1, 30, defaultedBySM = true),
     ApsBoostPostExerciseMinDuration("boost_post_exercise_min_duration", 10, 1, 120, defaultedBySM = true),
     AutosensPeriod("openapsama_autosens_period", 24, 4, 24, calculatedDefaultValue = true),
     MaintenanceLogsAmount("maintenance_logs_amount", 2, 1, 10, defaultedBySM = true),

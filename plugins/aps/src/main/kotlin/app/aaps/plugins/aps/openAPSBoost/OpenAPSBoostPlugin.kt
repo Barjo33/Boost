@@ -129,7 +129,10 @@ open class OpenAPSBoostPlugin @Inject constructor(
     // returns so V5 can compute a parallel decision against the same data. V5 itself
     // is hidden from the plugin list and not user-selectable; this callback is the
     // only way V5 sees a cycle's data. Provider<> avoids a hard DI cycle.
-    private val boostV5Plugin: Provider<app.aaps.plugins.aps.openAPSBoostV5.OpenAPSBoostV5Plugin>
+    private val boostV5Plugin: Provider<app.aaps.plugins.aps.openAPSBoostV5.OpenAPSBoostV5Plugin>,
+    // Health Connect HR ingest — bridges Garmin Connect / Wear OS HR streams via Android
+    // Health Connect into AAPS's local HR table. Pulled each Boost cycle (throttled internally).
+    private val healthConnectHrIngest: HealthConnectHrIngest
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -516,7 +519,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
                         nowMillis = now,
                         hrWindowMinutes = hrWindowMinutes,
                         hrMax = hrMaxBpm,
-                        hrResting = hrRestingBpm,
+                        // Use learned daytime baseline if banked (≥7 nights); fallback to configured.
+                        // This gives a more accurate Karvonen HRR for exercise classification.
+                        hrResting = hrLearnedDaytimeBpmCached ?: hrRestingBpm,
                         stepsLast15Min = recentSteps15Min,
                         stressDetection = hrStressDetection,
                         aapsLogger = aapsLogger,
@@ -678,10 +683,22 @@ open class OpenAPSBoostPlugin @Inject constructor(
         }
     }
 
+    /** Returns minute-of-day [0..1439] for a "HH:mm" or "H:mm" string. Defaults to 0 on parse error. */
+    private fun parseTimeToMinutesOfDay(timeStr: String): Int =
+        (parseTimeToMillis(timeStr) / 60_000L).toInt()
+
+    /** Format a minute-of-day [0..1439] as "HH:mm" for telemetry. */
+    private fun formatClockMin(min: Int): String {
+        val m = ((min % 1440) + 1440) % 1440
+        return "%02d:%02d".format(m / 60, m % 60)
+    }
+
     // ---- Main invoke ----
 
     override fun invoke(initiator: String, tempBasalFallback: Boolean) {
         aapsLogger.debug(LTag.APS, "invoke from $initiator tempBasalFallback: $tempBasalFallback")
+        // 2026-06-03: Trigger Health Connect HR ingest. Throttled internally; no-op if disabled.
+        healthConnectHrIngest.syncIfDue()
         lastAPSResult = null
         val glucoseStatus = glucoseStatusCalculatorSMB.glucoseStatusData
         val profile = profileFunction.getProfile()
@@ -1065,6 +1082,122 @@ open class OpenAPSBoostPlugin @Inject constructor(
             } catch (t: Throwable) {
                 aapsLogger.error(LTag.APS, "V5 shadow invocation failed", t)
             }
+
+            // 2026-06-02: Sleep state evaluation. Runs at end of invoke so we have
+            // mlMealLikely from this cycle. State persists across plugin restarts via
+            // StringKey.ApsBoostSleepState. Updates sleepStateCached so the next
+            // isNightModeActive() call sees the fresh state.
+            try {
+                val configuredNightStartMin = parseTimeToMinutesOfDay(preferences.get(StringKey.ApsBoostNightModeStart))
+                val configuredNightEndMin = parseTimeToMinutesOfDay(preferences.get(StringKey.ApsBoostNightModeEnd))
+                val nowLocal = java.time.LocalTime.now()
+                val minOfDay = nowLocal.hour * 60 + nowLocal.minute
+
+                // Auto-tune from learned 28-day history if ≥7 sessions exist; otherwise fall back
+                // to configured nightStart / nightEnd.
+                val localOffsetMs = java.time.ZoneId.systemDefault().rules.getOffset(java.time.Instant.now()).totalSeconds * 1000L
+                val agg = SleepHistoryTracker.aggregate(sleepHistoryCached, localOffsetMs)
+                val effectiveNightStartMin = agg.sleepStartMinAvg ?: configuredNightStartMin
+                val effectiveNightEndMin = agg.wakeMinAvg ?: configuredNightEndMin
+                // Learned resting HR (sleep p10 median, ≥7 sessions) overrides the configured static value
+                // for sleep state evaluation; fallback is the existing user-set hrRestingBpm.
+                val effectiveHrResting = agg.restingHrBpm ?: hrRestingBpm
+
+                // 30-min window for HR — sufficient for both 5-min and 15-min avgs and sleep eval.
+                val hrReadingsForSleep = persistenceLayer.getHeartRatesFromTime(now - 30 * 60_000L)
+                val sleepResult = SleepStateDetector.evaluate(
+                    prev = sleepStateCached,
+                    inputs = SleepStateDetector.Inputs(
+                        nowMs = now,
+                        minuteOfDay = minOfDay,
+                        hrReadings = hrReadingsForSleep,
+                        hrWindowMinutes = 5,
+                        hrResting = effectiveHrResting,
+                        stepsLast15Min = recentSteps15Min,
+                        mlMealLikely = it.mlMealLikely,
+                        nightStartMin = effectiveNightStartMin,
+                        nightEndMin = effectiveNightEndMin,
+                        preSleepLeadMin = preferences.get(IntKey.ApsBoostPreSleepLeadMin),
+                        minSleepHysteresisMin = preferences.get(IntKey.ApsBoostSleepHysteresisMin),
+                        wakeHrHysteresisMin = preferences.get(IntKey.ApsBoostWakeHrHysteresisMin)
+                    ),
+                    aapsLogger = aapsLogger
+                )
+                val prevSleepState = sleepStateCached.state
+                sleepStateCached = sleepResult.newState
+                if (sleepResult.transitioned) {
+                    preferences.put(StringKey.ApsBoostSleepState, sleepResult.newState.serialize())
+                    aapsLogger.debug(LTag.APS, "Sleep state transitioned → ${sleepResult.newState.state} (${sleepResult.debug})")
+
+                    // Update sleep history on the actual sleep/wake transitions only
+                    val newState = sleepResult.newState.state
+                    val historyChanged = when {
+                        prevSleepState != SleepStateDetector.SleepState.SLEEPING &&
+                            newState == SleepStateDetector.SleepState.SLEEPING -> {
+                            sleepHistoryCached = SleepHistoryTracker.onSleepStart(sleepHistoryCached, now)
+                            true
+                        }
+                        prevSleepState == SleepStateDetector.SleepState.SLEEPING &&
+                            newState != SleepStateDetector.SleepState.SLEEPING -> {
+                            // Fetch HR over the just-ended sleep period for restingHrP10
+                            val sleepStartMs = sleepHistoryCached.openSleepStartMs ?: 0L
+                            val sleepHrSamples = if (sleepStartMs > 0) {
+                                persistenceLayer.getHeartRatesFromTimeToTime(sleepStartMs, now)
+                                    .filter { hr -> hr.isValid && hr.beatsPerMinute > 0 }
+                                    .map { hr -> hr.beatsPerMinute }
+                            } else emptyList()
+                            // Fetch HR over the awake period preceding this sleep for daytimeHrP10
+                            val priorWakeMs = SleepHistoryTracker.lastWakeMs(sleepHistoryCached)
+                            val daytimeHrSamples = if (priorWakeMs != null && sleepStartMs > priorWakeMs) {
+                                persistenceLayer.getHeartRatesFromTimeToTime(priorWakeMs, sleepStartMs)
+                                    .filter { hr -> hr.isValid && hr.beatsPerMinute > 0 }
+                                    .map { hr -> hr.beatsPerMinute }
+                            } else emptyList()
+                            sleepHistoryCached = SleepHistoryTracker.onWake(
+                                sleepHistoryCached, now,
+                                sleepHrBpms = sleepHrSamples,
+                                daytimeHrBpms = daytimeHrSamples
+                            )
+                            true
+                        }
+                        else -> false
+                    }
+                    if (historyChanged) {
+                        preferences.put(StringKey.ApsBoostSleepHistory, sleepHistoryCached.serialize())
+                    }
+                }
+
+                // ── NS upload: HR + sleep + learned-schedule telemetry ─────────
+                it.sleepState = sleepResult.newState.state.name
+                it.sleepStateEnteredAtMs = sleepResult.newState.enteredAtMs.takeIf { v -> v > 0 }
+                it.sleepLearnedStartMin = agg.sleepStartMinAvg
+                it.sleepLearnedWakeMin = agg.wakeMinAvg
+                it.sleepLearnedDurationMin = agg.sleepDurationMinAvg
+                it.sleepLearnedSessionCount = agg.sessionCount
+                it.hrLearnedRestingBpm = agg.restingHrBpm
+                it.hrLearnedDaytimeBpm = agg.daytimeHrBpm
+                // Update cache for next cycle's HrActivityCalculator.classify call
+                hrLearnedDaytimeBpmCached = agg.daytimeHrBpm
+                val latestHr = hrReadingsForSleep.maxByOrNull { hr -> hr.timestamp }
+                if (latestHr != null && latestHr.isValid) {
+                    it.hrBpmLatest = Round.roundTo(latestHr.beatsPerMinute, 0.1)
+                }
+                val avg5 = SleepStateDetector.averageHr(hrReadingsForSleep, now, 5)
+                val avg15 = SleepStateDetector.averageHr(hrReadingsForSleep, now, 15)
+                if (avg5 != null) it.hrBpmAvg5m = Round.roundTo(avg5, 0.1)
+                if (avg15 != null) it.hrBpmAvg15m = Round.roundTo(avg15, 0.1)
+                it.hrReadingsCount15m = hrReadingsForSleep.count { hr ->
+                    hr.isValid && hr.timestamp > now - 15 * 60_000L
+                }
+
+                it.reason.append("sleep=${sleepResult.newState.state}")
+                if (agg.sleepStartMinAvg != null) {
+                    it.reason.append(" learned=${formatClockMin(agg.sleepStartMinAvg!!)}→${formatClockMin(agg.wakeMinAvg ?: 0)}/${agg.sessionCount}d")
+                }
+                it.reason.append("; ")
+            } catch (t: Throwable) {
+                aapsLogger.error(LTag.APS, "Sleep state evaluation failed", t)
+            }
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints
             determineBasalResult.autosensResult = autosensResult
@@ -1137,6 +1270,17 @@ open class OpenAPSBoostPlugin @Inject constructor(
     private var lastNightModeRun: Long = 0
     private var lastNightModeResult: Boolean = false
 
+    // ---- Sleep state (2026-06-02) ----
+    // Updated at end of invoke() once HR + steps + mlMealLikely are known. Read by
+    // isNightModeActiveImpl() when ApsBoostNightModeAutoBySleep is enabled.
+    @Volatile private var sleepStateCached: SleepStateDetector.State =
+        SleepStateDetector.State.deserialize(preferences.get(StringKey.ApsBoostSleepState))
+    @Volatile private var sleepHistoryCached: SleepHistoryTracker.History =
+        SleepHistoryTracker.History.deserialize(preferences.get(StringKey.ApsBoostSleepHistory))
+    // Cached learned daytime baseline (used by HrActivityCalculator in current cycle from prior
+    // cycle's aggregate computation — 5-min lag is acceptable, baseline changes slowly).
+    @Volatile private var hrLearnedDaytimeBpmCached: Int? = null
+
     private fun isNightModeActive(): Boolean {
         val currentTimeMillis = System.currentTimeMillis()
         val timeAligned = currentTimeMillis - (currentTimeMillis % 1000)
@@ -1160,7 +1304,14 @@ open class OpenAPSBoostPlugin @Inject constructor(
         val active = if (end > start) now in start until end
         else (now in (start - 86400000) until end || now in start until (end + 86400000))
 
-        if (!active) return false
+        // 2026-06-02 HYBRID: when ApsBoostNightModeAutoBySleep is on, sleep state can both
+        // EXTEND the active window (still SLEEPING past nightEnd) and ENABLE it early
+        // (PRE_SLEEP within the lead window, or SLEEPING during the outer window). When
+        // off, behaviour is the legacy time-window check.
+        val autoBySleep = preferences.get(BooleanKey.ApsBoostNightModeAutoBySleep)
+        val sleepActive = autoBySleep && sleepStateCached.state != SleepStateDetector.SleepState.AWAKE
+
+        if (!active && !sleepActive) return false
 
         // Disable night mode when COB > 0
         if (preferences.get(BooleanKey.ApsBoostNightModeDisableWithCob)) {
@@ -1322,6 +1473,25 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 addPreference(AdaptiveUnitPreference(ctx = context, unitKey = UnitDoubleKey.ApsBoostNightModeBgOffset, dialogMessage = R.string.boost_night_mode_bg_offset_summary, title = R.string.boost_night_mode_bg_offset_title))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostNightModeDisableWithCob, summary = R.string.boost_night_mode_disable_with_cob_summary, title = R.string.boost_night_mode_disable_with_cob_title))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostNightModeDisableWithLowTt, summary = R.string.boost_night_mode_disable_with_low_tt_summary, title = R.string.boost_night_mode_disable_with_low_tt_title))
+                // 2026-06-02: HR-based sleep detection (opt-in)
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostNightModeAutoBySleep, summary = R.string.boost_night_mode_auto_by_sleep_summary, title = R.string.boost_night_mode_auto_by_sleep_title))
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostPreSleepLeadMin, dialogMessage = R.string.boost_pre_sleep_lead_min_summary, title = R.string.boost_pre_sleep_lead_min_title))
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostSleepHysteresisMin, dialogMessage = R.string.boost_sleep_hysteresis_min_summary, title = R.string.boost_sleep_hysteresis_min_title))
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostWakeHrHysteresisMin, dialogMessage = R.string.boost_wake_hr_hysteresis_min_summary, title = R.string.boost_wake_hr_hysteresis_min_title))
+                // 2026-06-03: Health Connect HR ingest
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostHealthConnectHrEnabled, summary = R.string.boost_hc_hr_summary, title = R.string.boost_hc_hr_title))
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostHealthConnectPollMin, dialogMessage = R.string.boost_hc_poll_summary, title = R.string.boost_hc_poll_title))
+                addPreference(androidx.preference.Preference(context).apply {
+                    key = "boost_hc_grant_permission_v1"
+                    title = context.getString(R.string.boost_hc_grant_title)
+                    summary = context.getString(R.string.boost_hc_grant_summary)
+                    setOnPreferenceClickListener {
+                        val intent = android.content.Intent(context, app.aaps.plugins.aps.openAPSBoost.HealthConnectPermissionActivity::class.java)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                        true
+                    }
+                })
             })
 
             // ── 6. Safety Settings ───────────────────────────────────────
