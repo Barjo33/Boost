@@ -1,4 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <application>
+        <!-- Health Connect permission request (2026-06-03) — single-purpose
+             Activity launched from the Boost Night Mode preference to request
+             READ_HEART_RATE. Exported so the launching Intent works even when
+             the preference is invoked via a non-default task. -->
+        <activity
+            android:name="app.aaps.plugins.aps.openAPSBoost.HealthConnectPermissionActivity"
+            android:exported="false"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+    </application>
+
 </manifest>

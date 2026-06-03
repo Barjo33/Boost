@@ -159,6 +159,8 @@
     <string name="boost_hc_hr_summary">Reads heart rate from Android Health Connect on a polling cadence. Lets Garmin Connect / Wear OS HR flow into Boost continuously (including overnight) without needing the watch field to be actively pulling glucose. Requires the user to install Health Connect (on Android &lt; 14) and grant Read Heart Rate permission. Open Health Connect settings to grant.</string>
     <string name="boost_hc_poll_title">Health Connect poll interval (minutes)</string>
     <string name="boost_hc_poll_summary">How often to query Health Connect for new HR records. Lower = fresher data, slightly more battery. Default 5.</string>
+    <string name="boost_hc_grant_title">Grant Health Connect access</string>
+    <string name="boost_hc_grant_summary">Tap to request the Read Heart Rate permission. Until granted, AAPS does not appear in the Health Connect app list. After granting, the poll interval setting controls ingest cadence.</string>
 
     <string name="boost_post_exercise_recovery_title">Post-Exercise Recovery</string>
     <string name="boost_post_exercise_recovery_enabled_title">Enable Post-Exercise Recovery</string>

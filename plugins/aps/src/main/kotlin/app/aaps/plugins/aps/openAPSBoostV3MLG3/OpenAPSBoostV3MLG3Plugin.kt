@@ -1646,6 +1646,17 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
                 // 2026-06-03: Health Connect HR ingest
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostHealthConnectHrEnabled, summary = R.string.boost_hc_hr_summary, title = R.string.boost_hc_hr_title))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostHealthConnectPollMin, dialogMessage = R.string.boost_hc_poll_summary, title = R.string.boost_hc_poll_title))
+                addPreference(androidx.preference.Preference(context).apply {
+                    key = "boost_hc_grant_permission_v3mlg3"
+                    title = context.getString(R.string.boost_hc_grant_title)
+                    summary = context.getString(R.string.boost_hc_grant_summary)
+                    setOnPreferenceClickListener {
+                        val intent = android.content.Intent(context, app.aaps.plugins.aps.openAPSBoost.HealthConnectPermissionActivity::class.java)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                        true
+                    }
+                })
             })
 
             // ── 6. Safety Settings ───────────────────────────────────────
