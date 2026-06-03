@@ -130,7 +130,10 @@ open class OpenAPSBoostPlugin @Inject constructor(
     // returns so V5 can compute a parallel decision against the same data. V5 itself
     // is hidden from the plugin list and not user-selectable; this callback is the
     // only way V5 sees a cycle's data. Provider<> avoids a hard DI cycle.
-    private val boostV5Plugin: Provider<app.aaps.plugins.aps.openAPSBoostV5.OpenAPSBoostV5Plugin>
+    private val boostV5Plugin: Provider<app.aaps.plugins.aps.openAPSBoostV5.OpenAPSBoostV5Plugin>,
+    // Health Connect HR ingest — bridges Garmin Connect / Wear OS HR streams via Android
+    // Health Connect into AAPS's local HR table. Pulled each Boost cycle (throttled internally).
+    private val healthConnectHrIngest: HealthConnectHrIngest
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -695,6 +698,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
 
     override fun invoke(initiator: String, tempBasalFallback: Boolean) {
         aapsLogger.debug(LTag.APS, "invoke from $initiator tempBasalFallback: $tempBasalFallback")
+        // 2026-06-03: Trigger Health Connect HR ingest. Throttled internally; no-op if disabled.
+        healthConnectHrIngest.syncIfDue()
         lastAPSResult = null
         val glucoseStatus = glucoseStatusCalculatorSMB.glucoseStatusData
         val profile = profileFunction.getProfile()
@@ -1497,6 +1502,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostPreSleepLeadMin, dialogMessage = R.string.boost_pre_sleep_lead_min_summary, title = R.string.boost_pre_sleep_lead_min_title))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostSleepHysteresisMin, dialogMessage = R.string.boost_sleep_hysteresis_min_summary, title = R.string.boost_sleep_hysteresis_min_title))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostWakeHrHysteresisMin, dialogMessage = R.string.boost_wake_hr_hysteresis_min_summary, title = R.string.boost_wake_hr_hysteresis_min_title))
+                // 2026-06-03: Health Connect HR ingest
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostHealthConnectHrEnabled, summary = R.string.boost_hc_hr_summary, title = R.string.boost_hc_hr_title))
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostHealthConnectPollMin, dialogMessage = R.string.boost_hc_poll_summary, title = R.string.boost_hc_poll_title))
             })
 
             // ── 6. Safety Settings ───────────────────────────────────────

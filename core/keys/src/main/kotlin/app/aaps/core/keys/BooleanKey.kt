@@ -79,6 +79,9 @@ enum class BooleanKey(
     // night mode in HYBRID with the existing time window. PRE_SLEEP also engages night-mode
     // SMB suppression early so the user doesn't carry excess IOB into the night.
     ApsBoostNightModeAutoBySleep("boost_night_mode_auto_by_sleep", false, defaultedBySM = true),
+
+    // Health Connect HR ingest (2026-06-03) — bridge for overnight HR from Garmin/Wear OS via Android Health Connect
+    ApsBoostHealthConnectHrEnabled("boost_health_connect_hr_enabled", false, defaultedBySM = true),
     ApsBoostBypassVersionCheck("boost_bypass_version_check", false, defaultedBySM = true),
     ApsBoostPostExerciseRecoveryEnabled("boost_post_exercise_recovery_enabled", false, defaultedBySM = true),
     ApsBoostHrIntegrationEnabled("boost_hr_integration_enabled", false, defaultedBySM = true),

@@ -35,5 +35,8 @@ dependencies {
     //Logger
     api(libs.org.slf4j.api)
 
+    // Health Connect — for HR ingest path (2026-06-03)
+    implementation(libs.androidx.health.connect.client)
+
     ksp(libs.com.google.dagger.android.processor)
 }
