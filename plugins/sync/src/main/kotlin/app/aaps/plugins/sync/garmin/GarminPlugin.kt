@@ -16,6 +16,7 @@ import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventNewBG
 import app.aaps.core.interfaces.rx.events.EventPreferenceChange
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.validators.DefaultEditTextValidator
 import app.aaps.core.validators.preferences.AdaptiveIntPreference
@@ -383,6 +384,14 @@ class GarminPlugin @Inject constructor(
     ) {
         aapsLogger.info(LTag.GARMIN, "average heart rate $avg BPM $samplingStart to $samplingEnd")
         if (test) return
+        // 2026-06-03: When Boost Health Connect HR ingest is enabled, suppress the Garmin
+        // Connect IQ side-channel HR write. HC becomes the single source of truth; avoids
+        // duplicate rows at overlapping timestamps. Covers both the URI and IQ-message
+        // entry points which both route through this private sink.
+        if (preferences.get(BooleanKey.ApsBoostHealthConnectHrEnabled)) {
+            aapsLogger.debug(LTag.GARMIN, "HR via Garmin side-channel suppressed (Boost Health Connect HR enabled)")
+            return
+        }
         if (avg > 10 && samplingStart > Instant.ofEpochMilli(0L) && samplingEnd > samplingStart) {
             loopHub.storeHeartRate(samplingStart, samplingEnd, avg, device)
         } else if (avg > 0) {
