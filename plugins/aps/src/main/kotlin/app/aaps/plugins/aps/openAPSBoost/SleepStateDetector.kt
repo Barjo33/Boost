@@ -68,7 +68,12 @@ object SleepStateDetector {
         var state: SleepState = SleepState.AWAKE,
         var sleepCandidateSinceMs: Long? = null,
         var wakeCandidateSinceMs: Long? = null,
-        var enteredAtMs: Long = 0L
+        var enteredAtMs: Long = 0L,
+        // 2026-06-05: drought-based sleep detection for batched-HR platforms (Garmin etc.).
+        // Tracks the most recent fresh HR-sample timestamp the detector has observed.
+        // Non-zero only after the first fresh sample is seen; persists across cycles so
+        // drought duration survives gaps between evaluate() calls.
+        var lastFreshHrSampleMs: Long = 0L
     ) {
         fun serialize(): String =
             JSONObject()
@@ -76,6 +81,7 @@ object SleepStateDetector {
                 .put("sleepCandidateSinceMs", sleepCandidateSinceMs ?: JSONObject.NULL)
                 .put("wakeCandidateSinceMs", wakeCandidateSinceMs ?: JSONObject.NULL)
                 .put("enteredAtMs", enteredAtMs)
+                .put("lastFreshHrSampleMs", lastFreshHrSampleMs)
                 .toString()
 
         companion object {
@@ -87,7 +93,8 @@ object SleepStateDetector {
                         state = SleepState.valueOf(j.optString("state", "AWAKE")),
                         sleepCandidateSinceMs = j.optLong("sleepCandidateSinceMs", -1L).takeIf { it > 0 },
                         wakeCandidateSinceMs = j.optLong("wakeCandidateSinceMs", -1L).takeIf { it > 0 },
-                        enteredAtMs = j.optLong("enteredAtMs", 0L)
+                        enteredAtMs = j.optLong("enteredAtMs", 0L),
+                        lastFreshHrSampleMs = j.optLong("lastFreshHrSampleMs", 0L)
                     )
                 } catch (e: Exception) {
                     State()
@@ -121,6 +128,14 @@ object SleepStateDetector {
      * @param preSleepLeadMin       How early before nightStart to enter PRE_SLEEP (default 60)
      * @param minSleepHysteresisMin Minutes the sleep conditions must hold before SLEEPING (default 10)
      * @param wakeHrHysteresisMin   Minutes HR > 1.25× resting must hold before AWAKE (default 5)
+     * @param droughtThresholdMin   Minutes without a fresh HR sample before drought-based sleep
+     *                              qualification applies (default 30). When platforms like Garmin
+     *                              stop transmitting HR overnight, this lets the detector promote
+     *                              PRE_SLEEP → SLEEPING without HR-value confirmation. Set very
+     *                              high (e.g. 1440) to disable drought-based promotion.
+     * @param freshHrWindowMin      How recent an HR sample's timestamp must be (relative to nowMs)
+     *                              to count as "fresh" / live transmission rather than backfilled
+     *                              catch-up sync data (default 10).
      */
     data class Inputs(
         val nowMs: Long,
@@ -134,7 +149,9 @@ object SleepStateDetector {
         val nightEndMin: Int,
         val preSleepLeadMin: Int = 60,
         val minSleepHysteresisMin: Int = 10,
-        val wakeHrHysteresisMin: Int = 5
+        val wakeHrHysteresisMin: Int = 5,
+        val droughtThresholdMin: Int = 30,
+        val freshHrWindowMin: Int = 10
     )
 
     /**
@@ -150,6 +167,30 @@ object SleepStateDetector {
         val preSleepStart = (inputs.nightStartMin - inputs.preSleepLeadMin + 1440) % 1440
         val inPreSleep = minuteInWrappedRange(inputs.minuteOfDay, preSleepStart, inputs.nightStartMin)
 
+        var newState = prev.copy()
+        var transitioned = false
+
+        // 2026-06-05: drought-based sleep + transmission-resumed wake signals.
+        // Compute the most recent fresh HR sample (timestamp within last freshHrWindowMin
+        // of nowMs — distinguishes live transmission from backfilled catch-up sync data),
+        // then derive drought duration and a count of fresh samples for wake detection.
+        val freshCutoff = inputs.nowMs - inputs.freshHrWindowMin * 60_000L
+        val mostRecentFreshTs = inputs.hrReadings
+            .filter { it.isValid && it.timestamp in (freshCutoff + 1)..inputs.nowMs }
+            .maxOfOrNull { it.timestamp } ?: 0L
+        if (mostRecentFreshTs > newState.lastFreshHrSampleMs) {
+            newState.lastFreshHrSampleMs = mostRecentFreshTs
+        }
+        val droughtMinutes = if (newState.lastFreshHrSampleMs > 0)
+            ((inputs.nowMs - newState.lastFreshHrSampleMs) / 60_000L).toInt()
+        else
+            Int.MAX_VALUE  // never seen a fresh sample → treat as fully in drought
+        val droughtEstablished = droughtMinutes >= inputs.droughtThresholdMin
+        val fifteenMinCutoff = inputs.nowMs - 15 * 60_000L
+        val freshSamplesInLast15Min = inputs.hrReadings.count {
+            it.isValid && it.timestamp in (freshCutoff + 1)..inputs.nowMs && it.timestamp >= fifteenMinCutoff
+        }
+
         debug.append("avgHr=${avgHr?.let { String.format("%.1f", it) } ?: "null"}")
             .append(" sleepCap=${String.format("%.1f", sleepCap)}")
             .append(" wakeFloor=${String.format("%.1f", wakeFloor)}")
@@ -157,24 +198,46 @@ object SleepStateDetector {
             .append(" mealLikely=${inputs.mlMealLikely?.let { String.format("%.2f", it) } ?: "null"}")
             .append(" minOfDay=${inputs.minuteOfDay}")
             .append(" inOuter=$inOuterWindow inPreSleep=$inPreSleep")
+            .append(" drought=${if (droughtMinutes == Int.MAX_VALUE) "∞" else "${droughtMinutes}m"}")
+            .append(" freshN15=$freshSamplesInLast15Min")
 
-        var newState = prev.copy()
-        var transitioned = false
+        // 2026-06-05: drought-qualified candidacy. When avgHr is null AND drought is
+        // established AND steps + meal gates pass, treat as a sleep candidate. Lets the
+        // detector reach SLEEPING on batched-HR platforms (Garmin) where the watch stops
+        // transmitting during its own sleep mode.
+        val droughtQualifies = avgHr == null && droughtEstablished &&
+            inputs.stepsLast15Min < 50 &&
+            (inputs.mlMealLikely == null || inputs.mlMealLikely < 0.30)
+        val hrQualifies = qualifiesAsSleepCandidate(avgHr, sleepCap, inputs.stepsLast15Min, inputs.mlMealLikely)
+        val anyQualifies = hrQualifies || droughtQualifies
+
+        // Transmission-resume wake: was in drought before this cycle, now a burst of
+        // fresh samples just arrived. Distinguishes "user picked up phone / watch synced"
+        // from a single stray sample mid-night. Requires the burst to follow an actual
+        // drought (priorDroughtMinutes >= threshold), preventing false wakes from
+        // ordinary daytime intermittency.
+        val priorDroughtMinutes = if (prev.lastFreshHrSampleMs > 0)
+            ((inputs.nowMs - prev.lastFreshHrSampleMs) / 60_000L).toInt()
+        else
+            Int.MAX_VALUE
+        val transmissionResumeWake = freshSamplesInLast15Min >= 3 &&
+            priorDroughtMinutes >= inputs.droughtThresholdMin
 
         when (prev.state) {
             SleepState.AWAKE -> {
                 // Sleep candidacy check — possible from AWAKE when in outer window OR in pre-sleep window
                 // (so an unusually-early sleep onset within the PRE_SLEEP lead time is detected promptly).
-                if ((inOuterWindow || inPreSleep) && qualifiesAsSleepCandidate(avgHr, sleepCap, inputs.stepsLast15Min, inputs.mlMealLikely)) {
+                if ((inOuterWindow || inPreSleep) && anyQualifies) {
                     if (newState.sleepCandidateSinceMs == null) {
                         newState.sleepCandidateSinceMs = inputs.nowMs
-                        debug.append(" | sleep-candidate-started")
+                        debug.append(" | sleep-candidate-started${if (droughtQualifies && !hrQualifies) " (drought)" else ""}")
                     } else {
                         val heldMin = ((inputs.nowMs - newState.sleepCandidateSinceMs!!) / 60_000L).toInt()
                         if (heldMin >= inputs.minSleepHysteresisMin) {
-                            newState = State(state = SleepState.SLEEPING, enteredAtMs = inputs.nowMs)
+                            newState = State(state = SleepState.SLEEPING, enteredAtMs = inputs.nowMs,
+                                             lastFreshHrSampleMs = newState.lastFreshHrSampleMs)
                             transitioned = true
-                            debug.append(" | →SLEEPING (held ${heldMin}m)")
+                            debug.append(" | →SLEEPING (held ${heldMin}m${if (droughtQualifies && !hrQualifies) " — drought" else ""})")
                         } else {
                             debug.append(" | sleep-candidate-held=${heldMin}m")
                         }
@@ -185,7 +248,8 @@ object SleepStateDetector {
                 }
 
                 if (!transitioned && inPreSleep) {
-                    newState = State(state = SleepState.PRE_SLEEP, enteredAtMs = inputs.nowMs)
+                    newState = State(state = SleepState.PRE_SLEEP, enteredAtMs = inputs.nowMs,
+                                     lastFreshHrSampleMs = newState.lastFreshHrSampleMs)
                     transitioned = true
                     debug.append(" | →PRE_SLEEP (time)")
                 }
@@ -194,19 +258,21 @@ object SleepStateDetector {
             SleepState.PRE_SLEEP -> {
                 // Exit PRE_SLEEP if we've left the outer night window (morning exit before ever sleeping)
                 if (!inOuterWindow && !inPreSleep) {
-                    newState = State(state = SleepState.AWAKE, enteredAtMs = inputs.nowMs)
+                    newState = State(state = SleepState.AWAKE, enteredAtMs = inputs.nowMs,
+                                     lastFreshHrSampleMs = newState.lastFreshHrSampleMs)
                     transitioned = true
                     debug.append(" | →AWAKE (left window without sleeping)")
-                } else if (qualifiesAsSleepCandidate(avgHr, sleepCap, inputs.stepsLast15Min, inputs.mlMealLikely)) {
+                } else if (anyQualifies) {
                     if (newState.sleepCandidateSinceMs == null) {
                         newState.sleepCandidateSinceMs = inputs.nowMs
-                        debug.append(" | sleep-candidate-started")
+                        debug.append(" | sleep-candidate-started${if (droughtQualifies && !hrQualifies) " (drought)" else ""}")
                     } else {
                         val heldMin = ((inputs.nowMs - newState.sleepCandidateSinceMs!!) / 60_000L).toInt()
                         if (heldMin >= inputs.minSleepHysteresisMin) {
-                            newState = State(state = SleepState.SLEEPING, enteredAtMs = inputs.nowMs)
+                            newState = State(state = SleepState.SLEEPING, enteredAtMs = inputs.nowMs,
+                                             lastFreshHrSampleMs = newState.lastFreshHrSampleMs)
                             transitioned = true
-                            debug.append(" | →SLEEPING (held ${heldMin}m)")
+                            debug.append(" | →SLEEPING (held ${heldMin}m${if (droughtQualifies && !hrQualifies) " — drought" else ""})")
                         } else {
                             debug.append(" | sleep-candidate-held=${heldMin}m")
                         }
@@ -220,9 +286,18 @@ object SleepStateDetector {
             SleepState.SLEEPING -> {
                 // Hard morning exit
                 if (!inOuterWindow) {
-                    newState = State(state = SleepState.AWAKE, enteredAtMs = inputs.nowMs)
+                    newState = State(state = SleepState.AWAKE, enteredAtMs = inputs.nowMs,
+                                     lastFreshHrSampleMs = newState.lastFreshHrSampleMs)
                     transitioned = true
                     debug.append(" | →AWAKE (outer window exit)")
+                } else if (transmissionResumeWake) {
+                    // Sync burst arrived after drought → user just resumed phone interaction.
+                    // No hysteresis: the burst itself contains multiple samples in one cycle
+                    // and is strongly correlated with wake on batched-HR platforms.
+                    newState = State(state = SleepState.AWAKE, enteredAtMs = inputs.nowMs,
+                                     lastFreshHrSampleMs = newState.lastFreshHrSampleMs)
+                    transitioned = true
+                    debug.append(" | →AWAKE (transmission resumed — ${freshSamplesInLast15Min} fresh after ${priorDroughtMinutes}m drought)")
                 } else {
                     // Wake requires BOTH steps AND HR — per spec. BG trend alone is NOT sufficient.
                     val stepsConfirmWake = inputs.stepsLast15Min >= 100
@@ -234,7 +309,8 @@ object SleepStateDetector {
                         } else {
                             val heldMin = ((inputs.nowMs - newState.wakeCandidateSinceMs!!) / 60_000L).toInt()
                             if (heldMin >= inputs.wakeHrHysteresisMin) {
-                                newState = State(state = SleepState.AWAKE, enteredAtMs = inputs.nowMs)
+                                newState = State(state = SleepState.AWAKE, enteredAtMs = inputs.nowMs,
+                                                 lastFreshHrSampleMs = newState.lastFreshHrSampleMs)
                                 transitioned = true
                                 debug.append(" | →AWAKE (held ${heldMin}m — HR+steps confirmed)")
                             } else {
