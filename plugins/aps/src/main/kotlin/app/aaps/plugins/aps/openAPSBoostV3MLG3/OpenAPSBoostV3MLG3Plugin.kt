@@ -1202,16 +1202,23 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
         // amounts. Filters to BS.Type.SMB so manual user boluses don't contribute (user-initiated
         // dose is explicit consent and shouldn't be subject to algorithm self-cap).
         val cumulativeSmbCap60Min = preferences.get(DoubleKey.ApsBoostCumulativeSmbCap60Min)
-        val recentSmbVolume60Min = try {
-            val sixtyMinAgo = now - 60 * 60 * 1000L
-            persistenceLayer.getBolusesFromTimeToTime(sixtyMinAgo, now, ascending = true)
+        // v12 ML uses both the 60-min SMB volume (already used by the cap) and the
+        // minutes-since-last-SMB. Query a wider 12-hr window once and derive both.
+        val (recentSmbVolume60Min, timeSinceLastSmbMin) = try {
+            val twelveHrAgo = now - 12 * 60 * 60 * 1000L
+            val smbs = persistenceLayer.getBolusesFromTimeToTime(twelveHrAgo, now, ascending = false)
                 .filter { it.type == BS.Type.SMB && it.isValid }
-                .sumOf { it.amount }
+            val sixtyMinAgo = now - 60 * 60 * 1000L
+            val sum60 = smbs.filter { it.timestamp >= sixtyMinAgo }.sumOf { it.amount }
+            val tSince = smbs.firstOrNull()?.let {
+                kotlin.math.min(720.0, (now - it.timestamp) / 60_000.0)
+            } ?: 720.0
+            Pair(sum60, tSince)
         } catch (e: Exception) {
-            aapsLogger.warn(LTag.APS, "BoostV3MLG3 recent SMB volume query failed (${e.message}) — falling back to 0.0 (cap will not engage this cycle)")
-            0.0
+            aapsLogger.warn(LTag.APS, "BoostV3MLG3 recent SMB volume query failed (${e.message}) — falling back to 0.0 / 720m (cap will not engage this cycle)")
+            Pair(0.0, 720.0)
         }
-        aapsLogger.debug(LTag.APS, "BoostV3MLG3 cumulative SMB last 60min: ${recentSmbVolume60Min}U / cap ${cumulativeSmbCap60Min}U")
+        aapsLogger.debug(LTag.APS, "BoostV3MLG3 cumulative SMB last 60min: ${recentSmbVolume60Min}U / cap ${cumulativeSmbCap60Min}U | minutes-since-last-SMB: ${timeSinceLastSmbMin}")
 
         determineBasalBoostV3MLG3.determine_basal(
             glucose_status = glucoseStatus,
@@ -1227,7 +1234,8 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
             mealModel = boostMealModel,
             recentSmbVolume60Min = recentSmbVolume60Min,
             cumulativeSmbCap60Min = cumulativeSmbCap60Min,
-            recentLowBG45Min = recentLowBG45Min
+            recentLowBG45Min = recentLowBG45Min,
+            timeSinceLastSmbMin = timeSinceLastSmbMin
         ).also {
             // Populate deviation sensitivity fields on the RT for Nightscout upload + UI
             it.deviationSensRatio = isfResult.deviationSensRatio

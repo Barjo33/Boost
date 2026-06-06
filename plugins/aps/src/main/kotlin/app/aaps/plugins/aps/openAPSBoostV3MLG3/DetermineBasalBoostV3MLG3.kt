@@ -33,6 +33,11 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
     private val consoleError = mutableListOf<String>()
     private val consoleLog = mutableListOf<String>()
 
+    // v12 ML feature ring buffer (2026-06-06) — see DetermineBasalBoost (V1) for
+    // architecture notes. Singleton-scoped so it persists across cycles in-process.
+    private var mlRingBuffer: app.aaps.plugins.aps.openAPSBoost.BoostMlFeatureBuilder.RingBuffer =
+        app.aaps.plugins.aps.openAPSBoost.BoostMlFeatureBuilder.RingBuffer()
+
     private fun Double.toFixed2(): String = DecimalFormat("0.00#").format(round(this, 2))
 
     fun round_basal(value: Double): Double = value
@@ -190,7 +195,10 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
         // v4.4.4 hotfix: 45-min rolling minimum BG used by Fix A only. profile.recentLowBG
         // remains the 60-min value used by lowTriggered / eventualBgOverride / G3 hold gates.
         // Default 999.0 = effectively disabled (legacy callers, V5 shadow path).
-        recentLowBG45Min: Double = 999.0
+        recentLowBG45Min: Double = 999.0,
+        // v12 ML feature (2026-06-06): minutes since the most recent BS.Type.SMB bolus.
+        // Default 720.0 = "no recent SMB" so legacy callers don't change inference behaviour.
+        timeSinceLastSmbMin: Double = 720.0
     ): RT {
         consoleError.clear()
         consoleLog.clear()
@@ -1102,16 +1110,58 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
                 glucose_status.shortAvgDelta > -15.0 -> -1.5
                 else                                  -> -2.0
             }
-            val mlHypoRisk = riskModel?.predictHypoRisk(
-                cgmMgdl = bg,
-                iobTotal = iob_data.iob,
-                iobBasal = iob_data.basaliob,
-                bgAboveTarget = bg - target_bg,
-                directionNum = directionNumValue,
-                hour = java.time.LocalTime.now().hour,
-                iobActivity = iob_data.activity,
-                insulinReq = insulinReq
-            )
+            // v12 (2026-06-06): dual-path inference. Legacy 8-feature models route to
+            // the named-parameter API; v10+/v12 models use the 53-feature schema with
+            // the ring buffer maintained on this singleton. Mirrors V1 wiring.
+            val now = java.time.LocalTime.now().hour
+            val mlHypoRisk: Double? = run {
+                val rm = riskModel ?: return@run null
+                val featNames = rm.getFeatureNames() ?: return@run null
+                if (featNames.size == 8) {
+                    rm.predictHypoRisk(
+                        cgmMgdl = bg, iobTotal = iob_data.iob, iobBasal = iob_data.basaliob,
+                        bgAboveTarget = bg - target_bg, directionNum = directionNumValue,
+                        hour = now, iobActivity = iob_data.activity, insulinReq = insulinReq
+                    )
+                } else {
+                    val recentSmb60 = recentSmbVolume60Min
+                    val tSinceSmb = timeSinceLastSmbMin
+                    val bolusIob = (iob_data.iob - iob_data.basaliob).coerceAtLeast(0.0)
+                    val statics: Map<String, Double> = mapOf(
+                        "cgm_mgdl" to bg,
+                        "iob_iob" to iob_data.iob,
+                        "iob_basaliob" to iob_data.basaliob,
+                        "bg_above_target" to (bg - target_bg),
+                        "direction_num" to directionNumValue,
+                        "hour" to now.toDouble(),
+                        "iob_activity" to iob_data.activity,
+                        "sug_insulinReq" to insulinReq,
+                        "sug_COB" to meal_data.mealCOB,
+                        "sug_eventualBG" to eventualBG,
+                        "sug_expectedDelta" to expectedDelta,
+                        "sug_minDelta" to minDelta,
+                        "sug_TDD" to (if (profile.TDD > 0) profile.TDD else 0.0),
+                        "iob_bolusiob" to bolusIob,
+                        "iob_netbasalinsulin" to iob_data.netbasalinsulin,
+                        "recent_smb_units_60m" to recentSmb60,
+                        "time_since_last_smb_min" to tSinceSmb
+                    )
+                    val current = app.aaps.plugins.aps.openAPSBoost.BoostMlFeatureBuilder.CycleSnapshot(
+                        ts = systemTime,
+                        cgmMgdl = bg,
+                        iobIob = iob_data.iob,
+                        iobActivity = iob_data.activity,
+                        sugEventualBG = eventualBG,
+                        recentSmbUnits60m = recentSmb60,
+                        sugMinDelta = minDelta
+                    )
+                    mlRingBuffer.push(current)
+                    val features = app.aaps.plugins.aps.openAPSBoost.BoostMlFeatureBuilder.build(
+                        featNames, current, mlRingBuffer, statics
+                    )
+                    rm.predict(features)
+                }
+            }
             if (mlHypoRisk != null) {
                 rT.mlHypoRisk = round(mlHypoRisk, 3)
                 consoleError.add("── ML Risk Model ───────────────────────────")
