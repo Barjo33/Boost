@@ -73,7 +73,13 @@ object SleepStateDetector {
         // Tracks the most recent fresh HR-sample timestamp the detector has observed.
         // Non-zero only after the first fresh sample is seen; persists across cycles so
         // drought duration survives gaps between evaluate() calls.
-        var lastFreshHrSampleMs: Long = 0L
+        var lastFreshHrSampleMs: Long = 0L,
+        // 2026-06-06: records which qualifier promoted the current SLEEPING entry.
+        // Values: "hr" (HR-value qualifier — avgHr ≤ resting × 1.15), "drought" (no live
+        // HR for ≥droughtThresholdMin), null when not in SLEEPING. Emitted to NS for
+        // validation that the watch-side sleep-window narrowing is actually working
+        // (expect "hr" entries when bookend HR transmission is live; "drought" as fallback).
+        var sleepEntryReason: String? = null
     ) {
         fun serialize(): String =
             JSONObject()
@@ -82,6 +88,7 @@ object SleepStateDetector {
                 .put("wakeCandidateSinceMs", wakeCandidateSinceMs ?: JSONObject.NULL)
                 .put("enteredAtMs", enteredAtMs)
                 .put("lastFreshHrSampleMs", lastFreshHrSampleMs)
+                .put("sleepEntryReason", sleepEntryReason ?: JSONObject.NULL)
                 .toString()
 
         companion object {
@@ -94,7 +101,8 @@ object SleepStateDetector {
                         sleepCandidateSinceMs = j.optLong("sleepCandidateSinceMs", -1L).takeIf { it > 0 },
                         wakeCandidateSinceMs = j.optLong("wakeCandidateSinceMs", -1L).takeIf { it > 0 },
                         enteredAtMs = j.optLong("enteredAtMs", 0L),
-                        lastFreshHrSampleMs = j.optLong("lastFreshHrSampleMs", 0L)
+                        lastFreshHrSampleMs = j.optLong("lastFreshHrSampleMs", 0L),
+                        sleepEntryReason = j.optString("sleepEntryReason", "").takeIf { it.isNotEmpty() }
                     )
                 } catch (e: Exception) {
                     State()
@@ -235,7 +243,8 @@ object SleepStateDetector {
                         val heldMin = ((inputs.nowMs - newState.sleepCandidateSinceMs!!) / 60_000L).toInt()
                         if (heldMin >= inputs.minSleepHysteresisMin) {
                             newState = State(state = SleepState.SLEEPING, enteredAtMs = inputs.nowMs,
-                                             lastFreshHrSampleMs = newState.lastFreshHrSampleMs)
+                                             lastFreshHrSampleMs = newState.lastFreshHrSampleMs,
+                                             sleepEntryReason = if (hrQualifies) "hr" else "drought")
                             transitioned = true
                             debug.append(" | →SLEEPING (held ${heldMin}m${if (droughtQualifies && !hrQualifies) " — drought" else ""})")
                         } else {
@@ -270,7 +279,8 @@ object SleepStateDetector {
                         val heldMin = ((inputs.nowMs - newState.sleepCandidateSinceMs!!) / 60_000L).toInt()
                         if (heldMin >= inputs.minSleepHysteresisMin) {
                             newState = State(state = SleepState.SLEEPING, enteredAtMs = inputs.nowMs,
-                                             lastFreshHrSampleMs = newState.lastFreshHrSampleMs)
+                                             lastFreshHrSampleMs = newState.lastFreshHrSampleMs,
+                                             sleepEntryReason = if (hrQualifies) "hr" else "drought")
                             transitioned = true
                             debug.append(" | →SLEEPING (held ${heldMin}m${if (droughtQualifies && !hrQualifies) " — drought" else ""})")
                         } else {

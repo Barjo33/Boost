@@ -1335,6 +1335,7 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
                 }
                 it.sleepState = sleepResult.newState.state.name
                 it.sleepStateEnteredAtMs = sleepResult.newState.enteredAtMs.takeIf { v -> v > 0 }
+                it.sleepEntryReason = sleepResult.newState.sleepEntryReason
                 it.sleepLearnedStartMin = agg.sleepStartMinAvg
                 it.sleepLearnedWakeMin = agg.wakeMinAvg
                 it.sleepLearnedDurationMin = agg.sleepDurationMinAvg

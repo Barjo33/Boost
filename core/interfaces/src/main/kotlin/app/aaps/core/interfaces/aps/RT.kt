@@ -105,6 +105,7 @@ data class RT(
     var hrReadingsCount15m: Int? = null,             // number of HR records seen in 15-min window
     var sleepState: String? = null,                  // AWAKE | PRE_SLEEP | SLEEPING
     var sleepStateEnteredAtMs: Long? = null,         // when current sleep state was entered (UTC ms)
+    var sleepEntryReason: String? = null,            // "hr" | "drought" while SLEEPING; null otherwise. Validates which qualifier promoted the entry.
     // 28-day learned sleep schedule — null until ≥7 sessions recorded
     var sleepLearnedStartMin: Int? = null,           // circular-mean sleep-onset clock-min (0..1439)
     var sleepLearnedWakeMin: Int? = null,            // circular-mean wake clock-min (0..1439)
