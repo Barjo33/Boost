@@ -79,4 +79,16 @@ enum class StringKey(
     // Drives circular-mean sleep_start / wake-time learning; PRE_SLEEP fires
     // preSleepLeadMin before the learned average once ≥7 sessions exist.
     ApsBoostSleepHistory("boost_sleep_history", "", defaultedBySM = true),
+
+    // v12 ML feature ring buffer — JSON array of last 6 cycle snapshots holding the
+    // 6 lookback features (cgm_mgdl, iob_iob, iob_activity, sug_eventualBG,
+    // recent_smb_units_60m, sug_minDelta). Persisted across plugin restarts so the
+    // windowed feature vector survives cold starts. Reset is harmless: cold buffer
+    // falls back to repeating the current cycle.
+    ApsBoostMlRingBuffer("boost_ml_ring_buffer", "", defaultedBySM = true),
+
+    // Recent SMB volume log — JSON array of {ts, units} for SMBs in the last 60+ min.
+    // Used to compute recent_smb_units_60m + time_since_last_smb_min features each
+    // cycle without needing a database scan. Pruned to entries within last 4 hours.
+    ApsBoostMlRecentSmbLog("boost_ml_recent_smb_log", "", defaultedBySM = true),
 }

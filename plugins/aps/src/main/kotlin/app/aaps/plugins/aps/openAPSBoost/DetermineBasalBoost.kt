@@ -31,6 +31,14 @@ class DetermineBasalBoost @Inject constructor(
     private val consoleError = mutableListOf<String>()
     private val consoleLog = mutableListOf<String>()
 
+    // v12 ML feature ring buffer (2026-06-06) — kept on the singleton so it persists
+    // across determine_basal invocations within the same process lifetime. Cold start
+    // on process restart repeats the current cycle's values into all 6 lookback
+    // positions (zero-imputed "no change since last cycle" — same default as the
+    // training-time Python parser). Recent-SMB stats come from PersistenceLayer via
+    // the plugin (see recentSmbVolume60Min + timeSinceLastSmbMin parameters).
+    private var mlRingBuffer: BoostMlFeatureBuilder.RingBuffer = BoostMlFeatureBuilder.RingBuffer()
+
     private fun Double.toFixed2(): String = DecimalFormat("0.00#").format(round(this, 2))
 
     fun round_basal(value: Double): Double = value
@@ -185,7 +193,13 @@ class DetermineBasalBoost @Inject constructor(
         cumulativeSmbCap60Min: Double = 1.5,
         // v4.4.4 hotfix Fix A v2 (ported to V1 2026-06-01): 45-min rolling minimum BG used only
         // by Fix A post-rescue tier gating. Default 999.0 = disabled (legacy callers).
-        recentLowBG45Min: Double = 999.0
+        recentLowBG45Min: Double = 999.0,
+        // v12 ML feature (2026-06-06): minutes since the most recent BS.Type.SMB
+        // bolus in the PersistenceLayer, capped at 720. Default 720.0 = "no recent
+        // SMB" so legacy callers don't change inference behaviour. The plugin
+        // computes this from the same getBolusesFromTimeToTime query that drives
+        // recentSmbVolume60Min.
+        timeSinceLastSmbMin: Double = 720.0
     ): RT {
         consoleError.clear()
         consoleLog.clear()
@@ -1097,16 +1111,67 @@ class DetermineBasalBoost @Inject constructor(
                 glucose_status.shortAvgDelta > -15.0 -> -1.5
                 else                                 -> -2.0
             }
-            val mlHypoRisk = riskModel?.predictHypoRisk(
-                cgmMgdl = bg,
-                iobTotal = iob_data.iob,
-                iobBasal = iob_data.basaliob,
-                bgAboveTarget = bg - target_bg,
-                directionNum = directionNumValue,
-                hour = java.time.LocalTime.now().hour,
-                iobActivity = iob_data.activity,
-                insulinReq = insulinReq
-            )
+            // v12 (2026-06-06): the hypo-risk model now consumes a 53-feature vector
+            // (17 static + 36 windowed lookback). The legacy 8-feature path is preserved
+            // when the loaded model declares only 8 features (e.g., during rollback).
+            // Windowed values are sourced from a 6-cycle ring buffer maintained by the
+            // plugin; static values come from this cycle's algorithm state.
+            val now = java.time.LocalTime.now().hour
+            val mlHypoRisk: Double? = run {
+                val rm = riskModel ?: return@run null
+                val featNames = rm.getFeatureNames() ?: return@run null
+                if (featNames.size == 8) {
+                    // Legacy 8-feature model (v9-90m or earlier)
+                    rm.predictHypoRisk(
+                        cgmMgdl = bg, iobTotal = iob_data.iob, iobBasal = iob_data.basaliob,
+                        bgAboveTarget = bg - target_bg, directionNum = directionNumValue,
+                        hour = now, iobActivity = iob_data.activity, insulinReq = insulinReq
+                    )
+                } else {
+                    // v10+/v12 — build full feature vector via helper. The caller
+                    // (OpenAPSBoostPlugin) is responsible for pushing the current
+                    // snapshot to the ring buffer and providing recent-SMB stats;
+                    // here we just thread the static values + ring buffer through.
+                    val recentSmb60 = recentSmbVolume60Min
+                    val tSinceSmb = timeSinceLastSmbMin
+                    // iob.bolusiob isn't directly exposed by IobTotal; approximate as
+                    // iob - basaliob. AAPS internally treats this as the bolus IOB
+                    // contribution and emits it to NS as openaps.iob.bolusiob via the
+                    // upload extension, matching the training-time feature semantics.
+                    val bolusIob = (iob_data.iob - iob_data.basaliob).coerceAtLeast(0.0)
+                    val statics: Map<String, Double> = mapOf(
+                        "cgm_mgdl" to bg,
+                        "iob_iob" to iob_data.iob,
+                        "iob_basaliob" to iob_data.basaliob,
+                        "bg_above_target" to (bg - target_bg),
+                        "direction_num" to directionNumValue,
+                        "hour" to now.toDouble(),
+                        "iob_activity" to iob_data.activity,
+                        "sug_insulinReq" to insulinReq,
+                        "sug_COB" to meal_data.mealCOB,
+                        "sug_eventualBG" to eventualBG,
+                        "sug_expectedDelta" to expectedDelta,
+                        "sug_minDelta" to minDelta,
+                        "sug_TDD" to (if (profile.TDD > 0) profile.TDD else 0.0),
+                        "iob_bolusiob" to bolusIob,
+                        "iob_netbasalinsulin" to iob_data.netbasalinsulin,
+                        "recent_smb_units_60m" to recentSmb60,
+                        "time_since_last_smb_min" to tSinceSmb
+                    )
+                    val current = BoostMlFeatureBuilder.CycleSnapshot(
+                        ts = systemTime,
+                        cgmMgdl = bg,
+                        iobIob = iob_data.iob,
+                        iobActivity = iob_data.activity,
+                        sugEventualBG = eventualBG,
+                        recentSmbUnits60m = recentSmb60,
+                        sugMinDelta = minDelta
+                    )
+                    mlRingBuffer.push(current)
+                    val features = BoostMlFeatureBuilder.build(featNames, current, mlRingBuffer, statics)
+                    rm.predict(features)
+                }
+            }
             if (mlHypoRisk != null) {
                 rT.mlHypoRisk = round(mlHypoRisk, 3)
                 consoleError.add("── ML Risk Model (observability only) ──────")

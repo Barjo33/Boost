@@ -1037,16 +1037,23 @@ open class OpenAPSBoostPlugin @Inject constructor(
         // IOB is decay-adjusted, but the rolling-window cap wants raw delivered amounts.
         // Filters to BS.Type.SMB so manual user boluses don't contribute.
         val cumulativeSmbCap60Min = preferences.get(DoubleKey.ApsBoostCumulativeSmbCap60Min)
-        val recentSmbVolume60Min = try {
-            val sixtyMinAgo = now - 60 * 60 * 1000L
-            persistenceLayer.getBolusesFromTimeToTime(sixtyMinAgo, now, ascending = true)
+        // v12 ML uses both the 60-min volume (already used by the cap) and the
+        // minutes-since-last-SMB. Query a wider 12-hr window once and derive both.
+        val (recentSmbVolume60Min, timeSinceLastSmbMin) = try {
+            val twelveHrAgo = now - 12 * 60 * 60 * 1000L
+            val smbs = persistenceLayer.getBolusesFromTimeToTime(twelveHrAgo, now, ascending = false)
                 .filter { it.type == BS.Type.SMB && it.isValid }
-                .sumOf { it.amount }
+            val sixtyMinAgo = now - 60 * 60 * 1000L
+            val sum60 = smbs.filter { it.timestamp >= sixtyMinAgo }.sumOf { it.amount }
+            val tSince = smbs.firstOrNull()?.let {
+                kotlin.math.min(720.0, (now - it.timestamp) / 60_000.0)
+            } ?: 720.0
+            Pair(sum60, tSince)
         } catch (e: Exception) {
-            aapsLogger.warn(LTag.APS, "Boost V1 recent SMB volume query failed (${e.message}) — falling back to 0.0 (cap will not engage this cycle)")
-            0.0
+            aapsLogger.warn(LTag.APS, "Boost V1 recent SMB volume query failed (${e.message}) — falling back to 0.0 / 720m (cap will not engage this cycle)")
+            Pair(0.0, 720.0)
         }
-        aapsLogger.debug(LTag.APS, "Boost V1 cumulative SMB last 60min: ${recentSmbVolume60Min}U / cap ${cumulativeSmbCap60Min}U")
+        aapsLogger.debug(LTag.APS, "Boost V1 cumulative SMB last 60min: ${recentSmbVolume60Min}U / cap ${cumulativeSmbCap60Min}U | minutes-since-last-SMB: ${timeSinceLastSmbMin}")
 
         determineBasalBoost.determine_basal(
             glucose_status = glucoseStatus,
@@ -1064,7 +1071,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
             mealModel = boostMealModel,
             recentSmbVolume60Min = recentSmbVolume60Min,
             cumulativeSmbCap60Min = cumulativeSmbCap60Min,
-            recentLowBG45Min = recentLowBG45Min
+            recentLowBG45Min = recentLowBG45Min,
+            timeSinceLastSmbMin = timeSinceLastSmbMin
         ).also {
             // ISF shadow telemetry — V1's actual variable_sens used the instantaneous
             // ratio = tdd24/tdd7; V4.4.2 would use an EMA(τ=3h) of the same. Compute
