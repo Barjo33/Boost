@@ -12,10 +12,18 @@
   "n_trees": 50,
   "max_depth": 4,
   "num_leaves": 15,
-  "group_kfold_auc": 0.7011,
-  "louo_auc": 0.6796,
-  "n_train": 2972585,
-  "n_users": 28,
+  "horizon_min": 90,
+  "note": "Production v9 \u2014 90m horizon overrides the sweep script default (60m). 90m preserves predictive content while delivering Simon +17pp / user4 +22pp / Joost +21pp / Tim +14pp vs v8 LOUO baseline.",
+  "sweep_louo_auc_at_90m": 0.817,
+  "sweep_louo_per_new_user": {
+    "U029_Tim": 0.7586,
+    "U030_Joost": 0.8759,
+    "U031_user4": 0.8218,
+    "U032_Simon": 0.8538
+  },
+  "n_train": 3007589,
+  "n_users": 32,
   "hypo_threshold": 70,
-  "model_size_kb": 148.1
+  "training_date": "2026-06-06",
+  "data_window": "oref_v5 base + 2026-05-01 to 2026-06-03 for V5+ML users (label horizon=90min)"
 }
