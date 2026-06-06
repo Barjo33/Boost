@@ -132,13 +132,28 @@ class BoostRiskModel @Inject constructor(
         insulinReq: Double
     ): Double? {
         ensureLoaded()
-        val modelTrees = trees ?: return null
-        if (!loaded) return null
-
+        if (!loaded || trees == null) return null
         val features = doubleArrayOf(
             cgmMgdl, iobTotal, iobBasal, bgAboveTarget,
             directionNum, hour.toDouble(), iobActivity, insulinReq
         )
+        return predict(features)
+    }
+
+    /**
+     * Generic predict — accepts a feature vector matching the model's declared
+     * featureNames order. Used by callers that ship richer feature schemas (v10+).
+     * Returns null if the model hasn't loaded or the vector size mismatches.
+     */
+    fun predict(features: DoubleArray): Double? {
+        ensureLoaded()
+        val modelTrees = trees ?: return null
+        if (!loaded) return null
+        val expected = featureNames?.size ?: features.size
+        if (features.size != expected) {
+            aapsLogger.error(LTag.APS, "BoostRiskModel feature size mismatch: got ${features.size}, expected $expected")
+            return null
+        }
 
         // Sum the raw leaf values from all trees
         var rawScore = 0.0
