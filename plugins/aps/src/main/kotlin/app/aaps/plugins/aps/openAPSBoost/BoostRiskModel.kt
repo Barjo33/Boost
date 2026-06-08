@@ -186,6 +186,15 @@ class BoostRiskModel @Inject constructor(
     }
 
     fun isLoaded(): Boolean = loaded
-    fun getFeatureNames(): List<String>? = featureNames
+    fun getFeatureNames(): List<String>? {
+        // 2026-06-08: trigger lazy-load on first access so callers that probe
+        // the schema before the first predict() (e.g., dual-path inference
+        // routing in DetermineBasalBoost) actually cause the asset to load.
+        // Previously this was a plain getter that returned null forever if no
+        // predict() had been called yet — which is exactly what the dual-path
+        // code does on every cycle, perpetually short-circuiting load.
+        ensureLoaded()
+        return featureNames
+    }
     fun getTreeCount(): Int = trees?.size ?: 0
 }

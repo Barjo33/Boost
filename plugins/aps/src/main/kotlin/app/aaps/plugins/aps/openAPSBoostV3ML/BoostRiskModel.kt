@@ -184,6 +184,11 @@ class BoostRiskModel @Inject constructor(
     }
 
     fun isLoaded(): Boolean = loaded
-    fun getFeatureNames(): List<String>? = featureNames
+    fun getFeatureNames(): List<String>? {
+        // 2026-06-08: trigger lazy-load on first access so dual-path callers
+        // actually load the asset instead of perpetually short-circuiting.
+        ensureLoaded()
+        return featureNames
+    }
     fun getTreeCount(): Int = trees?.size ?: 0
 }
