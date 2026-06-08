@@ -87,6 +87,7 @@ class BoostRiskModel @Inject constructor(
                         add(parseNode(treesArr.getJSONObject(i)))
                     } catch (e: Exception) {
                         aapsLogger.error(LTag.APS, "BoostRiskModel(V3ML) tree $i parse failed: ${e.javaClass.simpleName}: ${e.message}")
+                        aapsLogger.info(LTag.APS, "BoostRiskModel(V3ML) DIAG tree $i parse failed: ${e.javaClass.simpleName}: ${e.message}")
                         throw e
                     }
                 }
@@ -97,6 +98,7 @@ class BoostRiskModel @Inject constructor(
             true
         } catch (e: Exception) {
             aapsLogger.error(LTag.APS, "BoostRiskModel(V3ML) failed to load from $assetPath: ${e.javaClass.simpleName}: ${e.message}")
+            aapsLogger.info(LTag.APS, "BoostRiskModel(V3ML) DIAG load FAILED from $assetPath: ${e.javaClass.simpleName}: ${e.message}")
             loaded = false
             false
         }

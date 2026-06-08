@@ -90,7 +90,9 @@ class BoostRiskModel @Inject constructor(
                     try {
                         add(parseNode(treesArr.getJSONObject(i)))
                     } catch (e: Exception) {
+                        // Emit at BOTH error and info — exported log captures only info.
                         aapsLogger.error(LTag.APS, "BoostRiskModel tree $i parse failed: ${e.javaClass.simpleName}: ${e.message}")
+                        aapsLogger.info(LTag.APS, "BoostRiskModel DIAG tree $i parse failed: ${e.javaClass.simpleName}: ${e.message}")
                         throw e
                     }
                 }
@@ -100,7 +102,9 @@ class BoostRiskModel @Inject constructor(
             aapsLogger.info(LTag.APS, "BoostRiskModel loaded: ${trees?.size} trees, ${featureNames?.size} features from $assetPath")
             true
         } catch (e: Exception) {
+            // Emit at BOTH error and info — exported log captures only info.
             aapsLogger.error(LTag.APS, "BoostRiskModel failed to load from $assetPath: ${e.javaClass.simpleName}: ${e.message}")
+            aapsLogger.info(LTag.APS, "BoostRiskModel DIAG load FAILED from $assetPath: ${e.javaClass.simpleName}: ${e.message}")
             loaded = false
             false
         }
