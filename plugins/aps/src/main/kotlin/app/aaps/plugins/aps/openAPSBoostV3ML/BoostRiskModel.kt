@@ -70,7 +70,9 @@ class BoostRiskModel @Inject constructor(
      */
     fun loadModel(context: Context, assetPath: String = "boost/hypo_risk_model.json"): Boolean {
         return try {
-            val jsonStr = context.assets.open(assetPath).bufferedReader().readText()
+            val rawBytes = context.assets.open(assetPath).readBytes()
+            val jsonStr = String(rawBytes, Charsets.UTF_8)
+            aapsLogger.info(LTag.APS, "BoostRiskModel(V3ML) loading $assetPath (${rawBytes.size} bytes)")
             val json = JSONObject(jsonStr)
 
             featureNames = mutableListOf<String>().apply {
@@ -81,15 +83,20 @@ class BoostRiskModel @Inject constructor(
             val treesArr = json.getJSONArray("trees")
             trees = mutableListOf<TreeNode>().apply {
                 for (i in 0 until treesArr.length()) {
-                    add(parseNode(treesArr.getJSONObject(i)))
+                    try {
+                        add(parseNode(treesArr.getJSONObject(i)))
+                    } catch (e: Exception) {
+                        aapsLogger.error(LTag.APS, "BoostRiskModel(V3ML) tree $i parse failed: ${e.javaClass.simpleName}: ${e.message}")
+                        throw e
+                    }
                 }
             }
 
             loaded = true
-            aapsLogger.info(LTag.APS, "BoostRiskModel loaded: ${trees?.size} trees, ${featureNames?.size} features from $assetPath")
+            aapsLogger.info(LTag.APS, "BoostRiskModel(V3ML) loaded: ${trees?.size} trees, ${featureNames?.size} features from $assetPath")
             true
         } catch (e: Exception) {
-            aapsLogger.error(LTag.APS, "BoostRiskModel failed to load: ${e.message}")
+            aapsLogger.error(LTag.APS, "BoostRiskModel(V3ML) failed to load from $assetPath: ${e.javaClass.simpleName}: ${e.message}")
             loaded = false
             false
         }
