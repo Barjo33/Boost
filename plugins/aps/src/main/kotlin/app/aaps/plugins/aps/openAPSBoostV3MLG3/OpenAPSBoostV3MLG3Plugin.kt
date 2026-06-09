@@ -1220,6 +1220,11 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
         }
         aapsLogger.debug(LTag.APS, "BoostV3MLG3 cumulative SMB last 60min: ${recentSmbVolume60Min}U / cap ${cumulativeSmbCap60Min}U | minutes-since-last-SMB: ${timeSinceLastSmbMin}")
 
+        // v12 ML lookback ring buffer — restore from storage once per process so the
+        // lag0..lag5 windowed features survive an AAPS restart instead of cold-starting
+        // (zero-imputed) for the first ~6 cycles. No-op after the first cycle.
+        determineBasalBoostV3MLG3.loadMlRingBufferOnce(preferences.get(StringKey.ApsBoostMlRingBuffer))
+
         determineBasalBoostV3MLG3.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -1237,6 +1242,9 @@ open class OpenAPSBoostV3MLG3Plugin @Inject constructor(
             recentLowBG45Min = recentLowBG45Min,
             timeSinceLastSmbMin = timeSinceLastSmbMin
         ).also {
+            // Persist the v12 ML lookback ring buffer (updated in-place during this
+            // cycle's inference) so the lag features survive a process restart.
+            preferences.put(StringKey.ApsBoostMlRingBuffer, determineBasalBoostV3MLG3.serializeMlRingBuffer())
             // Populate deviation sensitivity fields on the RT for Nightscout upload + UI
             it.deviationSensRatio = isfResult.deviationSensRatio
             it.deviationSensSource = isfResult.deviationSensSource

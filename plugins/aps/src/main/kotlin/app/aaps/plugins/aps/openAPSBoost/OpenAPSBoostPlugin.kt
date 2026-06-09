@@ -1055,6 +1055,11 @@ open class OpenAPSBoostPlugin @Inject constructor(
         }
         aapsLogger.debug(LTag.APS, "Boost V1 cumulative SMB last 60min: ${recentSmbVolume60Min}U / cap ${cumulativeSmbCap60Min}U | minutes-since-last-SMB: ${timeSinceLastSmbMin}")
 
+        // v12 ML lookback ring buffer — restore from storage once per process so the
+        // lag0..lag5 windowed features survive an AAPS restart instead of cold-starting
+        // (zero-imputed) for the first ~6 cycles. No-op after the first cycle.
+        determineBasalBoost.loadMlRingBufferOnce(preferences.get(StringKey.ApsBoostMlRingBuffer))
+
         determineBasalBoost.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -1098,6 +1103,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     it.isfShadow_microBolus = Round.roundTo(u / scale, 0.001)
                 }
             }
+            // Persist the v12 ML lookback ring buffer (updated in-place during this
+            // cycle's inference) so the lag features survive a process restart.
+            preferences.put(StringKey.ApsBoostMlRingBuffer, determineBasalBoost.serializeMlRingBuffer())
             // V5 silent shadow — runs BEFORE EventAPSCalculationFinished is fired so
             // any listener sees the populated rT with boostV5_* fields. V5 mutates
             // the rT in place; failures inside V5 are caught and logged within

@@ -37,6 +37,23 @@ class DetermineBasalBoostV3MLG3 @Inject constructor(
     // architecture notes. Singleton-scoped so it persists across cycles in-process.
     private var mlRingBuffer: app.aaps.plugins.aps.openAPSBoost.BoostMlFeatureBuilder.RingBuffer =
         app.aaps.plugins.aps.openAPSBoost.BoostMlFeatureBuilder.RingBuffer()
+    private var mlRingBufferLoaded = false
+
+    /**
+     * Restore the lookback ring buffer from persisted storage exactly once per process.
+     * Called by the plugin before each cycle with the raw JSON from
+     * StringKey.ApsBoostMlRingBuffer. Idempotent after the first non-skipped call so we
+     * never clobber the live in-memory buffer with stale storage on later cycles.
+     */
+    fun loadMlRingBufferOnce(raw: String) {
+        if (mlRingBufferLoaded) return
+        mlRingBuffer = app.aaps.plugins.aps.openAPSBoost.BoostMlFeatureBuilder.deserializeBuffer(raw)
+        mlRingBufferLoaded = true
+    }
+
+    /** Serialize the current ring buffer so the plugin can persist it after each cycle. */
+    fun serializeMlRingBuffer(): String =
+        app.aaps.plugins.aps.openAPSBoost.BoostMlFeatureBuilder.serializeBuffer(mlRingBuffer)
 
     private fun Double.toFixed2(): String = DecimalFormat("0.00#").format(round(this, 2))
 

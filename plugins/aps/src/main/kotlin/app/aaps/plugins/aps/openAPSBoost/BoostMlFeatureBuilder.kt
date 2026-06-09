@@ -17,8 +17,9 @@ import org.json.JSONObject
  *          iob_activity, sug_eventualBG, recent_smb_units_60m, sug_minDelta
  *
  * The ring buffer holds the last 6 cycles' values for the 6 windowed features and
- * is persisted across plugin restarts via [serialize]/[deserialize] into the
- * caller's StringKey storage. On cold start (empty buffer), lag values default to
+ * is persisted across plugin restarts via [serializeBuffer]/[deserializeBuffer] into
+ * StringKey.ApsBoostMlRingBuffer (orchestrated by the plugin, not this object). On cold
+ * start (empty buffer), lag values default to
  * the current cycle's value (zero-imputed in Python's median-fill is roughly
  * equivalent to "no change since last cycle").
  */

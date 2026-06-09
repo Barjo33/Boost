@@ -86,9 +86,4 @@ enum class StringKey(
     // windowed feature vector survives cold starts. Reset is harmless: cold buffer
     // falls back to repeating the current cycle.
     ApsBoostMlRingBuffer("boost_ml_ring_buffer", "", defaultedBySM = true),
-
-    // Recent SMB volume log — JSON array of {ts, units} for SMBs in the last 60+ min.
-    // Used to compute recent_smb_units_60m + time_since_last_smb_min features each
-    // cycle without needing a database scan. Pruned to entries within last 4 hours.
-    ApsBoostMlRecentSmbLog("boost_ml_recent_smb_log", "", defaultedBySM = true),
 }
