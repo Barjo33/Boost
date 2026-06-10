@@ -1441,6 +1441,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostPercentScale, dialogMessage = R.string.boost_percent_scale_summary, title = R.string.boost_percent_scale_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostScale, dialogMessage = R.string.boost_scale_summary, title = R.string.boost_scale_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostMaxIob, dialogMessage = R.string.boost_max_iob_summary, title = R.string.boost_max_iob_title))
+            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostCumulativeSmbCap60Min, dialogMessage = R.string.boost_cumulative_smb_cap_summary, title = R.string.boost_cumulative_smb_cap_title))
             addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.ApsBoostStartTime, dialogMessage = R.string.boost_start_summary, title = R.string.boost_start_title))
             addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.ApsBoostEndTime, dialogMessage = R.string.boost_end_summary, title = R.string.boost_end_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostEnablePercentScale, summary = R.string.boost_enable_percent_scale_summary, title = R.string.boost_enable_percent_scale_title))
