@@ -189,6 +189,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
     private val enableBoostPercentScale; get() = preferences.get(BooleanKey.ApsBoostEnablePercentScale)
     private val enableCircadianIsf; get() = preferences.get(BooleanKey.ApsBoostEnableCircadianIsf)
     private val allowBoostWithHighTt; get() = preferences.get(BooleanKey.ApsBoostAllowWithHighTt)
+    private val boostV5ActiveDosing; get() = preferences.get(BooleanKey.ApsBoostV5ActiveDosing)
 
     // Boost time window
     private val boostStartTime; get() = preferences.get(StringKey.ApsBoostStartTime)
@@ -1106,21 +1107,32 @@ open class OpenAPSBoostPlugin @Inject constructor(
             // Persist the v12 ML lookback ring buffer (updated in-place during this
             // cycle's inference) so the lag features survive a process restart.
             preferences.put(StringKey.ApsBoostMlRingBuffer, determineBasalBoost.serializeMlRingBuffer())
-            // V5 silent shadow — runs BEFORE EventAPSCalculationFinished is fired so
-            // any listener sees the populated rT with boostV5_* fields. V5 mutates
-            // the rT in place; failures inside V5 are caught and logged within
-            // runShadow() and cannot affect V1's dosing decision (already finalised
-            // above this line).
-            try {
+            // V5 — runs BEFORE EventAPSCalculationFinished. In SHADOW mode (toggle off) V5 only
+            // attaches boostV5_* telemetry. In ACTIVE mode (ApsBoostV5ActiveDosing) V5's finalDose
+            // REPLACES V1's SMB on cycles V1 permits one (microBolusAllowed) — V1 still owns basal,
+            // predictions and every safety gate; the overridden rT.units flows through downstream
+            // pump/bolus constraints unchanged. runShadow returns null on internal error → V1's
+            // dose is left intact. V5 can never raise the dose above its own caps + maxIOB clamp.
+            val v5decision = try {
                 boostV5Plugin.get().runShadow(
                     rT = it,
                     glucoseStatus = glucoseStatus,
                     iobArray = iobArray,
                     oapsProfile = oapsProfile,
-                    pumpBolusStep = activePlugin.activePump.pumpDescription.bolusStep
+                    pumpBolusStep = activePlugin.activePump.pumpDescription.bolusStep,
+                    activeMode = boostV5ActiveDosing,
+                    microBolusAllowed = microBolusAllowed,
+                    flatBGsDetected = flatBGsDetected
                 )
             } catch (t: Throwable) {
                 aapsLogger.error(LTag.APS, "V5 shadow invocation failed", t)
+                null
+            }
+            if (boostV5ActiveDosing && microBolusAllowed && v5decision != null) {
+                val v1WouldDose = it.units ?: 0.0
+                it.units = v5decision.finalDose
+                it.reason.append("V5-ACTIVE drove SMB ${Round.roundTo(v5decision.finalDose, 0.001)}U (V1 would=${Round.roundTo(v1WouldDose, 0.001)}U, state=${v5decision.mealHypothesis}); ")
+                aapsLogger.info(LTag.APS, "V5-ACTIVE override: SMB ${v1WouldDose} → ${v5decision.finalDose} state=${v5decision.mealHypothesis}")
             }
 
             // 2026-06-02: Sleep state evaluation. Runs at end of invoke so we have
@@ -1553,6 +1565,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsCarbsRequestThreshold, dialogMessage = R.string.carbs_req_threshold_summary, title = R.string.carbs_req_threshold))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostAllowAllBgSources, summary = R.string.boost_allow_all_bg_sources_summary, title = R.string.boost_allow_all_bg_sources_title))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostBypassVersionCheck, summary = R.string.boost_bypass_version_check_summary, title = R.string.boost_bypass_version_check_title))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostV5ActiveDosing, summary = R.string.boost_v5_active_dosing_summary, title = R.string.boost_v5_active_dosing_title))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5ConfirmedCapU, dialogMessage = R.string.boost_v5_confirmed_cap_summary, title = R.string.boost_v5_confirmed_cap_title))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5CommittedCapU, dialogMessage = R.string.boost_v5_committed_cap_summary, title = R.string.boost_v5_committed_cap_title))
             })
 
             // ── 7. Advanced Settings ─────────────────────────────────────

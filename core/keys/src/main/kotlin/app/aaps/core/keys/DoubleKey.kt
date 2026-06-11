@@ -68,6 +68,10 @@ enum class DoubleKey(
 
     // Boost V5 — three (and only three) user-facing knobs per the minimal-settings tenet
     ApsBoostV5Aggression("boost_v5_aggression", 1.0, 0.7, 1.3, defaultedBySM = true),
+    // Boost V5 active-dosing alpha (2026-06-11) — user-adjustable dose caps so the operator can
+    // tighten V5's commit/holding doses live during alpha. Default to the validated Fix-6 values.
+    ApsBoostV5ConfirmedCapU("boost_v5_confirmed_cap_u", 1.0, 0.0, 2.0, defaultedBySM = true),
+    ApsBoostV5CommittedCapU("boost_v5_committed_cap_u", 0.25, 0.0, 1.0, defaultedBySM = true),
     ApsBoostV5HypoCaution("boost_v5_hypo_caution", 1.0, 1.0, 2.0, defaultedBySM = true),
     ApsBoostV5Sensitivity("boost_v5_sensitivity", 1.0, 0.8, 1.2, defaultedBySM = true),
 

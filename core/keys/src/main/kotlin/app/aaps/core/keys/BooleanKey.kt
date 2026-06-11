@@ -83,6 +83,9 @@ enum class BooleanKey(
     // Health Connect HR ingest (2026-06-03) — bridge for overnight HR from Garmin/Wear OS via Android Health Connect
     ApsBoostHealthConnectHrEnabled("boost_health_connect_hr_enabled", false, defaultedBySM = true),
     ApsBoostBypassVersionCheck("boost_bypass_version_check", false, defaultedBySM = true),
+    // Boost V5 active-dosing alpha (2026-06-11) — when ON, V5's observe-confirm-commit SMB REPLACES
+    // V1's SMB on cycles V1 permits one. V1 still owns basal + all safety gates. Toggle OFF = instant revert.
+    ApsBoostV5ActiveDosing("boost_v5_active_dosing", false, defaultedBySM = true),
     ApsBoostPostExerciseRecoveryEnabled("boost_post_exercise_recovery_enabled", false, defaultedBySM = true),
     ApsBoostHrIntegrationEnabled("boost_hr_integration_enabled", false, defaultedBySM = true),
     ApsBoostHrStressDetection("boost_hr_stress_detection", false, defaultedBySM = true),

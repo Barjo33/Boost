@@ -126,10 +126,13 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         iobArray: Array<IobTotal>,
         oapsProfile: OapsProfileBoost,
         pumpBolusStep: Double,
-    ) {
-        try {
+        activeMode: Boolean = false,
+        microBolusAllowed: Boolean = true,
+        flatBGsDetected: Boolean = false,
+    ): V5Decision? {
+        return try {
             val priorState = stateStore.load()
-            val inputs = buildInputs(rT, glucoseStatus, iobArray, oapsProfile, pumpBolusStep)
+            val inputs = buildInputs(rT, glucoseStatus, iobArray, oapsProfile, pumpBolusStep, activeMode, microBolusAllowed, flatBGsDetected)
             val decision = determineBasalBoostV5.decide(inputs, priorState)
             stateStore.save(decision.newPersistedState)
 
@@ -147,10 +150,12 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             rT.boostV5_gateReduction = formatGateReduction(decision)
 
             val rtJson = v5DecisionToRtJson(decision)
-            aapsLogger.info(LTag.APS, "BoostV5_RT: ${rtJson} actual_v441_smb=${rT.units ?: 0.0} actual_v441_insulinReq=${rT.insulinReq ?: 0.0}")
+            aapsLogger.info(LTag.APS, "BoostV5_RT: ${rtJson} actual_smb=${rT.units ?: 0.0} actual_insulinReq=${rT.insulinReq ?: 0.0} activeMode=$activeMode")
+            decision
         } catch (e: Throwable) {
-            // Never let V5 break V4.4.1. Log and continue.
+            // Never let V5 break V4.4.1. Log and continue. Null → caller leaves V1's dose intact.
             aapsLogger.error(LTag.APS, "BoostV5 shadow error", e)
+            null
         }
     }
 
@@ -200,6 +205,9 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         iobArray: Array<IobTotal>,
         opb: OapsProfileBoost,
         pumpBolusStep: Double,
+        activeMode: Boolean,
+        microBolusAllowed: Boolean,
+        flatBGsDetected: Boolean,
     ): V5Inputs {
         // delta_accl with V3's denominator floor — `max(|shortAvgDelta|, 2.0)` — carried over
         // verbatim from V3 input preprocessing.
@@ -232,7 +240,10 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         // shadow we want V5's decision visible regardless. V5's other hard gates (minGuardBg
         // via rT.minGuardBG, maxIOB clamp, maxDelta) already cover safety. When V5 graduates
         // to alpha (active APS), this becomes a real V5-side enableSMB check.
-        val enableSmbPreChecks = true
+        // ACTIVE-DOSING ALPHA (2026-06-11): gate on V1's real SMB permission (microBolusAllowed) so
+        // V5 can only dose on cycles V1 itself permits an SMB — V1 is the outer safety envelope.
+        // Shadow mode (activeMode=false) keeps the permissive value so shadow telemetry is unchanged.
+        val enableSmbPreChecks = if (activeMode) microBolusAllowed else true
 
         return V5Inputs(
             delta = gs.delta,
@@ -265,13 +276,15 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             hour = hour,
             exerciseActive = opb.v5_exerciseActive,
             inPostExerciseWindow = opb.v5_inPostExerciseWindow,
-            sensorQualityOk = true,            // V0: BG quality already vetted by V4.4.1's checks
-            profileSwitched = false,           // V0: profile-switch detection deferred (low-impact path)
+            sensorQualityOk = if (activeMode) !flatBGsDetected else true,
+            profileSwitched = false,           // deferred reset trigger (microBolusAllowed gates actual dosing)
             pumpDisconnected = false,
             loopSuspended = false,
             timeJumpMinutes = 0.0,
             aggressionUserKnob = aggressionKnob,
             hypoCautionUserKnob = hypoCautionKnob,
+            confirmedCapU = preferences.get(DoubleKey.ApsBoostV5ConfirmedCapU),
+            committedCapU = preferences.get(DoubleKey.ApsBoostV5CommittedCapU),
         )
     }
 
