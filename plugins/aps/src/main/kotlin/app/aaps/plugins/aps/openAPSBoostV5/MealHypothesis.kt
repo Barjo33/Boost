@@ -109,6 +109,18 @@ internal const val CONFIRMED_TO_COMMITTED_AGE = 0               // 2026-05-26 Fi
 internal const val RECOVERING_DECEL_THRESHOLD = -5.0            // delta_accl < -5 enters RECOVERING (with delta declining)
 internal const val RECOVERING_TO_IDLE_SCORE = 0.18              // calibrated: 0.20 → 0.18
 
+// 2026-06-12 Fix 7 — multi-phase meal re-engagement. On a two-phase meal (rise → decel → rise),
+// the mid-meal deceleration sends COMMITTED → RECOVERING, and RECOVERING previously had no path
+// back to active dosing — V5 dribbled at 0.4× through the entire second climb (BG ran to 192 on
+// 2026-06-12). These thresholds let RECOVERING resume COMMITTED (1.0×, NOT a new 1.8× CONFIRMED
+// commit — Fix 6 stays intact) when the meal genuinely re-accelerates while still well above target.
+// The −5 back-off vs +10 re-engage dead-band + min-age give hysteresis against flicker.
+// Initial estimates; revisit after a few two-phase meals.
+internal const val RECOVERING_REENGAGE_ACCL = 10.0             // delta_accl must exceed this to re-engage
+internal const val RECOVERING_REENGAGE_DELTA = 3.0            // BG must actually be rising (mg/dL per 5 min)
+internal const val RECOVERING_REENGAGE_OFFSET_MGDL = 20.0    // eventualBg − targetBg must exceed this (meal still material)
+internal const val RECOVERING_REENGAGE_MIN_AGE = 1          // ≥1 cycle in RECOVERING before re-engaging (no same-cycle flicker)
+
 /** Time-jump threshold (minutes) for forcing IDLE on clock changes (e.g. timezone switch). */
 internal const val TIME_JUMP_RESET_MINUTES = 30.0
 
@@ -193,13 +205,25 @@ fun step(
             else MealHypothesisState(state, age + 1, 0.0, 0.0, true)
         }
 
-        MealHypothesis.RECOVERING ->
-            // EITHER condition exits to IDLE (more permissive than entry — easier to leave RECOVERING).
-            // On exit to IDLE the session is complete — reset committedInSession=false so the next
-            // meal can CONFIRM normally.
-            if (delta < 0 || score < RECOVERING_TO_IDLE_SCORE)
-                MealHypothesisState(MealHypothesis.IDLE, 0, 0.0, 0.0, false)
-            else MealHypothesisState(state, age + 1, 0.0, 0.0, true)
+        MealHypothesis.RECOVERING -> {
+            // Fix 7 (2026-06-12): multi-phase meal re-engagement. If the meal re-accelerates while
+            // still well above target, resume COMMITTED (1.0× sustained dosing) rather than dribble
+            // at 0.4× through a second rise. Resumes COMMITTED — NOT a second CONFIRMED commit-shot —
+            // so committedInSession stays true and the Fix 6 multi-CONFIRMED guard is untouched.
+            val reEngage = age >= RECOVERING_REENGAGE_MIN_AGE &&
+                deltaAccl > RECOVERING_REENGAGE_ACCL &&
+                delta > RECOVERING_REENGAGE_DELTA &&
+                currentOffset > RECOVERING_REENGAGE_OFFSET_MGDL
+            when {
+                reEngage -> MealHypothesisState(MealHypothesis.COMMITTED, 0, 0.0, 0.0, true)
+                // EITHER condition exits to IDLE (more permissive than entry — easier to leave RECOVERING).
+                // On exit to IDLE the session is complete — reset committedInSession=false so the next
+                // meal can CONFIRM normally.
+                delta < 0 || score < RECOVERING_TO_IDLE_SCORE ->
+                    MealHypothesisState(MealHypothesis.IDLE, 0, 0.0, 0.0, false)
+                else -> MealHypothesisState(state, age + 1, 0.0, 0.0, true)
+            }
+        }
     }
 }
 
