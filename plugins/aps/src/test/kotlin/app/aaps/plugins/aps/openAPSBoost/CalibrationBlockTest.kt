@@ -7,6 +7,7 @@ import app.aaps.core.interfaces.profiling.Profiler
 import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.rx.events.EventCalibrationDetected
+import app.aaps.core.keys.StringKey
 import app.aaps.plugins.aps.openAPSBoostV5.OpenAPSBoostV5Plugin
 import app.aaps.plugins.aps.openAPSSMB.GlucoseStatusCalculatorSMB
 import app.aaps.shared.tests.TestBaseWithProfile
@@ -14,6 +15,7 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mock
+import org.mockito.kotlin.whenever
 import javax.inject.Provider
 
 /**
@@ -41,6 +43,10 @@ class CalibrationBlockTest : TestBaseWithProfile() {
     private lateinit var plugin: OpenAPSBoostPlugin
 
     @BeforeEach fun prepare() {
+        // Sleep feature reads these StringKeys in the plugin's field initialisers at construction;
+        // stub them so deserialize() gets "" (→ default state) instead of a null mock return.
+        whenever(preferences.get(StringKey.ApsBoostSleepState)).thenReturn("")
+        whenever(preferences.get(StringKey.ApsBoostSleepHistory)).thenReturn("")
         plugin = OpenAPSBoostPlugin(
             aapsLogger, aapsSchedulers, rxBus, constraintChecker, rh,
             profileFunction, profileUtil, config, activePlugin,
