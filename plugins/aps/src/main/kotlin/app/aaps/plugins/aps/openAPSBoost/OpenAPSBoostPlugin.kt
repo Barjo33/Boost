@@ -1128,11 +1128,18 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 aapsLogger.error(LTag.APS, "V5 shadow invocation failed", t)
                 null
             }
-            if (boostV5ActiveDosing && microBolusAllowed && v5decision != null) {
+            // Sleep gate (2026-06-14): do NOT let V5 drive the SMB while SLEEPING — fall back to V1's
+            // (oref1/Boost) SMB, which already respects night mode. V5 still computes its shadow
+            // telemetry above (runShadow ran), so the V5-vs-V1 comparison continues overnight; only
+            // the dose override is suppressed. Robust to overnight CGM artifacts tripping V5.
+            val v5Asleep = sleepStateCached.state == SleepStateDetector.SleepState.SLEEPING
+            if (boostV5ActiveDosing && microBolusAllowed && v5decision != null && !v5Asleep) {
                 val v1WouldDose = it.units ?: 0.0
                 it.units = v5decision.finalDose
                 it.reason.append("V5-ACTIVE drove SMB ${Round.roundTo(v5decision.finalDose, 0.001)}U (V1 would=${Round.roundTo(v1WouldDose, 0.001)}U, state=${v5decision.mealHypothesis}); ")
                 aapsLogger.info(LTag.APS, "V5-ACTIVE override: SMB ${v1WouldDose} → ${v5decision.finalDose} state=${v5decision.mealHypothesis}")
+            } else if (boostV5ActiveDosing && v5Asleep && v5decision != null) {
+                it.reason.append("V5 suppressed (SLEEPING) — V1 SMB ${Round.roundTo(it.units ?: 0.0, 0.001)}U; ")
             }
 
             // 2026-06-02: Sleep state evaluation. Runs at end of invoke so we have

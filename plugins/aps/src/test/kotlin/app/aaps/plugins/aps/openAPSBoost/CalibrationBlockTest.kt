@@ -7,12 +7,14 @@ import app.aaps.core.interfaces.profiling.Profiler
 import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.rx.events.EventCalibrationDetected
+import app.aaps.plugins.aps.openAPSBoostV5.OpenAPSBoostV5Plugin
 import app.aaps.plugins.aps.openAPSSMB.GlucoseStatusCalculatorSMB
 import app.aaps.shared.tests.TestBaseWithProfile
 import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mock
+import javax.inject.Provider
 
 /**
  * Tests the calibration SMB block behaviour of [OpenAPSBoostPlugin].
@@ -30,6 +32,11 @@ class CalibrationBlockTest : TestBaseWithProfile() {
     @Mock lateinit var uiInteraction: UiInteraction
     @Mock lateinit var profiler: Profiler
     @Mock lateinit var determineBasalBoost: DetermineBasalBoost
+    @Mock lateinit var boostRiskModel: BoostRiskModel
+    @Mock lateinit var boostMealModel: BoostMealModel
+    @Mock lateinit var boostIsfShadow: BoostIsfShadow
+    @Mock lateinit var healthConnectHrIngest: HealthConnectHrIngest
+    @Mock lateinit var boostV5Plugin: Provider<OpenAPSBoostV5Plugin>
 
     private lateinit var plugin: OpenAPSBoostPlugin
 
@@ -40,7 +47,9 @@ class CalibrationBlockTest : TestBaseWithProfile() {
             iobCobCalculator, hardLimits, preferences, dateUtil,
             processedTbrEbData, persistenceLayer,
             GlucoseStatusCalculatorSMB(aapsLogger, iobCobCalculator, dateUtil, decimalFormatter, deltaCalculator),
-            bgQualityCheck, uiInteraction, tddCalculator, determineBasalBoost, profiler, apsResultProvider
+            bgQualityCheck, uiInteraction, tddCalculator, determineBasalBoost,
+            boostRiskModel, boostMealModel, boostIsfShadow, profiler, apsResultProvider,
+            boostV5Plugin, healthConnectHrIngest
         )
         // Activate the RxBus subscription
         plugin.onStart()

@@ -194,6 +194,7 @@ class DetermineBasalBoostV5 @Inject constructor(
             iob = inputs.iob,
             maxIob = inputs.maxIob,
             deltaAccl = inputs.deltaAccl,
+            delta = inputs.delta,
             baseInsulinReq = inputs.baseInsulinReq,
             roundSmbTo = inputs.roundSmbTo,
             sensorQualityOk = inputs.sensorQualityOk,
