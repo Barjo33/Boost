@@ -49,6 +49,7 @@
     <string name="boost_v5_shortname">V5</string>
     <string name="description_boost_v5">Boost V5 — Observe-Confirm-Commit dosing. Runs the Boost engine with V5\'s meal-aware SMB override. Select this as your APS to use V5; select plain \"Boost\" for V1 without the override.</string>
     <string name="boost_v5_v6_settings">Boost V5 / V6 controls</string>
+    <string name="boost_v1_smb_sizing_title">Boost V1 SMB sizing</string>
 
     <string name="boost_v5_aggression_title">Aggression</string>
     <string name="boost_v5_aggression_summary">Scales the catch-up dose at meal CONFIRMED. 1.0 = calibrated default; lower = gentler commit dose, higher = more aggressive. Range 0.7-1.3.</string>
