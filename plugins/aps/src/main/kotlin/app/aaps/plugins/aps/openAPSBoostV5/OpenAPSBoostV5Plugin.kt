@@ -9,6 +9,7 @@ import app.aaps.core.interfaces.aps.IobTotal
 import app.aaps.core.interfaces.aps.APS
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.GlucoseStatus
+import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.aps.OapsProfileBoost
 import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.configuration.Config
@@ -305,7 +306,17 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         )
     }
 
-    override fun getGlucoseStatusData(allowOldData: Boolean): GlucoseStatus? = null
+    // When "Boost V5" is the active APS, GlucoseStatusProviderImpl + overview/Wear/Android Auto/
+    // lockscreen widgets call these on activeAPS. V5 owns no glucose/ISF logic — delegate to the
+    // engine so they behave identically to plain "Boost". (Returning null/the interface default
+    // here broke those integrations: they showed stale data with only raw glucose. 2026-06-15.)
+    override fun getGlucoseStatusData(allowOldData: Boolean): GlucoseStatus? =
+        openAPSBoostEngine.get().getGlucoseStatusData(allowOldData)
+
+    override fun supportsDynamicIsf(): Boolean = openAPSBoostEngine.get().supportsDynamicIsf()
+    override fun getIsfMgdl(profile: Profile, caller: String): Double? = openAPSBoostEngine.get().getIsfMgdl(profile, caller)
+    override fun getAverageIsfMgdl(timestamp: Long, caller: String): Double? = openAPSBoostEngine.get().getAverageIsfMgdl(timestamp, caller)
+    override fun getSensitivityOverviewString(): String? = openAPSBoostEngine.get().getSensitivityOverviewString()
 
     override fun configuration(): JSONObject = JSONObject()
 
