@@ -2,6 +2,7 @@ package app.aaps.plugins.aps.openAPSBoostV5
 
 import android.content.Context
 import androidx.preference.PreferenceCategory
+import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceManager
 import androidx.preference.PreferenceScreen
 import app.aaps.core.data.plugin.PluginType
@@ -13,6 +14,7 @@ import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.aps.OapsProfileBoost
 import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.constraints.Constraint
 import app.aaps.core.interfaces.constraints.PluginConstraints
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
@@ -87,9 +89,16 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
     aapsLogger, rh
 ), APS, PluginConstraints {
 
-    override var lastAPSRun: Long = 0
     override val algorithm = APSResult.Algorithm.BOOST
-    override var lastAPSResult: APSResult? = null
+    // Reflect the engine's result LIVE (not a post-invoke copy): runEngine fires
+    // EventAPSCalculationFinished mid-run, before invoke() returns, so a copy would let GUI
+    // listeners read a stale/null result on that event. Delegating getters avoid the race.
+    override var lastAPSResult: APSResult?
+        get() = openAPSBoostEngine.get().lastAPSResult
+        set(_) {}
+    override var lastAPSRun: Long
+        get() = openAPSBoostEngine.get().lastAPSRun
+        set(_) {}
 
     /** State persistence across cycles. Initialised lazily on first access. */
     private val stateStore: V5StateStore by lazy { V5StateStore(preferences) }
@@ -103,10 +112,9 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
      * override the SMB. Selecting plain "Boost" runs the same engine with v5Active=false.
      */
     override fun invoke(initiator: String, tempBasalFallback: Boolean) {
-        val engine = openAPSBoostEngine.get()
-        engine.runEngine(initiator, tempBasalFallback, v5Active = true)
-        lastAPSResult = engine.lastAPSResult
-        lastAPSRun = engine.lastAPSRun
+        // Run the shared engine with the V5 override active. lastAPSResult/lastAPSRun delegate to
+        // the engine (see above), so the result is exposed the instant runEngine sets it.
+        openAPSBoostEngine.get().runEngine(initiator, tempBasalFallback, v5Active = true)
     }
 
     // Enable/show under the same condition as plain Boost (temp-basal-capable pump) — delegate to
@@ -318,9 +326,33 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
     override fun getAverageIsfMgdl(timestamp: Long, caller: String): Double? = openAPSBoostEngine.get().getAverageIsfMgdl(timestamp, caller)
     override fun getSensitivityOverviewString(): String? = openAPSBoostEngine.get().getSensitivityOverviewString()
 
-    override fun configuration(): JSONObject = JSONObject()
+    // ── Delegated to the engine ─────────────────────────────────────────────────────────────
+    // When "Boost V5" is the active APS, V1 (the engine) is DISABLED, so the constraints framework
+    // (ConstraintsCheckerImpl: `if (!p.isEnabled()) continue`) skips V1 entirely and only polls V5.
+    // V5 owns no constraint/config/lifecycle logic, so it must forward all of it to the engine —
+    // otherwise Boost's night-mode SMB gate, UAM/autosens limits, maxIOB/maxBasal caps, the
+    // post-calibration SMB block, and settings export would silently vanish under V5. (2026-06-15.)
 
-    override fun applyConfiguration(configuration: JSONObject) {}
+    override fun isSMBModeEnabled(value: Constraint<Boolean>): Constraint<Boolean> = openAPSBoostEngine.get().isSMBModeEnabled(value)
+    override fun isUAMEnabled(value: Constraint<Boolean>): Constraint<Boolean> = openAPSBoostEngine.get().isUAMEnabled(value)
+    override fun isAutosensModeEnabled(value: Constraint<Boolean>): Constraint<Boolean> = openAPSBoostEngine.get().isAutosensModeEnabled(value)
+    override fun isSuperBolusEnabled(value: Constraint<Boolean>): Constraint<Boolean> = openAPSBoostEngine.get().isSuperBolusEnabled(value)
+    override fun applyMaxIOBConstraints(maxIob: Constraint<Double>): Constraint<Double> = openAPSBoostEngine.get().applyMaxIOBConstraints(maxIob)
+    override fun applyBasalConstraints(absoluteRate: Constraint<Double>, profile: Profile): Constraint<Double> = openAPSBoostEngine.get().applyBasalConstraints(absoluteRate, profile)
+
+    // Lifecycle: forward so the engine's EventCalibrationDetected subscription (post-calibration
+    // SMB block) is live whenever Boost V5 is the running plugin.
+    override fun onStart() { super.onStart(); openAPSBoostEngine.get().onStart() }
+    override fun onStop() { openAPSBoostEngine.get().onStop(); super.onStop() }
+
+    override fun configuration(): JSONObject = openAPSBoostEngine.get().configuration()
+
+    override fun applyConfiguration(configuration: JSONObject) = openAPSBoostEngine.get().applyConfiguration(configuration)
+
+    // Dynamic pref visibility (SMB-with-COB/LowTt/AfterCarbs) — same shared SMB-safety switches
+    // appear on V5's screen, so run the engine's logic against V5's fragment.
+    override fun preprocessPreferences(preferenceFragment: PreferenceFragmentCompat) =
+        openAPSBoostEngine.get().preprocessPreferences(preferenceFragment)
 
     /** V5's three (and only three) user-facing knobs, per the minimal-settings tenet. */
     val aggressionKnob: Double get() = preferences.get(DoubleKey.ApsBoostV5Aggression)
