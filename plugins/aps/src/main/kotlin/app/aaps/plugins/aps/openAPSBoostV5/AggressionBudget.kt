@@ -44,7 +44,7 @@ import kotlin.math.max
 /** HARDCODED budget constants. Per `boost_v5_constants_calibration.md`. */
 internal const val BUDGET_FLOOR_FRACTION = 0.30                  // hard floor: 30% × baseInsulinReq
 internal const val ML_HYPO_RISK_THRESHOLD = 0.30                 // below this risk, scale = 1.0
-internal const val ML_HYPO_RISK_FLOOR = 0.50                     // even at risk = 1.0, scale ≥ 0.5 (Hypo Caution user knob can raise)
+internal const val ML_HYPO_RISK_FLOOR = 0.50                     // floor on mlScale at knob 1.0 (Hypo Caution knob LOWERS it: 0.50/knob)
 internal const val POST_EXERCISE_RECOVERY_SCALE = 0.50           // V4-equivalent boost_bolus reduction during recovery window
 
 data class AggressionBudgetResult(
@@ -65,8 +65,13 @@ data class AggressionBudgetResult(
  * @param inPostExerciseWindow true if V4's post-exercise tracking state has the recovery window
  *   active (read directly from V4's existing state — V5 does NOT reimplement detection).
  * @param hypoCautionUserKnob user-facing "Hypo Caution" multiplier ∈ [1.0, 2.0]. Default 1.0.
- *   Raises the mlHypoRiskScale floor above 0.5 for users with hypo unawareness or recent
- *   severe hypo history. This is one of V5's ≤3 user-facing knobs.
+ *   Higher = MORE caution = LESS insulin when the ML hypo-risk model is elevated. It deepens and
+ *   widens the mlHypoRiskScale backoff (and lowers its floor 0.50→0.25 across 1.0→2.0) so a
+ *   hypo-prone user (e.g. the 2026-06-15 backtest's User D, whose pre-severe-low over-dosing all
+ *   sits in the mid risk band 0.30–0.60) can be trimmed where it matters. Default 1.0 is an exact
+ *   no-op vs the prior calibration. **2026-06-15 fix:** the previous implementation RAISED the
+ *   floor with the knob — i.e. raising "Hypo Caution" REMOVED damping and dosed MORE (inverted).
+ *   This is one of V5's ≤3 user-facing knobs.
  * @param sensitivityUserKnob user-facing "Sensitivity" multiplier ∈ [0.8, 1.2]. Default 1.0.
  *   A per-user calibration lever on the whole budget: <1.0 trims V5 for users where it runs
  *   hot (the 2026-06-15 backtest's User-D over-dosed before lows), >1.0 lets it run firmer for
@@ -81,8 +86,7 @@ fun aggressionBudget(
     hypoCautionUserKnob: Double = 1.0,
     sensitivityUserKnob: Double = 1.0,
 ): AggressionBudgetResult {
-    val effectiveFloor = ML_HYPO_RISK_FLOOR * hypoCautionUserKnob.coerceAtLeast(1.0)
-    val mlScale = mlHypoRiskScale(mlHypoRisk, effectiveFloor)
+    val mlScale = mlHypoRiskScale(mlHypoRisk, hypoCautionUserKnob)
     val postExScale = postExerciseRecoveryModifier(inPostExerciseWindow)
     val sensitivity = sensitivityUserKnob.coerceIn(0.8, 1.2)
     val aggressionModifier = mlScale * postExScale * sensitivity
@@ -108,13 +112,18 @@ fun aggressionBudget(
  * `mlTierDowngrade` (binary tier-skip at 0.6). V5's single graduated curve eliminates the
  * double-braking problem.
  */
-internal fun mlHypoRiskScale(mlHypoRisk: Double?, floor: Double = ML_HYPO_RISK_FLOOR): Double {
+internal fun mlHypoRiskScale(mlHypoRisk: Double?, hypoCautionKnob: Double = 1.0): Double {
     if (mlHypoRisk == null) return 1.0
     if (mlHypoRisk <= ML_HYPO_RISK_THRESHOLD) return 1.0
     val span = 1.0 - ML_HYPO_RISK_THRESHOLD
-    if (span <= 0.0) return floor
-    val raw = 1.0 - (mlHypoRisk - ML_HYPO_RISK_THRESHOLD) / span
-    return max(floor, raw)
+    if (span <= 0.0) return ML_HYPO_RISK_FLOOR
+    val knob = hypoCautionKnob.coerceAtLeast(1.0)
+    // Base reduction fraction: 0 at the threshold, 1.0 at risk = 1.0. Hypo Caution scales the cut
+    // UP (more backoff), and lowers the floor (0.50 @ knob 1.0 → 0.25 @ knob 2.0) so the deeper cut
+    // can actually land. At knob 1.0 this is identical to the prior `max(0.5, 1 − (risk−0.3)/span)`.
+    val reduction = ((mlHypoRisk - ML_HYPO_RISK_THRESHOLD) / span * knob).coerceIn(0.0, 1.0)
+    val floor = ML_HYPO_RISK_FLOOR / knob
+    return max(floor, 1.0 - reduction)
 }
 
 /**
