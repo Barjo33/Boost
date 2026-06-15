@@ -18,16 +18,20 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.validators.preferences.AdaptiveDoublePreference
+import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
 import app.aaps.plugins.aps.OpenAPSFragment
 import app.aaps.plugins.aps.R
 import org.json.JSONObject
 import java.time.LocalTime
 import java.time.ZoneId
 import javax.inject.Inject
+import javax.inject.Provider
 import javax.inject.Singleton
+import app.aaps.plugins.aps.openAPSBoost.OpenAPSBoostPlugin
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -66,6 +70,8 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
     private val config: Config,
     private val preferences: Preferences,
     private val determineBasalBoostV5: DetermineBasalBoostV5,
+    // Provider breaks the DI cycle (OpenAPSBoostPlugin injects Provider<OpenAPSBoostV5Plugin> for runShadow).
+    private val openAPSBoostEngine: Provider<OpenAPSBoostPlugin>,
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -75,7 +81,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         .shortName(R.string.boost_v5_shortname)
         .preferencesId(PluginDescription.PREFERENCE_SCREEN)
         .preferencesVisibleInSimpleMode(false)
-        .showInList { false }
+        .showInList { config.APS }
         .description(R.string.description_boost_v5),
     aapsLogger, rh
 ), APS, PluginConstraints {
@@ -87,14 +93,19 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
     /** State persistence across cycles. Initialised lazily on first access. */
     private val stateStore: V5StateStore by lazy { V5StateStore(preferences) }
 
-    override fun isEnabled(): Boolean = false
-
+    /**
+     * "Boost V5" is the selectable face of the shared Boost engine. It runs the full V1 engine
+     * with the V5 observe-confirm-commit SMB override ACTIVE, then exposes the engine's result as
+     * its own. V5 owns no basal/prediction logic — it delegates to [OpenAPSBoostPlugin.runEngine]
+     * (v5Active=true) and inherits the entire sensitivity/engine stack via OapsProfileBoost. The
+     * engine still calls V5's [runShadow] internally; v5Active=true is what lets that decision
+     * override the SMB. Selecting plain "Boost" runs the same engine with v5Active=false.
+     */
     override fun invoke(initiator: String, tempBasalFallback: Boolean) {
-        // V5 plugin is hidden (showInList { false }) and not user-selectable as the active APS.
-        // Shadow execution happens via [runShadow], which V4.4.1 (V3MLG3) calls at the end of
-        // its own invoke() with V4.4.1's gathered inputs. invoke() here is a no-op for that
-        // reason — see runShadow() for the actual shadow entry point.
-        aapsLogger.debug(LTag.APS, "BoostV5 invoke: not selectable; shadow runs via V3MLG3 callback.")
+        val engine = openAPSBoostEngine.get()
+        engine.runEngine(initiator, tempBasalFallback, v5Active = true)
+        lastAPSResult = engine.lastAPSResult
+        lastAPSRun = engine.lastAPSRun
     }
 
     /**
@@ -314,32 +325,43 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         context: Context,
         requiredKey: String?,
     ) {
-        if (requiredKey != null && requiredKey != "openapsboostv5_settings") return
+        // Allow the V5 root, the V5/V6 knob screen, AND the shared engine sub-screen keys (V5
+        // builds them too, since it runs on the V1 engine).
+        if (requiredKey != null &&
+            requiredKey != "openapsboostv5_settings" &&
+            requiredKey != "openapsboostv5_v6_knobs" &&
+            requiredKey != "absorption_smb_advanced" &&
+            requiredKey != "boost_default_aaps_settings" &&
+            requiredKey != "boost_dynisf_settings" &&
+            requiredKey != "boost_exercise_settings" &&
+            requiredKey != "boost_stepcount_settings" &&
+            requiredKey != "boost_hr_integration_settings" &&
+            requiredKey != "boost_post_exercise_recovery_settings" &&
+            requiredKey != "boost_night_mode_settings" &&
+            requiredKey != "boost_safety_settings"
+        ) return
         val category = PreferenceCategory(context)
         parent.addPreference(category)
         category.apply {
             key = "openapsboostv5_settings"
             title = rh.gs(R.string.openaps_boost_v5)
             initialExpandedChildrenCount = 0
-
-            addPreference(AdaptiveDoublePreference(
-                ctx = context,
-                doubleKey = DoubleKey.ApsBoostV5Aggression,
-                dialogMessage = R.string.boost_v5_aggression_summary,
-                title = R.string.boost_v5_aggression_title,
-            ))
-            addPreference(AdaptiveDoublePreference(
-                ctx = context,
-                doubleKey = DoubleKey.ApsBoostV5HypoCaution,
-                dialogMessage = R.string.boost_v5_hypo_caution_summary,
-                title = R.string.boost_v5_hypo_caution_title,
-            ))
-            addPreference(AdaptiveDoublePreference(
-                ctx = context,
-                doubleKey = DoubleKey.ApsBoostV5Sensitivity,
-                dialogMessage = R.string.boost_v5_sensitivity_summary,
-                title = R.string.boost_v5_sensitivity_title,
-            ))
         }
+        // Shared Boost engine settings (basal/ISF/activity/HR/night mode/SMB safety) — V5 runs ON
+        // the V1 engine, so these must be reachable when "Boost V5" is the active APS.
+        openAPSBoostEngine.get().addBoostEngineCategories(preferenceManager, category, context)
+        // V5/V6-specific knobs — the only settings unique to V5.
+        category.addPreference(preferenceManager.createPreferenceScreen(context).apply {
+            key = "openapsboostv5_v6_knobs"
+            title = rh.gs(R.string.boost_v5_v6_settings)
+            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5Aggression, dialogMessage = R.string.boost_v5_aggression_summary, title = R.string.boost_v5_aggression_title))
+            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5HypoCaution, dialogMessage = R.string.boost_v5_hypo_caution_summary, title = R.string.boost_v5_hypo_caution_title))
+            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5Sensitivity, dialogMessage = R.string.boost_v5_sensitivity_summary, title = R.string.boost_v5_sensitivity_title))
+            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5ConfirmedCapU, dialogMessage = R.string.boost_v5_confirmed_cap_summary, title = R.string.boost_v5_confirmed_cap_title))
+            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5CommittedCapU, dialogMessage = R.string.boost_v5_committed_cap_summary, title = R.string.boost_v5_committed_cap_title))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostV6PreMealTarget, summary = R.string.boost_v6_pre_meal_target_summary, title = R.string.boost_v6_pre_meal_target_title))
+            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV6PreMealTargetMgdl, dialogMessage = R.string.boost_v6_pre_meal_target_mgdl_summary, title = R.string.boost_v6_pre_meal_target_mgdl_title))
+            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV6PreMealLeadMin, dialogMessage = R.string.boost_v6_pre_meal_lead_min_summary, title = R.string.boost_v6_pre_meal_lead_min_title))
+        })
     }
 }

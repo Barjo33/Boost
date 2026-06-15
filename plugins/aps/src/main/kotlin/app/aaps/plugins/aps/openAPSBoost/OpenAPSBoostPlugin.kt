@@ -189,7 +189,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
     private val enableBoostPercentScale; get() = preferences.get(BooleanKey.ApsBoostEnablePercentScale)
     private val enableCircadianIsf; get() = preferences.get(BooleanKey.ApsBoostEnableCircadianIsf)
     private val allowBoostWithHighTt; get() = preferences.get(BooleanKey.ApsBoostAllowWithHighTt)
-    private val boostV5ActiveDosing; get() = preferences.get(BooleanKey.ApsBoostV5ActiveDosing)
+    // ApsBoostV5ActiveDosing retired 2026-06-15: V5 is now a selectable plugin (Boost V5), so the
+    // engine's V5 override is gated by runEngine(v5Active=…) — set true only when the V5 plugin
+    // drives the engine. The key is kept in BooleanKey for back-compat but no longer read here.
 
     // Boost time window
     private val boostStartTime; get() = preferences.get(StringKey.ApsBoostStartTime)
@@ -697,8 +699,18 @@ open class OpenAPSBoostPlugin @Inject constructor(
 
     // ---- Main invoke ----
 
-    override fun invoke(initiator: String, tempBasalFallback: Boolean) {
-        aapsLogger.debug(LTag.APS, "invoke from $initiator tempBasalFallback: $tempBasalFallback")
+    override fun invoke(initiator: String, tempBasalFallback: Boolean) =
+        runEngine(initiator, tempBasalFallback, v5Active = false)
+
+    /**
+     * Shared Boost dosing engine. Computes the full V1 decision and, when [v5Active], lets V5's
+     * observe-confirm-commit decision override the SMB. The selectable "Boost V5" plugin calls
+     * this with v5Active=true; pure "Boost" (V1) calls it with false (its own [invoke]).
+     * `runShadow()` runs either way, so V5 shadow telemetry is logged under V1 as well — only the
+     * dose override is gated by [v5Active].
+     */
+    fun runEngine(initiator: String, tempBasalFallback: Boolean, v5Active: Boolean) {
+        aapsLogger.debug(LTag.APS, "runEngine from $initiator tempBasalFallback: $tempBasalFallback v5Active: $v5Active")
         // 2026-06-03: Trigger Health Connect HR ingest. Throttled internally; no-op if disabled.
         healthConnectHrIngest.syncIfDue()
         lastAPSResult = null
@@ -1158,7 +1170,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     iobArray = iobArray,
                     oapsProfile = oapsProfile,
                     pumpBolusStep = activePlugin.activePump.pumpDescription.bolusStep,
-                    activeMode = boostV5ActiveDosing,
+                    activeMode = v5Active,
                     microBolusAllowed = microBolusAllowed,
                     flatBGsDetected = flatBGsDetected
                 )
@@ -1171,12 +1183,12 @@ open class OpenAPSBoostPlugin @Inject constructor(
             // telemetry above (runShadow ran), so the V5-vs-V1 comparison continues overnight; only
             // the dose override is suppressed. Robust to overnight CGM artifacts tripping V5.
             val v5Asleep = sleepStateCached.state == SleepStateDetector.SleepState.SLEEPING
-            if (boostV5ActiveDosing && microBolusAllowed && v5decision != null && !v5Asleep) {
+            if (v5Active && microBolusAllowed && v5decision != null && !v5Asleep) {
                 val v1WouldDose = it.units ?: 0.0
                 it.units = v5decision.finalDose
                 it.reason.append("V5-ACTIVE drove SMB ${Round.roundTo(v5decision.finalDose, 0.001)}U (V1 would=${Round.roundTo(v1WouldDose, 0.001)}U, state=${v5decision.mealHypothesis}); ")
                 aapsLogger.info(LTag.APS, "V5-ACTIVE override: SMB ${v1WouldDose} → ${v5decision.finalDose} state=${v5decision.mealHypothesis}")
-            } else if (boostV5ActiveDosing && v5Asleep && v5decision != null) {
+            } else if (v5Active && v5Asleep && v5decision != null) {
                 it.reason.append("V5 suppressed (SLEEPING) — V1 SMB ${Round.roundTo(it.units ?: 0.0, 0.001)}U; ")
             }
 
@@ -1494,7 +1506,20 @@ open class OpenAPSBoostPlugin @Inject constructor(
             key = "openapsboost_settings"
             title = rh.gs(R.string.openaps_boost)
             initialExpandedChildrenCount = 0
+        }
+        addBoostEngineCategories(preferenceManager, category, context)
+    }
 
+    /**
+     * Shared Boost ENGINE preference categories — everything both "Boost" (V1) and the selectable
+     * "Boost V5" need: basal/IOB, Boost controls, DynISF, activity/HR, post-exercise, night mode,
+     * SMB safety, advanced. Built into the caller's root [category]. V5's [OpenAPSBoostV5Plugin]
+     * calls this too, then appends its own V5/V6 knob category — so engine settings live in ONE
+     * place and stay reachable under whichever Boost plugin is the active APS. Contains NO V5/V6
+     * controls (those belong to the V5 plugin).
+     */
+    fun addBoostEngineCategories(preferenceManager: PreferenceManager, category: PreferenceCategory, context: Context) {
+        category.apply {
             // ── 1. Default AAPS Settings ────────────────────────────────
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 key = "boost_default_aaps_settings"
@@ -1624,13 +1649,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsCarbsRequestThreshold, dialogMessage = R.string.carbs_req_threshold_summary, title = R.string.carbs_req_threshold))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostAllowAllBgSources, summary = R.string.boost_allow_all_bg_sources_summary, title = R.string.boost_allow_all_bg_sources_title))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostBypassVersionCheck, summary = R.string.boost_bypass_version_check_summary, title = R.string.boost_bypass_version_check_title))
-                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostV5ActiveDosing, summary = R.string.boost_v5_active_dosing_summary, title = R.string.boost_v5_active_dosing_title))
-                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5ConfirmedCapU, dialogMessage = R.string.boost_v5_confirmed_cap_summary, title = R.string.boost_v5_confirmed_cap_title))
-                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5CommittedCapU, dialogMessage = R.string.boost_v5_committed_cap_summary, title = R.string.boost_v5_committed_cap_title))
-                // V6 anticipatory pre-meal low target (shadow-first). Toggle OFF = shadow (logs only).
-                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostV6PreMealTarget, summary = R.string.boost_v6_pre_meal_target_summary, title = R.string.boost_v6_pre_meal_target_title))
-                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV6PreMealTargetMgdl, dialogMessage = R.string.boost_v6_pre_meal_target_mgdl_summary, title = R.string.boost_v6_pre_meal_target_mgdl_title))
-                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV6PreMealLeadMin, dialogMessage = R.string.boost_v6_pre_meal_lead_min_summary, title = R.string.boost_v6_pre_meal_lead_min_title))
+                // V5/V6 controls intentionally NOT here — they live in the selectable "Boost V5"
+                // plugin's screen (OpenAPSBoostV5Plugin.addPreferenceScreen). V1 is V5-free.
             })
 
             // ── 7. Advanced Settings ─────────────────────────────────────

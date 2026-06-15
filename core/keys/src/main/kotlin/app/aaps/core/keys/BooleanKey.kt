@@ -85,6 +85,8 @@ enum class BooleanKey(
     ApsBoostBypassVersionCheck("boost_bypass_version_check", false, defaultedBySM = true),
     // Boost V5 active-dosing alpha (2026-06-11) — when ON, V5's observe-confirm-commit SMB REPLACES
     // V1's SMB on cycles V1 permits one. V1 still owns basal + all safety gates. Toggle OFF = instant revert.
+    // DEPRECATED 2026-06-15: V5 is now a selectable APS plugin ("Boost V5"); selecting it IS
+    // "V5 active". No longer read/surfaced. Kept only so existing stored prefs don't error.
     ApsBoostV5ActiveDosing("boost_v5_active_dosing", false, defaultedBySM = true),
     // V6 anticipatory pre-meal low target (2026-06-15) — when ON, the loop applies the learned
     // pre-meal low target live ~45-60 min before a habitual meal. Default OFF = shadow (logs
