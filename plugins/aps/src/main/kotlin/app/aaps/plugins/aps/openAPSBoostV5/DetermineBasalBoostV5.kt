@@ -80,6 +80,8 @@ data class V5Inputs(
     // User-facing knobs
     val aggressionUserKnob: Double = 1.0,
     val hypoCautionUserKnob: Double = 1.0,
+    /** Per-user "Sensitivity" budget multiplier ∈ [0.8, 1.2]. Default 1.0 = no change. */
+    val sensitivityUserKnob: Double = 1.0,
 
     // Alpha: user-adjustable dose caps (default to the validated Fix-6 values). Let the operator
     // tighten V5's commit/holding doses live during active-dosing alpha.
@@ -155,6 +157,7 @@ class DetermineBasalBoostV5 @Inject constructor(
             mlHypoRisk = inputs.mlHypoRisk,
             inPostExerciseWindow = inputs.inPostExerciseWindow,
             hypoCautionUserKnob = inputs.hypoCautionUserKnob,
+            sensitivityUserKnob = inputs.sensitivityUserKnob,
         )
 
         // Phase 2 — single decision rule

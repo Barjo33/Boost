@@ -86,6 +86,10 @@ enum class BooleanKey(
     // Boost V5 active-dosing alpha (2026-06-11) — when ON, V5's observe-confirm-commit SMB REPLACES
     // V1's SMB on cycles V1 permits one. V1 still owns basal + all safety gates. Toggle OFF = instant revert.
     ApsBoostV5ActiveDosing("boost_v5_active_dosing", false, defaultedBySM = true),
+    // V6 anticipatory pre-meal low target (2026-06-15) — when ON, the loop applies the learned
+    // pre-meal low target live ~45-60 min before a habitual meal. Default OFF = shadow (logs
+    // "V6 pre-meal WOULD apply" to reason for validation; no dosing change). See MealTimeLearner.
+    ApsBoostV6PreMealTarget("boost_v6_pre_meal_target", false, defaultedBySM = true),
     ApsBoostPostExerciseRecoveryEnabled("boost_post_exercise_recovery_enabled", false, defaultedBySM = true),
     ApsBoostHrIntegrationEnabled("boost_hr_integration_enabled", false, defaultedBySM = true),
     ApsBoostHrStressDetection("boost_hr_stress_detection", false, defaultedBySM = true),

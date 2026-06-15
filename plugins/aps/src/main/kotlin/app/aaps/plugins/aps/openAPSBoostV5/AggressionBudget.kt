@@ -67,17 +67,25 @@ data class AggressionBudgetResult(
  * @param hypoCautionUserKnob user-facing "Hypo Caution" multiplier ∈ [1.0, 2.0]. Default 1.0.
  *   Raises the mlHypoRiskScale floor above 0.5 for users with hypo unawareness or recent
  *   severe hypo history. This is one of V5's ≤3 user-facing knobs.
+ * @param sensitivityUserKnob user-facing "Sensitivity" multiplier ∈ [0.8, 1.2]. Default 1.0.
+ *   A per-user calibration lever on the whole budget: <1.0 trims V5 for users where it runs
+ *   hot (the 2026-06-15 backtest's User-D over-dosed before lows), >1.0 lets it run firmer for
+ *   resistant users. Bounded; the BUDGET_FLOOR still protects the downside and downstream caps +
+ *   maxIOB clamp the upside. This is the live lever a future nightly per-user learner will drive
+ *   (loop deferred — see boost_v6_delivery_plan Phase 3).
  */
 fun aggressionBudget(
     baseInsulinReq: Double,
     mlHypoRisk: Double?,
     inPostExerciseWindow: Boolean,
     hypoCautionUserKnob: Double = 1.0,
+    sensitivityUserKnob: Double = 1.0,
 ): AggressionBudgetResult {
     val effectiveFloor = ML_HYPO_RISK_FLOOR * hypoCautionUserKnob.coerceAtLeast(1.0)
     val mlScale = mlHypoRiskScale(mlHypoRisk, effectiveFloor)
     val postExScale = postExerciseRecoveryModifier(inPostExerciseWindow)
-    val aggressionModifier = mlScale * postExScale
+    val sensitivity = sensitivityUserKnob.coerceIn(0.8, 1.2)
+    val aggressionModifier = mlScale * postExScale * sensitivity
     val rawBudget = baseInsulinReq * aggressionModifier
     val floorBudget = BUDGET_FLOOR_FRACTION * baseInsulinReq
     val budget = max(floorBudget, rawBudget)

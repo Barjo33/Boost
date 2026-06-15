@@ -77,4 +77,12 @@ enum class DoubleKey(
     ApsBoostV5HypoCaution("boost_v5_hypo_caution", 1.0, 1.0, 2.0, defaultedBySM = true),
     ApsBoostV5Sensitivity("boost_v5_sensitivity", 1.0, 0.8, 1.2, defaultedBySM = true),
 
+    // Boost V6 — anticipatory pre-meal low target (2026-06-15).
+    // PreMealTargetMgdl: the low target applied during the learned pre-meal window (default 72
+    // mg/dL = 4.0 mmol — an "eating-soon" target that raises insulinReq before carbs land).
+    // PreMealLeadMin: window OPENS this many minutes before the learned meal mode; it CLOSES at
+    // PRE_MEAL_LEAD_MIN_FLOOR (45 min, a MealTimeLearner constant) before the meal.
+    ApsBoostV6PreMealTargetMgdl("boost_v6_pre_meal_target_mgdl", 72.0, 65.0, 90.0, defaultedBySM = true),
+    ApsBoostV6PreMealLeadMin("boost_v6_pre_meal_lead_min", 60.0, 30.0, 90.0, defaultedBySM = true),
+
 }

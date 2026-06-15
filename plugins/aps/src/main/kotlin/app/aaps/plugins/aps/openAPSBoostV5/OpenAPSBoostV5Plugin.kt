@@ -283,6 +283,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             timeJumpMinutes = 0.0,
             aggressionUserKnob = aggressionKnob,
             hypoCautionUserKnob = hypoCautionKnob,
+            sensitivityUserKnob = sensitivityKnob,
             confirmedCapU = preferences.get(DoubleKey.ApsBoostV5ConfirmedCapU),
             committedCapU = preferences.get(DoubleKey.ApsBoostV5CommittedCapU),
         )
@@ -299,12 +300,12 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
     val hypoCautionKnob: Double get() = preferences.get(DoubleKey.ApsBoostV5HypoCaution)
 
     /**
-     * Sensitivity knob — reserved. Per the V5 proposal Decision #4, this is the optional knob
-     * that ships ONLY if backtest bimodality justifies it. Currently fixed at 1.0 by exposing
-     * a degenerate range; it's wired into prefs so the UI surfaces it as "reserved" rather
-     * than introducing a new key later.
+     * Sensitivity knob ∈ [0.8, 1.2] — per-user calibration multiplier on the aggression budget.
+     * Wired into [aggressionBudget] as of V6 (2026-06-15): the 4-user shadow backtest showed V5
+     * runs hot for some users (User D over-dosed before lows), so a live <1.0 trim (or >1.0 for
+     * resistant users) is warranted. This is the lever a future nightly per-user learner will
+     * drive (loop deferred — see boost_v6_delivery_plan Phase 3). Default 1.0 = no change.
      */
-    @Suppress("unused")
     val sensitivityKnob: Double get() = preferences.get(DoubleKey.ApsBoostV5Sensitivity)
 
     override fun addPreferenceScreen(

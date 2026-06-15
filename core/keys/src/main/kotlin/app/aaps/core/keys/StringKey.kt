@@ -86,4 +86,10 @@ enum class StringKey(
     // windowed feature vector survives cold starts. Reset is harmless: cold buffer
     // falls back to repeating the current cycle.
     ApsBoostMlRingBuffer("boost_ml_ring_buffer", "", defaultedBySM = true),
+
+    // V6 meal-time learner — JSON array of recent V5-CONFIRMED meal-commit timestamps (rolling
+    // 60 days). Drives circular-clustered habitual meal-time learning so the anticipatory
+    // pre-meal low target can fire ~45-60 min before a learned meal. Empty/corrupt → no learned
+    // meals → feature never fires (safe default).
+    ApsBoostMealTimeHistory("boost_meal_time_history", "", defaultedBySM = true),
 }

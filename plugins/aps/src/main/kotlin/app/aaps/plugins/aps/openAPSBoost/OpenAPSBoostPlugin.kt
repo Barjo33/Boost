@@ -931,6 +931,44 @@ open class OpenAPSBoostPlugin @Inject constructor(
         val recentSteps30Min = StepService.getRecentStepCount30Min()
         val recentSteps60Min = StepService.getRecentStepCount60Min()
 
+        // 7b. V6 anticipatory pre-meal low target (shadow-first).
+        // Learned habitual meal times (from V5 CONFIRMED commits) lower the target ~45-60 min
+        // before a meal so insulinReq is already elevated when carbs land. Exercise and
+        // post-exercise recovery OVERRIDE this (activity raises the target; we only fire when not
+        // active and not recovering). LOWER-ONLY: never raises a target. Shadow gate — when
+        // ApsBoostV6PreMealTarget is OFF we only log "WOULD apply" for NS validation, no change.
+        var v6MinBg = activityResult.minBg
+        var v6MaxBg = activityResult.maxBg
+        var v6TargetBg = activityResult.targetBg
+        var v6PreMealReason: String? = null
+        run {
+            val nowLocal = java.time.LocalTime.now()
+            val nowMin = nowLocal.hour * 60 + nowLocal.minute
+            val offsetMs = java.time.ZoneId.systemDefault().rules.getOffset(java.time.Instant.now()).totalSeconds * 1000L
+            val leadMaxMin = preferences.get(DoubleKey.ApsBoostV6PreMealLeadMin).toInt()
+            val hit = MealTimeLearner.preMealWindow(mealTimeHistoryCached, nowMin, offsetMs, leadMaxMin) ?: return@run
+            val exerciseNow = activityResult.activityState in setOf("ACTIVE", "VIGOROUS_AEROBIC", "MODERATE_AEROBIC", "LIGHT_AEROBIC", "RESISTANCE", "STRESS")
+            val inRecovery = postExerciseRecoveryEnabled && now < recoveryWindowEnd
+            if (exerciseNow || inRecovery) {
+                v6PreMealReason = "V6 pre-meal SUPPRESSED (${if (exerciseNow) "exercise" else "recovery"}); "
+                return@run
+            }
+            val preMealTarget = preferences.get(DoubleKey.ApsBoostV6PreMealTargetMgdl)
+            val mealClock = formatClockMin(hit.mode.centreMin)
+            v6PreMealReason = if (preferences.get(BooleanKey.ApsBoostV6PreMealTarget)) {
+                if (preMealTarget < v6TargetBg) {   // lower-only
+                    v6MinBg = minOf(v6MinBg, preMealTarget)
+                    v6MaxBg = minOf(v6MaxBg, preMealTarget)
+                    v6TargetBg = preMealTarget
+                    "V6 pre-meal ACTIVE target=${preMealTarget.toInt()} (learned ~$mealClock, ${hit.minutesBeforeMeal}min before, ${hit.mode.distinctDays}d); "
+                } else {
+                    "V6 pre-meal skipped (target ${preMealTarget.toInt()} ≥ current ${v6TargetBg.toInt()}); "
+                }
+            } else {
+                "V6 pre-meal WOULD apply ${preMealTarget.toInt()} (learned ~$mealClock, ${hit.minutesBeforeMeal}min before, ${hit.mode.distinctDays}d); "
+            }
+        }
+
         // ---- Build the OapsProfileBoost ----
 
         val oapsProfile = OapsProfileBoost(
@@ -940,9 +978,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
             max_iob = constraintsChecker.getMaxIOBAllowed().also { inputConstraints.copyReasons(it) }.value(),
             max_daily_basal = profile.getMaxDailyBasal(),
             max_basal = constraintsChecker.getMaxBasalAllowed(profile).also { inputConstraints.copyReasons(it) }.value(),
-            min_bg = activityResult.minBg,
-            max_bg = activityResult.maxBg,
-            target_bg = activityResult.targetBg,
+            min_bg = v6MinBg,
+            max_bg = v6MaxBg,
+            target_bg = v6TargetBg,
             carb_ratio = profile.getIc(),
             sens = profile.getIsfMgdl("OpenAPSBoostPlugin"),
             autosens_adjust_targets = false,
@@ -1142,6 +1180,16 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 it.reason.append("V5 suppressed (SLEEPING) — V1 SMB ${Round.roundTo(it.units ?: 0.0, 0.001)}U; ")
             }
 
+            // V6: surface the anticipatory pre-meal target decision computed earlier this cycle.
+            v6PreMealReason?.let { r -> it.reason.append(r) }
+            // V6 meal-time learner: record a FRESH CONFIRMED commit (the event V5 treats as a meal)
+            // so the pre-meal window learns this user's habitual meal times. Persist only on change.
+            if (v5decision != null && v5decision.mealHypothesis.name == "CONFIRMED" && v5decision.mealHypothesisAge == 0) {
+                mealTimeHistoryCached = MealTimeLearner.record(mealTimeHistoryCached, now)
+                preferences.put(StringKey.ApsBoostMealTimeHistory, mealTimeHistoryCached.serialize())
+                aapsLogger.debug(LTag.APS, "V6 meal-time learner: recorded CONFIRMED @ ${dateUtil.dateAndTimeString(now)} (${mealTimeHistoryCached.events.size} events)")
+            }
+
             // 2026-06-02: Sleep state evaluation. Runs at end of invoke so we have
             // mlMealLikely from this cycle. State persists across plugin restarts via
             // StringKey.ApsBoostSleepState. Updates sleepStateCached so the next
@@ -1337,6 +1385,10 @@ open class OpenAPSBoostPlugin @Inject constructor(
         SleepStateDetector.State.deserialize(preferences.get(StringKey.ApsBoostSleepState))
     @Volatile private var sleepHistoryCached: SleepHistoryTracker.History =
         SleepHistoryTracker.History.deserialize(preferences.get(StringKey.ApsBoostSleepHistory))
+    // V6 meal-time learner — rolling 60-day history of V5-CONFIRMED meal commits. Loaded once at
+    // construction; updated at end of invoke() when a fresh CONFIRMED fires, persisted on change.
+    @Volatile private var mealTimeHistoryCached: MealTimeLearner.History =
+        MealTimeLearner.History.deserialize(preferences.get(StringKey.ApsBoostMealTimeHistory))
     // Cached learned daytime baseline (used by HrActivityCalculator in current cycle from prior
     // cycle's aggregate computation — 5-min lag is acceptable, baseline changes slowly).
     @Volatile private var hrLearnedDaytimeBpmCached: Int? = null
@@ -1575,6 +1627,10 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostV5ActiveDosing, summary = R.string.boost_v5_active_dosing_summary, title = R.string.boost_v5_active_dosing_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5ConfirmedCapU, dialogMessage = R.string.boost_v5_confirmed_cap_summary, title = R.string.boost_v5_confirmed_cap_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5CommittedCapU, dialogMessage = R.string.boost_v5_committed_cap_summary, title = R.string.boost_v5_committed_cap_title))
+                // V6 anticipatory pre-meal low target (shadow-first). Toggle OFF = shadow (logs only).
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostV6PreMealTarget, summary = R.string.boost_v6_pre_meal_target_summary, title = R.string.boost_v6_pre_meal_target_title))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV6PreMealTargetMgdl, dialogMessage = R.string.boost_v6_pre_meal_target_mgdl_summary, title = R.string.boost_v6_pre_meal_target_mgdl_title))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV6PreMealLeadMin, dialogMessage = R.string.boost_v6_pre_meal_lead_min_summary, title = R.string.boost_v6_pre_meal_lead_min_title))
             })
 
             // ── 7. Advanced Settings ─────────────────────────────────────

@@ -47,6 +47,7 @@ class CalibrationBlockTest : TestBaseWithProfile() {
         // stub them so deserialize() gets "" (→ default state) instead of a null mock return.
         whenever(preferences.get(StringKey.ApsBoostSleepState)).thenReturn("")
         whenever(preferences.get(StringKey.ApsBoostSleepHistory)).thenReturn("")
+        whenever(preferences.get(StringKey.ApsBoostMealTimeHistory)).thenReturn("")
         plugin = OpenAPSBoostPlugin(
             aapsLogger, aapsSchedulers, rxBus, constraintChecker, rh,
             profileFunction, profileUtil, config, activePlugin,
