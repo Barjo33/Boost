@@ -108,6 +108,11 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         lastAPSRun = engine.lastAPSRun
     }
 
+    // Enable/show under the same condition as plain Boost (temp-basal-capable pump) — delegate to
+    // the engine so the two plugins stay in lock-step.
+    override fun specialEnableCondition(): Boolean = openAPSBoostEngine.get().specialEnableCondition()
+    override fun specialShowInListCondition(): Boolean = openAPSBoostEngine.get().specialShowInListCondition()
+
     /**
      * Sidecar shadow runner. Called by V4.4.1 (`OpenAPSBoostV3MLG3Plugin.invoke()`) with the
      * inputs and result V4.4.1 just produced. V5 sees exactly what V4.4.1 saw — no duplication

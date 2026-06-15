@@ -248,6 +248,15 @@ open class OpenAPSBoostPlugin @Inject constructor(
         }
     }
 
+    /**
+     * True when THIS engine should run/constrain: either plain "Boost" (V1) is the selected APS,
+     * OR the selectable "Boost V5" plugin is (it delegates to [runEngine]). Without this, when V5
+     * is the active APS, V1's own isEnabled() is false → runEngine's guard would post "disabled"
+     * and the maxIOB/maxBasal constraint methods would silently stop applying. (2026-06-15.)
+     */
+    private fun engineActive(): Boolean =
+        isEnabled() || runCatching { boostV5Plugin.get().isEnabled() }.getOrDefault(false)
+
     override fun supportsDynamicIsf() = true
 
     override fun getIsfMgdl(profile: Profile, caller: String): Double? {
@@ -722,7 +731,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
             aapsLogger.debug(LTag.APS, rh.gs(app.aaps.core.ui.R.string.no_profile_set))
             return
         }
-        if (!isEnabled()) {
+        if (!engineActive()) {
             rxBus.send(EventResetOpenAPSGui(rh.gs(R.string.openapsma_disabled)))
             aapsLogger.debug(LTag.APS, rh.gs(R.string.openapsma_disabled))
             return
@@ -1347,7 +1356,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
     }
 
     override fun applyMaxIOBConstraints(maxIob: Constraint<Double>): Constraint<Double> {
-        if (isEnabled()) {
+        if (engineActive()) {
             val maxIobPref = preferences.get(DoubleKey.ApsSmbMaxIob)
             maxIob.setIfSmaller(maxIobPref, rh.gs(R.string.limiting_iob, maxIobPref, rh.gs(R.string.maxvalueinpreferences)), this)
             maxIob.setIfSmaller(hardLimits.maxIobSMB(), rh.gs(R.string.limiting_iob, hardLimits.maxIobSMB(), rh.gs(R.string.hardlimit)), this)
@@ -1356,7 +1365,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
     }
 
     override fun applyBasalConstraints(absoluteRate: Constraint<Double>, profile: Profile): Constraint<Double> {
-        if (isEnabled()) {
+        if (engineActive()) {
             var maxBasal = preferences.get(DoubleKey.ApsMaxBasal)
             if (maxBasal < profile.getMaxDailyBasal()) {
                 maxBasal = profile.getMaxDailyBasal()
