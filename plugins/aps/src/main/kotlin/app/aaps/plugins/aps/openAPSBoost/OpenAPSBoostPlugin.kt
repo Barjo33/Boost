@@ -1176,6 +1176,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
             // predictions and every safety gate; the overridden rT.units flows through downstream
             // pump/bolus constraints unchanged. runShadow returns null on internal error → V1's
             // dose is left intact. V5 can never raise the dose above its own caps + maxIOB clamp.
+            // Prior-cycle sleep state (updated end-of-invoke). Passed into V5 so the fast-carb
+            // fast-path is gated OFF overnight, and reused below for the dose-level sleep gate.
+            val v5Asleep = sleepStateCached.state == SleepStateDetector.SleepState.SLEEPING
             val v5decision = try {
                 boostV5Plugin.get().runShadow(
                     rT = it,
@@ -1185,7 +1188,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     pumpBolusStep = activePlugin.activePump.pumpDescription.bolusStep,
                     activeMode = v5Active,
                     microBolusAllowed = microBolusAllowed,
-                    flatBGsDetected = flatBGsDetected
+                    flatBGsDetected = flatBGsDetected,
+                    asleep = v5Asleep
                 )
             } catch (t: Throwable) {
                 aapsLogger.error(LTag.APS, "V5 shadow invocation failed", t)
@@ -1195,7 +1199,6 @@ open class OpenAPSBoostPlugin @Inject constructor(
             // (oref1/Boost) SMB, which already respects night mode. V5 still computes its shadow
             // telemetry above (runShadow ran), so the V5-vs-V1 comparison continues overnight; only
             // the dose override is suppressed. Robust to overnight CGM artifacts tripping V5.
-            val v5Asleep = sleepStateCached.state == SleepStateDetector.SleepState.SLEEPING
             if (v5Active && microBolusAllowed && v5decision != null && !v5Asleep) {
                 val v1WouldDose = it.units ?: 0.0
                 it.units = v5decision.finalDose

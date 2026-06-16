@@ -121,6 +121,18 @@ internal const val RECOVERING_REENGAGE_DELTA = 3.0            // BG must actuall
 internal const val RECOVERING_REENGAGE_OFFSET_MGDL = 20.0    // eventualBg − targetBg must exceed this (meal still material)
 internal const val RECOVERING_REENGAGE_MIN_AGE = 1          // ≥1 cycle in RECOVERING before re-engaging (no same-cycle flicker)
 
+// 2026-06-16 — fast-carb fast-path. The observe→confirm latency commits ~1 cycle late on fast
+// carbs (the 2026-06-16 meal: peak 185 then crash 54). When the rise is sharp AND accelerating
+// AND the meal score corroborates AND we're awake & not exercising, promote OBSERVING/IDLE →
+// CONFIRMED in a SINGLE cycle, bypassing CONFIRM_MIN_OBSERVING_AGE + the eventualBg-offset gate.
+// Thresholds replay-validated (backtesting/replay.py, 2026-06-16): the corroborated rule caught
+// ~⅓ of meals ~15 min earlier with ZERO sleep-fires and ~1 false fire/day; the raw delta+accl
+// rule (no score/awake gate) fired during sleep (compression risk) and ~2×/day falsely.
+// Still respects the Fix-6 single-CONFIRMED-per-session guard (committedInSession).
+internal const val FAST_CONFIRM_DELTA = 8.0                    // mg/dL per 5 min — sharp rise
+internal const val FAST_CONFIRM_ACCL = 15.0                    // delta_accl % — accelerating
+internal const val FAST_CONFIRM_SCORE = 0.60                   // meal score must corroborate (> ENTER_OBSERVING 0.44)
+
 /** Time-jump threshold (minutes) for forcing IDLE on clock changes (e.g. timezone switch). */
 internal const val TIME_JUMP_RESET_MINUTES = 30.0
 
@@ -145,6 +157,9 @@ fun step(
     delta: Double,
     deltaAccl: Double,
     deltaDeclining: Boolean,
+    asleep: Boolean = false,
+    exerciseActive: Boolean = false,
+    fastConfirmEnabled: Boolean = false,
 ): MealHypothesisState {
     val state = current.state
     val age = current.ageCycles
@@ -153,9 +168,17 @@ fun step(
     val committedInSession = current.committedInSession
     val currentOffset = eventualBg - targetBg
 
+    // 2026-06-16 fast-carb fast-path (corroborated; replay-validated). Single-cycle promotion to
+    // CONFIRMED on a sharp, accelerating, score-corroborated rise while awake and not exercising.
+    val fastConfirm = fastConfirmEnabled && !asleep && !exerciseActive &&
+        delta >= FAST_CONFIRM_DELTA && deltaAccl >= FAST_CONFIRM_ACCL && score >= FAST_CONFIRM_SCORE
+
     return when (state) {
         MealHypothesis.IDLE ->
-            if (score >= ENTER_OBSERVING_SCORE)
+            if (fastConfirm)
+                // Fast carb caught from IDLE — go straight to CONFIRMED (committedInSession=true).
+                MealHypothesisState(MealHypothesis.CONFIRMED, 0, 0.0, 0.0, true)
+            else if (score >= ENTER_OBSERVING_SCORE)
                 // Fresh session: seed both peaks with entry-cycle values; committedInSession=false
                 // explicitly (new meal session begins here — Fix 6).
                 MealHypothesisState(MealHypothesis.OBSERVING, 0, score, currentOffset, false)
@@ -183,6 +206,9 @@ fun step(
                 newMaxOffset >= CONFIRM_EVENTUAL_BG_OFFSET_MGDL &&
                 !committedInSession
             when {
+                // Fast-carb fast-path: confirm in a single OBSERVING cycle, bypassing the age +
+                // eventualBg-offset gates, but still honouring the Fix-6 single-confirm guard.
+                fastConfirm && !committedInSession -> MealHypothesisState(MealHypothesis.CONFIRMED, 0, 0.0, 0.0, true)
                 confirmEligible -> MealHypothesisState(MealHypothesis.CONFIRMED, 0, 0.0, 0.0, true)
                 score < FALL_BACK_TO_IDLE_SCORE && age >= FALL_BACK_TO_IDLE_AGE ->
                     MealHypothesisState(MealHypothesis.IDLE, 0, 0.0, 0.0, false)

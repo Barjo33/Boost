@@ -92,6 +92,10 @@ enum class BooleanKey(
     // pre-meal low target live ~45-60 min before a habitual meal. Default OFF = shadow (logs
     // "V6 pre-meal WOULD apply" to reason for validation; no dosing change). See MealTimeLearner.
     ApsBoostV6PreMealTarget("boost_v6_pre_meal_target", false, defaultedBySM = true),
+    // 2026-06-16 fast-carb fast-path — single-cycle OBSERVING/IDLE→CONFIRMED on a sharp, accelerating,
+    // score-corroborated rise while awake & not exercising. Replay-validated (backtesting/replay.py).
+    // Default ON (it's the fix for the 2026-06-16 fast-carb crash); toggle OFF = instant revert.
+    ApsBoostV5FastCarbConfirm("boost_v5_fast_carb_confirm", true, defaultedBySM = true),
     ApsBoostPostExerciseRecoveryEnabled("boost_post_exercise_recovery_enabled", false, defaultedBySM = true),
     // Activity-load SHADOW (2026-06-16) — when ON, Boost reads HC steps, learns a personal daily-step
     // baseline, and LOGS what an activity/inactivity ISF modifier WOULD do (shadow; never doses).

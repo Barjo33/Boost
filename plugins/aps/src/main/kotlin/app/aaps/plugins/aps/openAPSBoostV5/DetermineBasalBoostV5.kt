@@ -69,6 +69,10 @@ data class V5Inputs(
     val hour: Int,
     val exerciseActive: Boolean,
     val inPostExerciseWindow: Boolean,
+    /** SLEEPING (prior-cycle sleep state). Gates the fast-carb fast-path off overnight. 2026-06-16. */
+    val asleep: Boolean = false,
+    /** Fast-carb fast-path toggle (ApsBoostV5FastCarbConfirm). Single-cycle confirm on sharp+accel+score. */
+    val fastCarbConfirmEnabled: Boolean = false,
     val sensorQualityOk: Boolean = true,
 
     // Reset triggers
@@ -149,6 +153,9 @@ class DetermineBasalBoostV5 @Inject constructor(
             delta = inputs.delta,
             deltaAccl = inputs.deltaAccl,
             deltaDeclining = deltaDeclining(inputs.deltaHistory, windowCycles = 2),
+            asleep = inputs.asleep,
+            exerciseActive = inputs.exerciseActive,
+            fastConfirmEnabled = inputs.fastCarbConfirmEnabled,
         )
 
         // Phase 1.c — AggressionBudget
