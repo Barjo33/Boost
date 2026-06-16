@@ -133,7 +133,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
     private val boostV5Plugin: Provider<app.aaps.plugins.aps.openAPSBoostV5.OpenAPSBoostV5Plugin>,
     // Health Connect HR ingest — bridges Garmin Connect / Wear OS HR streams via Android
     // Health Connect into AAPS's local HR table. Pulled each Boost cycle (throttled internally).
-    private val healthConnectHrIngest: HealthConnectHrIngest
+    private val healthConnectHrIngest: HealthConnectHrIngest,
+    // Activity-load SHADOW (2026-06-16) — HC steps → single-source daily totals for the step baseline.
+    private val healthConnectStepsIngest: HealthConnectStepsIngest
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -147,6 +149,27 @@ open class OpenAPSBoostPlugin @Inject constructor(
         .description(R.string.description_boost),
     aapsLogger, rh
 ), APS, PluginConstraints {
+
+    companion object {
+        /**
+         * Picks the sensitivity ratio that scales basal / targets / CR in determine_basal.
+         * TDD-DynISF and traditional oref autosens are alternative adaptation mechanisms — never both:
+         *  - useTdd ON  → the TDD model (isfResultRatio = 24H/7D) owns sensitivity.
+         *  - useTdd OFF + autosensWhenNoTdd → traditional oref autosens drives it (the fix).
+         *  - useTdd OFF + !autosensWhenNoTdd → legacy: the DynISF-curve ratio (in isfResultRatio).
+         * variable_sens (the curve ISF) is a separate lever and is unaffected by this choice.
+         */
+        internal fun selectSensitivityRatio(
+            useTdd: Boolean,
+            autosensWhenNoTdd: Boolean,
+            isfResultRatio: Double,
+            orefAutosensRatio: Double
+        ): Double = when {
+            useTdd            -> isfResultRatio
+            autosensWhenNoTdd -> orefAutosensRatio
+            else              -> isfResultRatio
+        }
+    }
 
     // last values
     override var lastAPSRun: Long = 0
@@ -700,6 +723,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
         aapsLogger.debug(LTag.APS, "invoke from $initiator tempBasalFallback: $tempBasalFallback")
         // 2026-06-03: Trigger Health Connect HR ingest. Throttled internally; no-op if disabled.
         healthConnectHrIngest.syncIfDue()
+        // 2026-06-16: Health Connect STEPS ingest (activity-load shadow). Throttled internally.
+        healthConnectStepsIngest.syncIfDue()
         lastAPSResult = null
         val glucoseStatus = glucoseStatusCalculatorSMB.glucoseStatusData
         val profile = profileFunction.getProfile()
@@ -869,8 +894,16 @@ open class OpenAPSBoostPlugin @Inject constructor(
             isTempTarget = isTempTarget
         )
 
-        // 4. Adjust autosens ratio from ISF calculation
-        autosensResult.ratio = isfResult.ratio
+        // 4. Sensitivity ratio that drives basal / target / CR scaling in determine_basal.
+        //    TDD-DynISF and traditional oref autosens are ALTERNATIVE adaptation mechanisms — never
+        //    both (would double-count). useTdd ON → TDD ratio (isfResult.ratio = 24H/7D) owns it;
+        //    useTdd OFF + toggle ON → traditional oref autosens drives basal/target/CR (mirrors
+        //    reference DynISF SMB where sens=variable_sens and autosens scales basal only); default
+        //    OFF = legacy curve ratio. variable_sens (the curve ISF) is untouched. Telemetry below.
+        val orefAutosensRatio = autosensResult.ratio     // real oref autosens (1.0 when autosens disabled)
+        val useTdd = preferences.get(BooleanKey.ApsBoostUseTdd)
+        val autosensWhenNoTdd = preferences.get(BooleanKey.ApsBoostAutosensWhenNoTdd)
+        autosensResult.ratio = selectSensitivityRatio(useTdd, autosensWhenNoTdd, isfResult.ratio, orefAutosensRatio)
 
         // 5. Adjust basal if profile switch from activity
         val currentBasal = if (activityResult.profileSwitch != 100) {
@@ -1222,6 +1255,44 @@ open class OpenAPSBoostPlugin @Inject constructor(
             } catch (t: Throwable) {
                 aapsLogger.error(LTag.APS, "Sleep state evaluation failed", t)
             }
+
+            // ── Activity-load SHADOW (2026-06-16): learn the personal step baseline + compute what
+            // an activity/inactivity ISF modifier WOULD do, and LOG it. Never applied to dosing. ──
+            if (preferences.get(BooleanKey.ApsBoostActivityShadowEnabled)) {
+                try {
+                    val offsetMs = java.time.ZoneId.systemDefault().rules.getOffset(java.time.Instant.now()).totalSeconds * 1000L
+                    val todayIdx = DailyStepHistoryTracker.dayIndex(now, offsetMs)
+                    val merged = DailyStepHistoryTracker.merge(dailyStepHistoryCached, healthConnectStepsIngest.latestDailyTotals, todayIdx)
+                    if (merged.days != dailyStepHistoryCached.days) {
+                        dailyStepHistoryCached = merged
+                        preferences.put(StringKey.ApsBoostDailyStepHistory, merged.serialize())
+                    }
+                    val sf = DailyStepHistoryTracker.shadowFactors(dailyStepHistoryCached, todayIdx)
+                    it.boostActivityLoad_baselineSteps = sf.baselineSteps
+                    it.boostActivityLoad_lastDaySteps = sf.lastDaySteps
+                    it.boostActivityLoad_ratio = sf.ratio?.let { r -> Round.roundTo(r, 0.01) }
+                    it.boostActivityLoad_wouldDeltaIsfPct = Round.roundTo(sf.wouldDeltaIsfPct, 0.1)
+                    it.boostActivityLoad_source = healthConnectStepsIngest.chosenSource
+                    if (sf.baselineSteps != null && sf.ratio != null) {
+                        val sign = if (sf.wouldDeltaIsfPct >= 0) "+" else ""
+                        it.reason.append("activityLoad: base ${sf.baselineSteps} last ${sf.lastDaySteps} (${Round.roundTo(sf.ratio!!, 0.01)}x) wouldΔISF $sign${Round.roundTo(sf.wouldDeltaIsfPct, 0.1)}% [${sf.note}]; ")
+                    }
+                } catch (t: Throwable) {
+                    aapsLogger.error(LTag.APS, "Activity-load shadow failed", t)
+                }
+            }
+
+            // ── Autosens / TDD-DynISF coordination telemetry (2026-06-16). Logs which mechanism
+            // drives basal + the would-be alternative, so ApsBoostAutosensWhenNoTdd can be validated
+            // on real data before being enabled. boostAutosens_appliedRatio = what determine_basal used. ──
+            it.boostAutosens_mode = if (useTdd) "tdd" else if (autosensWhenNoTdd) "autosens" else "curve"
+            it.boostAutosens_orefRatio = Round.roundTo(orefAutosensRatio, 0.001)
+            it.boostAutosens_curveRatio = Round.roundTo(isfResult.ratio, 0.001)
+            it.boostAutosens_appliedRatio = Round.roundTo(autosensResult.ratio, 0.001)
+            if (!useTdd) {
+                it.reason.append("autosensCoord[${it.boostAutosens_mode}]: oref=${Round.roundTo(orefAutosensRatio, 0.01)} curve=${Round.roundTo(isfResult.ratio, 0.01)} applied=${Round.roundTo(autosensResult.ratio, 0.01)}; ")
+            }
+
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints
             determineBasalResult.autosensResult = autosensResult
@@ -1301,6 +1372,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
         SleepStateDetector.State.deserialize(preferences.get(StringKey.ApsBoostSleepState))
     @Volatile private var sleepHistoryCached: SleepHistoryTracker.History =
         SleepHistoryTracker.History.deserialize(preferences.get(StringKey.ApsBoostSleepHistory))
+    // Activity-load SHADOW (2026-06-16) — rolling 28-day single-source daily-step history.
+    @Volatile private var dailyStepHistoryCached: DailyStepHistoryTracker.History =
+        DailyStepHistoryTracker.History.deserialize(preferences.get(StringKey.ApsBoostDailyStepHistory))
     // Cached learned daytime baseline (used by HrActivityCalculator in current cycle from prior
     // cycle's aggregate computation — 5-min lag is acceptable, baseline changes slowly).
     @Volatile private var hrLearnedDaytimeBpmCached: Int? = null
@@ -1437,6 +1511,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 title = rh.gs(R.string.boost_dynisf_title)
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostUseTdd, summary = R.string.boost_use_tdd_summary, title = R.string.boost_use_tdd_title))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostAdjustSensitivity, summary = R.string.boost_adjust_sensitivity_summary, title = R.string.boost_adjust_sensitivity_title))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostAutosensWhenNoTdd, summary = R.string.boost_autosens_when_no_tdd_summary, title = R.string.boost_autosens_when_no_tdd_title))
                 addPreference(AdaptiveUnitPreference(ctx = context, unitKey = UnitDoubleKey.ApsBoostDynIsfNormalTarget, dialogMessage = R.string.boost_dynisf_normal_target_summary, title = R.string.boost_dynisf_normal_target_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostDynIsfVelocity, dialogMessage = R.string.boost_dynisf_velocity_summary, title = R.string.boost_dynisf_velocity_title))
                 addPreference(AdaptiveUnitPreference(ctx = context, unitKey = UnitDoubleKey.ApsBoostDynIsfBgCap, dialogMessage = R.string.boost_dynisf_bg_cap_summary, title = R.string.boost_dynisf_bg_cap_title))
@@ -1505,6 +1580,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostWakeHrHysteresisMin, dialogMessage = R.string.boost_wake_hr_hysteresis_min_summary, title = R.string.boost_wake_hr_hysteresis_min_title))
                 // 2026-06-03: Health Connect HR ingest
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostHealthConnectHrEnabled, summary = R.string.boost_hc_hr_summary, title = R.string.boost_hc_hr_title))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostActivityShadowEnabled, summary = R.string.boost_activity_shadow_summary, title = R.string.boost_activity_shadow_title))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsBoostHealthConnectPollMin, dialogMessage = R.string.boost_hc_poll_summary, title = R.string.boost_hc_poll_title))
                 addPreference(androidx.preference.Preference(context).apply {
                     key = "boost_hc_grant_permission_v1"

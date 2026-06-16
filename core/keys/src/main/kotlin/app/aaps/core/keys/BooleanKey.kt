@@ -70,6 +70,17 @@ enum class BooleanKey(
     ApsBoostAllowWithHighTt("enableBoost_with_high_temptarget", false, defaultedBySM = true),
     ApsBoostUseTdd("boost_use_tdd", false, defaultedBySM = true),
     ApsBoostAdjustSensitivity("boost_adjust_sensitivity", false, defaultedBySM = true),
+    // Autosens / TDD-DynISF coordination (2026-06-16). When TDD is OFF, lets traditional oref
+    // autosens drive basal/target/CR sensitivity instead of the DynISF-curve ratio. Requires
+    // ApsUseAutosens. Default OFF = legacy behaviour; oref-vs-curve comparison logged regardless.
+    ApsBoostAutosensWhenNoTdd("boost_autosens_when_no_tdd", false, defaultedBySM = true),
+    // Activity-load SHADOW (2026-06-16) — reads HC steps, learns a personal daily-step baseline,
+    // and LOGS what an activity/inactivity ISF modifier WOULD do (shadow; never doses). Default ON
+    // but inert until READ_STEPS is granted in Health Connect.
+    ApsBoostActivityShadowEnabled("boost_activity_shadow_enabled", true, defaultedBySM = true),
+    // 2026-06-16 fast-carb fast-path (V5 shadow) — single-cycle confirm on a sharp, accelerating,
+    // score-corroborated rise while awake & not exercising. Default ON; toggle OFF = instant revert.
+    ApsBoostV5FastCarbConfirm("boost_v5_fast_carb_confirm", true, defaultedBySM = true),
     ApsBoostAllowAllBgSources("boost_allow_all_bg_sources", false, defaultedBySM = true),
     ApsBoostNightModeEnabled("boost_night_mode_enabled", false, defaultedBySM = true),
     ApsBoostNightModeDisableWithCob("boost_night_mode_disable_with_cob", false, defaultedBySM = true),

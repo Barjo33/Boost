@@ -118,7 +118,22 @@ data class RT(
     var isfShadow_variableSens: Double? = null,      // implied variable_sens if the EMA ratio had been used (mg/dL/U)
     var isfShadow_insulinReq: Double? = null,        // implied insulinReq under shadow variable_sens (U)
     var isfShadow_microBolus: Double? = null,        // implied microBolus under shadow insulinReq, same tier (U)
-    var isfShadow_deltaPct: Double? = null           // (shadow/actual - 1) × 100 on variable_sens — single-number summary
+    var isfShadow_deltaPct: Double? = null,          // (shadow/actual - 1) × 100 on variable_sens — single-number summary
+
+    // Activity-load SHADOW (2026-06-16): personal step baseline + what an activity/inactivity ISF
+    // modifier WOULD apply. LOGGED ONLY; never affects dosing. See DailyStepHistoryTracker.
+    var boostActivityLoad_baselineSteps: Int? = null,   // personal median daily steps (single source)
+    var boostActivityLoad_lastDaySteps: Int? = null,    // yesterday's single-source total
+    var boostActivityLoad_ratio: Double? = null,        // decay-weighted recent load ÷ baseline
+    var boostActivityLoad_wouldDeltaIsfPct: Double? = null, // signed: + raise ISF (activity) / − lower (inactivity)
+    var boostActivityLoad_source: String? = null,       // chosen HC step source package
+
+    // Autosens / TDD-DynISF coordination telemetry (2026-06-16). Which mechanism drives basal +
+    // the would-be alternative, so ApsBoostAutosensWhenNoTdd can be validated before being enabled.
+    var boostAutosens_mode: String? = null,              // "tdd" | "autosens" | "curve"
+    var boostAutosens_orefRatio: Double? = null,         // real oref autosens ratio (1.0 if autosens off)
+    var boostAutosens_curveRatio: Double? = null,        // legacy DynISF-curve ratio
+    var boostAutosens_appliedRatio: Double? = null       // ratio actually passed to determine_basal
 ) {
 
     fun serialize() = Json.encodeToString(serializer(), this)

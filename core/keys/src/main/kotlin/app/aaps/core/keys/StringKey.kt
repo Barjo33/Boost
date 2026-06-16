@@ -79,4 +79,6 @@ enum class StringKey(
     // Drives circular-mean sleep_start / wake-time learning; PRE_SLEEP fires
     // preSleepLeadMin before the learned average once ≥7 sessions exist.
     ApsBoostSleepHistory("boost_sleep_history", "", defaultedBySM = true),
+    // Activity-load SHADOW (2026-06-16) — rolling 28-day single-source daily-step history (JSON).
+    ApsBoostDailyStepHistory("boost_daily_step_history", "", defaultedBySM = true),
 }

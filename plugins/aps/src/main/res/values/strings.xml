@@ -88,6 +88,10 @@
     <string name="boost_use_tdd_summary">Calculate ISF from Total Daily Dose using the logarithmic formula. When disabled, uses profile ISF directly</string>
     <string name="boost_adjust_sensitivity_title">Enable TDD sensitivity adjustment</string>
     <string name="boost_adjust_sensitivity_summary">Adjust sensitivity ratio using 24h TDD / 7D TDD, similar to Autosens. Recommended to start with this off</string>
+    <string name="boost_autosens_when_no_tdd_title">Use traditional Autosens when TDD is off</string>
+    <string name="boost_autosens_when_no_tdd_summary">When TDD-DynISF is OFF, let traditional Autosens drive basal/target/CR sensitivity (instead of the DynISF curve ratio). Requires Autosens enabled. No effect when TDD is on. The Autosens-vs-curve comparison is logged either way; start OFF and validate before enabling.</string>
+    <string name="boost_activity_shadow_title">Activity-load shadow (steps)</string>
+    <string name="boost_activity_shadow_summary">Reads Health Connect steps, learns your personal daily-step baseline, and logs what an activity/inactivity ISF modifier WOULD do. Shadow only — never changes dosing. Needs Health Connect step permission.</string>
     <string name="boost_dynisf_normal_target_title">DynISF normal target</string>
     <string name="boost_dynisf_normal_target_summary">Reference BG target for ISF calculation. Default: 99</string>
     <string name="boost_dynisf_velocity_title">BG impact on ISF (%)</string>

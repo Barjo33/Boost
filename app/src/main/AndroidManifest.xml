@@ -32,6 +32,8 @@
          Garmin Connect / Wear OS can sync HR to Health Connect; AAPS polls
          continuously regardless of which device collected it. -->
     <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
+    <!-- Boost activity-load shadow (2026-06-16): single-source daily step totals for the step baseline. -->
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
 
     <!-- Required intent query for Health Connect <SDK 34 installations -->
     <queries>
