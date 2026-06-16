@@ -93,6 +93,10 @@ enum class BooleanKey(
     // "V6 pre-meal WOULD apply" to reason for validation; no dosing change). See MealTimeLearner.
     ApsBoostV6PreMealTarget("boost_v6_pre_meal_target", false, defaultedBySM = true),
     ApsBoostPostExerciseRecoveryEnabled("boost_post_exercise_recovery_enabled", false, defaultedBySM = true),
+    // Activity-load SHADOW (2026-06-16) — when ON, Boost reads HC steps, learns a personal daily-step
+    // baseline, and LOGS what an activity/inactivity ISF modifier WOULD do (shadow; never doses).
+    // Default ON but inert until READ_STEPS is granted in Health Connect.
+    ApsBoostActivityShadowEnabled("boost_activity_shadow_enabled", true, defaultedBySM = true),
     ApsBoostHrIntegrationEnabled("boost_hr_integration_enabled", false, defaultedBySM = true),
     ApsBoostHrStressDetection("boost_hr_stress_detection", false, defaultedBySM = true),
 

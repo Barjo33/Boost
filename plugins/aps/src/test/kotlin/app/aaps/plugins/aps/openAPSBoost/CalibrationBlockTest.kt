@@ -38,6 +38,7 @@ class CalibrationBlockTest : TestBaseWithProfile() {
     @Mock lateinit var boostMealModel: BoostMealModel
     @Mock lateinit var boostIsfShadow: BoostIsfShadow
     @Mock lateinit var healthConnectHrIngest: HealthConnectHrIngest
+    @Mock lateinit var healthConnectStepsIngest: HealthConnectStepsIngest
     @Mock lateinit var boostV5Plugin: Provider<OpenAPSBoostV5Plugin>
 
     private lateinit var plugin: OpenAPSBoostPlugin
@@ -48,6 +49,7 @@ class CalibrationBlockTest : TestBaseWithProfile() {
         whenever(preferences.get(StringKey.ApsBoostSleepState)).thenReturn("")
         whenever(preferences.get(StringKey.ApsBoostSleepHistory)).thenReturn("")
         whenever(preferences.get(StringKey.ApsBoostMealTimeHistory)).thenReturn("")
+        whenever(preferences.get(StringKey.ApsBoostDailyStepHistory)).thenReturn("")
         plugin = OpenAPSBoostPlugin(
             aapsLogger, aapsSchedulers, rxBus, constraintChecker, rh,
             profileFunction, profileUtil, config, activePlugin,
@@ -56,7 +58,7 @@ class CalibrationBlockTest : TestBaseWithProfile() {
             GlucoseStatusCalculatorSMB(aapsLogger, iobCobCalculator, dateUtil, decimalFormatter, deltaCalculator),
             bgQualityCheck, uiInteraction, tddCalculator, determineBasalBoost,
             boostRiskModel, boostMealModel, boostIsfShadow, profiler, apsResultProvider,
-            boostV5Plugin, healthConnectHrIngest
+            boostV5Plugin, healthConnectHrIngest, healthConnectStepsIngest
         )
         // Activate the RxBus subscription
         plugin.onStart()

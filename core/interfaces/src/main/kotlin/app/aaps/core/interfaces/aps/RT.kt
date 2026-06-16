@@ -124,7 +124,16 @@ data class RT(
     var isfShadow_variableSens: Double? = null,      // implied variable_sens if the EMA ratio had been used (mg/dL/U)
     var isfShadow_insulinReq: Double? = null,        // implied insulinReq under shadow variable_sens (U)
     var isfShadow_microBolus: Double? = null,        // implied microBolus under shadow insulinReq, same tier (U)
-    var isfShadow_deltaPct: Double? = null           // (shadow/actual - 1) × 100 on variable_sens — single-number summary
+    var isfShadow_deltaPct: Double? = null,          // (shadow/actual - 1) × 100 on variable_sens — single-number summary
+
+    // Activity-load SHADOW telemetry (2026-06-16) — personal daily-step baseline + the ISF modifier
+    // the activity/inactivity logic WOULD apply. LOGGED ONLY; never affects dosing. See
+    // DailyStepHistoryTracker. Null until enough HC step history exists for a baseline.
+    var boostActivityLoad_baselineSteps: Int? = null,   // personal median daily steps (single source)
+    var boostActivityLoad_lastDaySteps: Int? = null,    // yesterday's single-source total
+    var boostActivityLoad_ratio: Double? = null,        // decay-weighted recent load ÷ baseline
+    var boostActivityLoad_wouldDeltaIsfPct: Double? = null, // signed: + raise ISF (activity) / − lower (inactivity)
+    var boostActivityLoad_source: String? = null        // chosen HC step source package
 ) {
 
     fun serialize() = Json.encodeToString(serializer(), this)

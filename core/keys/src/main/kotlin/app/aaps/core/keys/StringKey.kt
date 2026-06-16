@@ -92,4 +92,8 @@ enum class StringKey(
     // pre-meal low target can fire ~45-60 min before a learned meal. Empty/corrupt → no learned
     // meals → feature never fires (safe default).
     ApsBoostMealTimeHistory("boost_meal_time_history", "", defaultedBySM = true),
+
+    // Activity-load SHADOW (2026-06-16) — JSON of single-source per-day step totals (rolling 28d).
+    // Drives the personal step baseline; the activity/inactivity ISF factors are LOGGED ONLY (shadow).
+    ApsBoostDailyStepHistory("boost_daily_step_history", "", defaultedBySM = true),
 }

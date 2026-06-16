@@ -8,6 +8,7 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.StepsRecord
 
 /**
  * HealthConnectPermissionActivity — single-purpose Activity that requests the
@@ -29,7 +30,8 @@ class HealthConnectPermissionActivity : ComponentActivity() {
 
     private lateinit var requestLauncher: ActivityResultLauncher<Set<String>>
     private val requiredPermissions = setOf(
-        HealthPermission.getReadPermission(HeartRateRecord::class)
+        HealthPermission.getReadPermission(HeartRateRecord::class),
+        HealthPermission.getReadPermission(StepsRecord::class)   // Boost activity-load shadow (2026-06-16)
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
