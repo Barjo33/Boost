@@ -101,6 +101,13 @@ enum class BooleanKey(
     // baseline, and LOGS what an activity/inactivity ISF modifier WOULD do (shadow; never doses).
     // Default ON but inert until READ_STEPS is granted in Health Connect.
     ApsBoostActivityShadowEnabled("boost_activity_shadow_enabled", true, defaultedBySM = true),
+    // Autosens / TDD-DynISF coordination (2026-06-16). TDD-DynISF and traditional autosens are
+    // ALTERNATIVE sensitivity-adaptation mechanisms — never both. When TDD is OFF (profile-anchored
+    // DynISF curve), this lets traditional oref autosens drive basal/target/CR sensitivity instead of
+    // the curve ratio (which is not a sensitivity signal). Requires ApsUseAutosens enabled to do
+    // anything. Default OFF = legacy behaviour preserved; the oref-vs-curve comparison is logged as
+    // shadow telemetry regardless, so it can be validated before flipping ON. No effect when TDD is ON.
+    ApsBoostAutosensWhenNoTdd("boost_autosens_when_no_tdd", false, defaultedBySM = true),
     ApsBoostHrIntegrationEnabled("boost_hr_integration_enabled", false, defaultedBySM = true),
     ApsBoostHrStressDetection("boost_hr_stress_detection", false, defaultedBySM = true),
 

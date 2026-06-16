@@ -150,6 +150,27 @@ open class OpenAPSBoostPlugin @Inject constructor(
     aapsLogger, rh
 ), APS, PluginConstraints {
 
+    companion object {
+        /**
+         * Picks the sensitivity ratio that scales basal / targets / CR in determine_basal.
+         * TDD-DynISF and traditional oref autosens are alternative adaptation mechanisms — never both:
+         *  - useTdd ON  → the TDD model (isfResultRatio = 24H/7D) owns sensitivity.
+         *  - useTdd OFF + autosensWhenNoTdd → traditional oref autosens drives it (the fix).
+         *  - useTdd OFF + !autosensWhenNoTdd → legacy: the DynISF-curve ratio (in isfResultRatio).
+         * variable_sens (the curve ISF) is a separate lever and is unaffected by this choice.
+         */
+        internal fun selectSensitivityRatio(
+            useTdd: Boolean,
+            autosensWhenNoTdd: Boolean,
+            isfResultRatio: Double,
+            orefAutosensRatio: Double
+        ): Double = when {
+            useTdd            -> isfResultRatio
+            autosensWhenNoTdd -> orefAutosensRatio
+            else              -> isfResultRatio
+        }
+    }
+
     // last values
     override var lastAPSRun: Long = 0
     override val algorithm = APSResult.Algorithm.BOOST
@@ -895,8 +916,24 @@ open class OpenAPSBoostPlugin @Inject constructor(
             isTempTarget = isTempTarget
         )
 
-        // 4. Adjust autosens ratio from ISF calculation
-        autosensResult.ratio = isfResult.ratio
+        // 4. Sensitivity ratio that drives basal / target / CR scaling in determine_basal.
+        //    Two DISTINCT levers feed DetermineBasalBoost:
+        //      • variable_sens (ISF, from isfResult) — the DynISF curve; always carries BG/velocity
+        //        sensitivity and is used as `sens` directly (no autosens division — dynISF mode).
+        //      • autosensResult.ratio — scales basal (`current_basal * sensitivityRatio`), shifts
+        //        targets, and adjusts remainingCATime/CR (DetermineBasalBoost ~383-400, 601).
+        //    TDD-DynISF and traditional oref autosens are ALTERNATIVE adaptation mechanisms — never
+        //    stack both (would double-count sensitivity). So:
+        //      • useTdd ON  → the TDD model (24H/7D, in isfResult.ratio) owns sensitivity; autosens off.
+        //      • useTdd OFF → ISF is the profile-anchored curve; traditional oref autosens (already in
+        //        autosensResult.ratio, computed above and gated by ApsUseAutosens) should drive
+        //        basal/target/CR. Mirrors reference DynISF SMB (sens=variable_sens; autosens scales
+        //        basal only). Gated by ApsBoostAutosensWhenNoTdd — default OFF (legacy: the curve
+        //        ratio scales basal) until validated on the oref-vs-curve shadow telemetry logged below.
+        val orefAutosensRatio = autosensResult.ratio     // real oref autosens (1.0 when autosens disabled)
+        val useTdd = preferences.get(BooleanKey.ApsBoostUseTdd)
+        val autosensWhenNoTdd = preferences.get(BooleanKey.ApsBoostAutosensWhenNoTdd)
+        autosensResult.ratio = selectSensitivityRatio(useTdd, autosensWhenNoTdd, isfResult.ratio, orefAutosensRatio)
 
         // 5. Adjust basal if profile switch from activity
         val currentBasal = if (activityResult.profileSwitch != 100) {
@@ -1360,6 +1397,19 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     aapsLogger.error(LTag.APS, "Activity-load shadow failed", t)
                 }
             }
+
+            // ── Autosens / TDD-DynISF coordination telemetry (2026-06-16). Always logs which
+            // mechanism drives basal + the would-be alternative, so ApsBoostAutosensWhenNoTdd can be
+            // validated on real data before being enabled. SHADOW only when the toggle is OFF — the
+            // applied ratio (boostAutosens_appliedRatio) is whatever determine_basal actually used. ──
+            it.boostAutosens_mode = if (useTdd) "tdd" else if (autosensWhenNoTdd) "autosens" else "curve"
+            it.boostAutosens_orefRatio = Round.roundTo(orefAutosensRatio, 0.001)
+            it.boostAutosens_curveRatio = Round.roundTo(isfResult.ratio, 0.001)
+            it.boostAutosens_appliedRatio = Round.roundTo(autosensResult.ratio, 0.001)
+            if (!useTdd) {
+                it.reason.append("autosensCoord[${it.boostAutosens_mode}]: oref=${Round.roundTo(orefAutosensRatio, 0.01)} curve=${Round.roundTo(isfResult.ratio, 0.01)} applied=${Round.roundTo(autosensResult.ratio, 0.01)}; ")
+            }
+
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints
             determineBasalResult.autosensResult = autosensResult
@@ -1607,6 +1657,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 title = rh.gs(R.string.boost_dynisf_title)
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostUseTdd, summary = R.string.boost_use_tdd_summary, title = R.string.boost_use_tdd_title))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostAdjustSensitivity, summary = R.string.boost_adjust_sensitivity_summary, title = R.string.boost_adjust_sensitivity_title))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostAutosensWhenNoTdd, summary = R.string.boost_autosens_when_no_tdd_summary, title = R.string.boost_autosens_when_no_tdd_title))
                 addPreference(AdaptiveUnitPreference(ctx = context, unitKey = UnitDoubleKey.ApsBoostDynIsfNormalTarget, dialogMessage = R.string.boost_dynisf_normal_target_summary, title = R.string.boost_dynisf_normal_target_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostDynIsfVelocity, dialogMessage = R.string.boost_dynisf_velocity_summary, title = R.string.boost_dynisf_velocity_title))
                 addPreference(AdaptiveUnitPreference(ctx = context, unitKey = UnitDoubleKey.ApsBoostDynIsfBgCap, dialogMessage = R.string.boost_dynisf_bg_cap_summary, title = R.string.boost_dynisf_bg_cap_title))

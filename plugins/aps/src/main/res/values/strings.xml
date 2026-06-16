@@ -122,6 +122,8 @@
     <string name="boost_use_tdd_summary">Calculate ISF from Total Daily Dose using the logarithmic formula. When disabled, uses profile ISF directly</string>
     <string name="boost_adjust_sensitivity_title">Enable TDD sensitivity adjustment</string>
     <string name="boost_adjust_sensitivity_summary">Adjust sensitivity ratio using 24h TDD / 7D TDD, similar to Autosens. Recommended to start with this off</string>
+    <string name="boost_autosens_when_no_tdd_title">Use traditional Autosens when TDD is off</string>
+    <string name="boost_autosens_when_no_tdd_summary">When TDD-DynISF is OFF, let traditional Autosens drive basal/target/CR sensitivity (instead of the DynISF curve ratio). Requires Autosens enabled. No effect when TDD is on — TDD owns sensitivity then. The Autosens-vs-curve comparison is logged either way; start OFF and validate before enabling.</string>
     <string name="openapsama_autosens_max">Max autosens ratio</string>
     <string name="openapsama_autosens_max_summary">Default value: 1.2\nThis is a multiplier cap for autosens (and deviation sensitivity) to set how high the sensitivity ratio can go, which determines how far ISF can be lowered during resistant periods.</string>
     <string name="openapsama_autosens_min">Min autosens ratio</string>

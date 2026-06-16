@@ -133,7 +133,14 @@ data class RT(
     var boostActivityLoad_lastDaySteps: Int? = null,    // yesterday's single-source total
     var boostActivityLoad_ratio: Double? = null,        // decay-weighted recent load ÷ baseline
     var boostActivityLoad_wouldDeltaIsfPct: Double? = null, // signed: + raise ISF (activity) / − lower (inactivity)
-    var boostActivityLoad_source: String? = null        // chosen HC step source package
+    var boostActivityLoad_source: String? = null,       // chosen HC step source package
+    // Autosens / TDD-DynISF coordination telemetry (2026-06-16). Logs which sensitivity mechanism
+    // is driving basal/target/CR scaling, plus the would-be alternative — so the
+    // ApsBoostAutosensWhenNoTdd fix can be validated on real data before it's enabled.
+    var boostAutosens_mode: String? = null,              // "tdd" | "autosens" | "curve" (which drives basal)
+    var boostAutosens_orefRatio: Double? = null,         // real oref autosens ratio (1.0 if autosens off)
+    var boostAutosens_curveRatio: Double? = null,        // legacy DynISF-curve ratio (sensNormalTarget/variableSens)
+    var boostAutosens_appliedRatio: Double? = null       // the ratio actually passed to determine_basal this cycle
 ) {
 
     fun serialize() = Json.encodeToString(serializer(), this)
