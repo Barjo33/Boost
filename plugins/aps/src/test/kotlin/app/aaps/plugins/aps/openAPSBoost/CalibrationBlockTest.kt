@@ -14,6 +14,8 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mock
+import org.mockito.kotlin.whenever
+import app.aaps.core.keys.StringKey
 import javax.inject.Provider
 
 /**
@@ -42,6 +44,12 @@ class CalibrationBlockTest : TestBaseWithProfile() {
     private lateinit var plugin: OpenAPSBoostPlugin
 
     @BeforeEach fun prepare() {
+        // Sleep / activity / meal-time features deserialize these StringKeys in the plugin's field
+        // initialisers at construction; stub them so deserialize() gets "" (→ default) not a null mock.
+        whenever(preferences.get(StringKey.ApsBoostSleepState)).thenReturn("")
+        whenever(preferences.get(StringKey.ApsBoostSleepHistory)).thenReturn("")
+        whenever(preferences.get(StringKey.ApsBoostDailyStepHistory)).thenReturn("")
+        whenever(preferences.get(StringKey.ApsBoostMealTimeHistory)).thenReturn("")
         plugin = OpenAPSBoostPlugin(
             aapsLogger, aapsSchedulers, rxBus, constraintChecker, rh,
             profileFunction, profileUtil, config, activePlugin,
