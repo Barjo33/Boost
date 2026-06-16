@@ -66,8 +66,10 @@ enum class DoubleKey(
     ApsBoostPostExerciseRecoveryScale("boost_post_exercise_recovery_scale", 0.5, 0.0, 1.0, defaultedBySM = true),
 
     // v4.4.3 hotfix Fix B (ported to V1 2026-06-01): rolling 60-min SMB cumulative cap. Setting
-    // to 0.0 disables Fix B.
-    ApsBoostCumulativeSmbCap60Min("boost_cumulative_smb_cap_60min", 1.5, 0.0, 5.0, defaultedBySM = true),
+    // to 0.0 disables Fix B. Multi-user beta (2026-06-16): default raised to 6.0U/60min — a
+    // non-binding safety backstop (real-world max observed ~3.55U/60min) so users need not change
+    // anything; range widened to 0–10 so it can be tightened (lower) or relaxed (higher) as desired.
+    ApsBoostCumulativeSmbCap60Min("boost_cumulative_smb_cap_60min", 6.0, 0.0, 10.0, defaultedBySM = true),
 
     // Boost V5 silent-shadow knobs (per V5 minimal-settings tenet — three user-facing controls).
     // Defaults map to "neutral" (1.0×). Ranges match Boost-AAPS-core V5 production.
