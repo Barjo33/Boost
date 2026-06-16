@@ -74,6 +74,7 @@ reconstruct decisions from data we already have rather than re-implementing the 
 | **`parkes_grid.py`** | (precursor to Method 2) | Parkes Error Grid of Boost's **predicted** BG vs the BG that **actually occurred** — forecast accuracy, the clinical foundation dosing rests on. Type-1 zone boundaries are exact (Pfützner 2013, Table 1). |
 | **`replay.py`** | Method 2 — data-driven replay | Re-runs a **candidate change** over real history and scores it (e.g. for the fast-carb fast-path: meals caught earlier vs false fires vs sleep fires). Lets us choose thresholds and reject unsafe designs **before** writing dosing code. |
 | **`v5_shadow_backtest.py`** | applied shadow comparison | V5-vs-V1 dose redistribution around hypo/hyper episodes across the user cohort. |
+| **`episode_impact.py`** | first-order impact estimate | Takes the V5-vs-V1 dose delta in the run-up to each real LOW/HIGH episode, weights it by the insulin-activity curve, and × ISF → an **estimated BG impact** ("how much shallower would this low have been? how much higher the peak?"). Open-loop, clamped, not a simulation — quantifies the trade V5 makes. |
 
 **What's *not* here:** glucose-outcome simulation (the paper's Method 3 / UVA-Padova virtual
 patients). Our tools validate **decisions and forecasts**, not counterfactual glucose. Full
