@@ -81,4 +81,6 @@ enum class StringKey(
     ApsBoostSleepHistory("boost_sleep_history", "", defaultedBySM = true),
     // Activity-load SHADOW (2026-06-16) — rolling 28-day single-source daily-step history (JSON).
     ApsBoostDailyStepHistory("boost_daily_step_history", "", defaultedBySM = true),
+    // V6 anticipatory pre-meal target (2026-06-16) — learned habitual meal times (JSON).
+    ApsBoostMealTimeHistory("boost_meal_time_history", "", defaultedBySM = true),
 }

@@ -81,6 +81,10 @@ enum class BooleanKey(
     // 2026-06-16 fast-carb fast-path (V5 shadow) — single-cycle confirm on a sharp, accelerating,
     // score-corroborated rise while awake & not exercising. Default ON; toggle OFF = instant revert.
     ApsBoostV5FastCarbConfirm("boost_v5_fast_carb_confirm", true, defaultedBySM = true),
+    // V6 anticipatory pre-meal low target (2026-06-16). Learns habitual meal times from V5 CONFIRMED
+    // commits and lowers the target ~45-60 min before. Default OFF = SHADOW (logs "would apply" only,
+    // still learns); exercise/recovery override; lower-only. Turn ON to let it act.
+    ApsBoostV6PreMealTarget("boost_v6_pre_meal_target", false, defaultedBySM = true),
     ApsBoostAllowAllBgSources("boost_allow_all_bg_sources", false, defaultedBySM = true),
     ApsBoostNightModeEnabled("boost_night_mode_enabled", false, defaultedBySM = true),
     ApsBoostNightModeDisableWithCob("boost_night_mode_disable_with_cob", false, defaultedBySM = true),

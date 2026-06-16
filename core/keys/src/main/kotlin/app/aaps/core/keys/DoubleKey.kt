@@ -79,4 +79,8 @@ enum class DoubleKey(
     // V5 shadow dose caps (default to the validated Fix-6 values; shadow-only on this build).
     ApsBoostV5ConfirmedCapU("boost_v5_confirmed_cap_u", 1.0, 0.0, 5.0, defaultedBySM = true),
     ApsBoostV5CommittedCapU("boost_v5_committed_cap_u", 0.25, 0.0, 1.0, defaultedBySM = true),
+    // V6 anticipatory pre-meal target (2026-06-16): the lowered target + how long before the learned
+    // meal time it applies. Shadow unless ApsBoostV6PreMealTarget is on.
+    ApsBoostV6PreMealTargetMgdl("boost_v6_pre_meal_target_mgdl", 72.0, 65.0, 90.0, defaultedBySM = true),
+    ApsBoostV6PreMealLeadMin("boost_v6_pre_meal_lead_min", 60.0, 30.0, 90.0, defaultedBySM = true),
 }
