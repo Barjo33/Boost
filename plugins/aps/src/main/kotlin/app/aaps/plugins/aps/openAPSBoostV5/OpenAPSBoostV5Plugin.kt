@@ -18,6 +18,7 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.validators.preferences.AdaptiveDoublePreference
@@ -126,10 +127,11 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         iobArray: Array<IobTotal>,
         oapsProfile: OapsProfileBoost,
         pumpBolusStep: Double,
+        asleep: Boolean = false,
     ) {
         try {
             val priorState = stateStore.load()
-            val inputs = buildInputs(rT, glucoseStatus, iobArray, oapsProfile, pumpBolusStep)
+            val inputs = buildInputs(rT, glucoseStatus, iobArray, oapsProfile, pumpBolusStep, asleep)
             val decision = determineBasalBoostV5.decide(inputs, priorState)
             stateStore.save(decision.newPersistedState)
 
@@ -200,6 +202,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         iobArray: Array<IobTotal>,
         opb: OapsProfileBoost,
         pumpBolusStep: Double,
+        asleep: Boolean = false,
     ): V5Inputs {
         // delta_accl with V3's denominator floor — `max(|shortAvgDelta|, 2.0)` — carried over
         // verbatim from V3 input preprocessing.
@@ -272,6 +275,13 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             timeJumpMinutes = 0.0,
             aggressionUserKnob = aggressionKnob,
             hypoCautionUserKnob = hypoCautionKnob,
+            // 2026-06-16 fast-carb fast-path (shadow): single-cycle confirm on a sharp, accelerating,
+            // score-corroborated rise while awake & not exercising. asleep = prior-cycle sleep state.
+            asleep = asleep,
+            fastCarbConfirmEnabled = preferences.get(BooleanKey.ApsBoostV5FastCarbConfirm),
+            sensitivityUserKnob = sensitivityKnob,
+            confirmedCapU = preferences.get(DoubleKey.ApsBoostV5ConfirmedCapU),
+            committedCapU = preferences.get(DoubleKey.ApsBoostV5CommittedCapU),
         )
     }
 

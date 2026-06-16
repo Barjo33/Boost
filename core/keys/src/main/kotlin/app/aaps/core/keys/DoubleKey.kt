@@ -76,4 +76,7 @@ enum class DoubleKey(
     ApsBoostV5Aggression("boost_v5_aggression", 1.0, 0.7, 1.3, defaultedBySM = true),
     ApsBoostV5HypoCaution("boost_v5_hypo_caution", 1.0, 1.0, 2.0, defaultedBySM = true),
     ApsBoostV5Sensitivity("boost_v5_sensitivity", 1.0, 0.8, 1.2, defaultedBySM = true),
+    // V5 shadow dose caps (default to the validated Fix-6 values; shadow-only on this build).
+    ApsBoostV5ConfirmedCapU("boost_v5_confirmed_cap_u", 1.0, 0.0, 5.0, defaultedBySM = true),
+    ApsBoostV5CommittedCapU("boost_v5_committed_cap_u", 0.25, 0.0, 1.0, defaultedBySM = true),
 }

@@ -69,6 +69,10 @@ data class V5Inputs(
     val hour: Int,
     val exerciseActive: Boolean,
     val inPostExerciseWindow: Boolean,
+    /** SLEEPING (prior-cycle sleep state). Gates the fast-carb fast-path off overnight. 2026-06-16. */
+    val asleep: Boolean = false,
+    /** Fast-carb fast-path toggle (ApsBoostV5FastCarbConfirm). Single-cycle confirm on sharp+accel+score. */
+    val fastCarbConfirmEnabled: Boolean = false,
     val sensorQualityOk: Boolean = true,
 
     // Reset triggers
@@ -80,6 +84,13 @@ data class V5Inputs(
     // User-facing knobs
     val aggressionUserKnob: Double = 1.0,
     val hypoCautionUserKnob: Double = 1.0,
+    /** Per-user "Sensitivity" budget multiplier ∈ [0.8, 1.2]. Default 1.0 = no change. */
+    val sensitivityUserKnob: Double = 1.0,
+
+    // Alpha: user-adjustable dose caps (default to the validated Fix-6 values). Let the operator
+    // tighten V5's commit/holding doses live during active-dosing alpha.
+    val confirmedCapU: Double = MAX_CONFIRMED_COMMIT_DOSE_U,
+    val committedCapU: Double = MAX_COMMITTED_DOSE_U,
 )
 
 /** Persisted V5 state read from RT at cycle start, written back at cycle end. */
@@ -142,6 +153,9 @@ class DetermineBasalBoostV5 @Inject constructor(
             delta = inputs.delta,
             deltaAccl = inputs.deltaAccl,
             deltaDeclining = deltaDeclining(inputs.deltaHistory, windowCycles = 2),
+            asleep = inputs.asleep,
+            exerciseActive = inputs.exerciseActive,
+            fastConfirmEnabled = inputs.fastCarbConfirmEnabled,
         )
 
         // Phase 1.c — AggressionBudget
@@ -150,6 +164,7 @@ class DetermineBasalBoostV5 @Inject constructor(
             mlHypoRisk = inputs.mlHypoRisk,
             inPostExerciseWindow = inputs.inPostExerciseWindow,
             hypoCautionUserKnob = inputs.hypoCautionUserKnob,
+            sensitivityUserKnob = inputs.sensitivityUserKnob,
         )
 
         // Phase 2 — single decision rule
@@ -175,7 +190,7 @@ class DetermineBasalBoostV5 @Inject constructor(
         //      cycle, regardless of any upstream bug.
         val velocityFactor = velocityScaledDoseFactor(inputs.cumulativeRise30min)
         val velocityScaled = rawInsulinToDeliver * velocityFactor
-        val cappedInsulinToDeliver = applyStateDoseCap(newHypothesisState.state, velocityScaled)
+        val cappedInsulinToDeliver = applyStateDoseCap(newHypothesisState.state, velocityScaled, inputs.confirmedCapU, inputs.committedCapU)
         val insulinToDeliver = cappedInsulinToDeliver
 
         // Phase 3 — ordered safety gates
@@ -189,6 +204,7 @@ class DetermineBasalBoostV5 @Inject constructor(
             iob = inputs.iob,
             maxIob = inputs.maxIob,
             deltaAccl = inputs.deltaAccl,
+            delta = inputs.delta,
             baseInsulinReq = inputs.baseInsulinReq,
             roundSmbTo = inputs.roundSmbTo,
             sensorQualityOk = inputs.sensorQualityOk,
@@ -277,8 +293,13 @@ internal fun velocityScaledDoseFactor(cumulativeRise30min: Double): Double {
  *   RECOVERING) or use a test-dose multiplier (OBSERVING 0.3×) that doesn't reach dangerous
  *   magnitudes from any plausible baseInsulinReq.
  */
-internal fun applyStateDoseCap(state: MealHypothesis, dose: Double): Double = when (state) {
-    MealHypothesis.CONFIRMED -> dose.coerceAtMost(MAX_CONFIRMED_COMMIT_DOSE_U)
-    MealHypothesis.COMMITTED -> dose.coerceAtMost(MAX_COMMITTED_DOSE_U)
+internal fun applyStateDoseCap(
+    state: MealHypothesis,
+    dose: Double,
+    confirmedCapU: Double = MAX_CONFIRMED_COMMIT_DOSE_U,
+    committedCapU: Double = MAX_COMMITTED_DOSE_U,
+): Double = when (state) {
+    MealHypothesis.CONFIRMED -> dose.coerceAtMost(confirmedCapU)
+    MealHypothesis.COMMITTED -> dose.coerceAtMost(committedCapU)
     else -> dose
 }

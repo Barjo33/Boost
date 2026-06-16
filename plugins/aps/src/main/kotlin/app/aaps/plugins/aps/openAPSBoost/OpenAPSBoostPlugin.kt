@@ -1128,13 +1128,17 @@ open class OpenAPSBoostPlugin @Inject constructor(
             // the rT in place; failures inside V5 are caught and logged within
             // runShadow() and cannot affect V1's dosing decision (already finalised
             // above this line).
+            // sleepStateCached here still holds the PRIOR cycle's state (this cycle's sleep block
+            // runs below), so this is the prior-cycle sleep flag the fast-carb fast-path needs.
+            val v5Asleep = sleepStateCached.state == SleepStateDetector.SleepState.SLEEPING
             try {
                 boostV5Plugin.get().runShadow(
                     rT = it,
                     glucoseStatus = glucoseStatus,
                     iobArray = iobArray,
                     oapsProfile = oapsProfile,
-                    pumpBolusStep = activePlugin.activePump.pumpDescription.bolusStep
+                    pumpBolusStep = activePlugin.activePump.pumpDescription.bolusStep,
+                    asleep = v5Asleep
                 )
             } catch (t: Throwable) {
                 aapsLogger.error(LTag.APS, "V5 shadow invocation failed", t)

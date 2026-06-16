@@ -41,6 +41,8 @@ data class Phase3Inputs(
     val maxIob: Double,
     /** delta_accl with V3's denominator floor (`max(|shortAvgDelta|, 2.0)`) already applied. */
     val deltaAccl: Double,
+    /** Signed per-cycle delta (mg/dL/5min) — for the decelerationBrake velocity fallback. */
+    val delta: Double = 0.0,
     /** baseInsulinReq used by [dynamicSpikeCap] to compute a per-cycle ceiling. */
     val baseInsulinReq: Double,
     /** Pump's SMB rounding step, e.g. 0.05 U. */
@@ -82,10 +84,13 @@ internal const val IOB_HEADROOM_SCALE_1 = 0.85                  // 0.5 ≤ iob_f
 internal const val IOB_HEADROOM_SCALE_2 = 0.60                  // 0.7 ≤ iob_frac < 0.85
 internal const val IOB_HEADROOM_SCALE_3 = 0.40                  // iob_frac ≥ 0.85
 
-// decelerationBrake — fires only on decel + high IOB (NEW in V5, no V4 equivalent)
-internal const val DECEL_BRAKE_ACCL_THRESHOLD = -10.0
-internal const val DECEL_BRAKE_IOB_FRACTION = 0.5
-internal const val DECEL_BRAKE_SCALE = 0.5
+// decelerationBrake — 2026-06-14 re-spec, anchored on V1's switch: V1 gates its boost tiers on
+// delta_accl > 0 (DetermineBasalBoost.kt T5 :1526 / T3 :1475) with a delta > 8 velocity fallback
+// (T4 :1505) to keep covering a sustained-but-decelerating climb. Ease off once accl crosses zero
+// (first sign insulin is biting), UNLESS still climbing fast. Replaces the old <−10 reversal gate.
+internal const val DECEL_BRAKE_ACCL_FULL = -15.0               // full brake at/below this delta_accl
+internal const val DECEL_BRAKE_FLOOR = 0.30                    // min scale (never fully quits a still-high meal)
+internal const val DECEL_BRAKE_VELOCITY_FALLBACK = 8.0         // mg/dL/5min — still climbing fast → keep dosing (V1 T4)
 
 // postActionRiskCheck — V4's mlPostSmbScale moved to Phase 3 where projection makes sense
 internal const val POST_ACTION_RISK_THRESHOLD = 0.40
@@ -137,7 +142,7 @@ fun applyPhase3(input: Phase3Inputs): Phase3Result {
     )
     dose *= parScale
 
-    val decelScale = decelerationBrake(input.deltaAccl, input.iob, input.maxIob)
+    val decelScale = decelerationBrake(input.deltaAccl, input.delta)
     dose *= decelScale
 
     val sensorScale = sensorQualityCheck(input.sensorQualityOk)
@@ -190,16 +195,18 @@ internal fun iobHeadroomBrake(iob: Double, maxIob: Double): Double {
 }
 
 /**
- * NEW in V5 (no V4 equivalent). Fires only when BOTH conditions hold: BG decelerating
- * sharply (`delta_accl < -10`) AND IOB already > 50% of max. Encodes "the IOB you have is
- * starting to bite, don't pile on more." Stacks with iobHeadroomBrake when both fire.
+ * V1-anchored ease-off. V1 gates its boost tiers on `delta_accl > 0` with a `delta > 8` velocity
+ * fallback; this mirrors that. Returns 1.0 while still accelerating (accl ≥ 0) or still climbing
+ * fast (delta > 8); once accl crosses below zero and BG isn't rising fast — the first sign insulin
+ * is biting — it scales the dose down linearly from 1.0 (accl=0) to [DECEL_BRAKE_FLOOR] (accl ≤
+ * [DECEL_BRAKE_ACCL_FULL]). IOB-independent (iobHeadroomBrake covers IOB separately).
  */
-internal fun decelerationBrake(deltaAccl: Double, iob: Double, maxIob: Double): Double {
-    if (maxIob <= 0.0) return 1.0
-    if (deltaAccl < DECEL_BRAKE_ACCL_THRESHOLD && iob > DECEL_BRAKE_IOB_FRACTION * maxIob) {
-        return DECEL_BRAKE_SCALE
-    }
-    return 1.0
+internal fun decelerationBrake(deltaAccl: Double, delta: Double): Double {
+    if (delta > DECEL_BRAKE_VELOCITY_FALLBACK) return 1.0   // still climbing fast — keep dosing (V1 T4 fallback)
+    if (deltaAccl >= 0.0) return 1.0                         // still accelerating — full dose
+    // accl < 0 and not climbing fast: graduated ease-off, 1.0 at accl=0 → FLOOR at accl≤FULL
+    val frac = ((deltaAccl - DECEL_BRAKE_ACCL_FULL) / (0.0 - DECEL_BRAKE_ACCL_FULL)).coerceIn(0.0, 1.0)
+    return DECEL_BRAKE_FLOOR + (1.0 - DECEL_BRAKE_FLOOR) * frac
 }
 
 /**
