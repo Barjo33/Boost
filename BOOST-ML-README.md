@@ -22,7 +22,7 @@ People who don't run Boost should stay on whatever they're using.
 
 ## What's different
 
-Boost decides what to dose every five minutes by looking at the current blood glucose, the trend, the insulin on board, and a few derived quantities; picking one of eight tiers of response — from a small correction at the gentle end to a strong COB-triggered bolus at the aggressive end; and sizing the microbolus accordingly.
+Boost decides what to dose every five minutes by looking at the current blood glucose, the trend, the insulin on board, and a few derived quantities; picking one of eight tiers of response — from a small correction at the gentle end to a strong unannounced-meal (UAM) bolus at the aggressive end; and sizing the microbolus accordingly.
 
 That logic stays the same in this build. What's added is a small layer of context that asks, before any dose is delivered: *given everything we know about the next four hours, is this dose the right size and shape?*
 
@@ -68,7 +68,7 @@ The build also includes a refinement to the high-BG aggressive tier so that it k
 
 ## What V5 is — and why it's silent
 
-V5 is a clean-slate redesign of the Boost decision logic, sitting on a different architectural principle: a three-phase **Observe → Confirm → Commit** state machine rather than the existing tier ladder. It's been running in production-shadow form on the developer's pump for several weeks. It is *not* used to dose insulin in this build.
+V5 is a clean-slate redesign of the Boost decision logic, sitting on a different architectural principle: an **Observe → Confirm → Commit** state machine (the full state set is IDLE → OBSERVING → CONFIRMED → COMMITTED → RECOVERING) rather than the existing tier ladder. It's been running in production-shadow form on the developer's pump for several weeks. It is *not* used to dose insulin in this build.
 
 What V5 actually does on this branch is **watch**. Every five-minute cycle, V5 sees the same inputs the active algorithm sees, computes what it would have done, and publishes seven fields to Nightscout describing that hypothetical decision:
 
@@ -94,21 +94,21 @@ V5 also does not appear in the AndroidAPS plugin list. Users cannot enable or di
 
 Boost has a long history of debating one specific question: should the sensitivity ratio (the number that says "the user is currently 10% more sensitive than their 7-day baseline, so dose accordingly") be the **instantaneous** value, or should it be **smoothed** to dampen short-term noise? The publicly-released Boost takes the instantaneous value. A later development branch settled on a smoothed-with-a-3-hour-exponential-average approach. Both have plausible arguments behind them. Neither has been A/B tested cleanly because changing the sensitivity calculation changes everything downstream and no two days are comparable.
 
-This build adds a way to test it without changing dosing. Every cycle, the algorithm now computes **both** the instantaneous sensitivity ratio it actually uses and the smoothed ratio it would have used under the alternative, and publishes both to Nightscout for direct comparison. Like V5, the shadow path is observation-only; the dose the pump delivers is determined by the instantaneous value as before.
+This build adds a way to test it without changing dosing — **but only when TDD-based DynISF is enabled** (`Use TDD` in Boost's Dynamic-ISF settings, which is **off by default**). When TDD is on, every cycle the algorithm computes **both** the instantaneous sensitivity ratio it actually uses and the smoothed ratio it would have used under the alternative, and publishes both to Nightscout for direct comparison. With the profile-anchored default (TDD off), the sensitivity ratio isn't TDD-derived, so this shadow does **not** run and the `isfShadow_*` fields below **will not appear**. Like V5, the shadow path is observation-only; the dose the pump delivers is determined by the instantaneous value as before.
 
 Seven fields appear in Nightscout per cycle:
 
 | Field | What it means |
 |---|---|
-| `isfShadow_ratioRaw` | The instantaneous tdd_24h / tdd_7d ratio — the same number Boost actually uses today |
+| `isfShadow_ratioRaw` | The instantaneous tdd_24h / tdd_7d ratio — the sensitivity ratio Boost uses **when TDD-DynISF is enabled** (with TDD off, the dosing ratio comes from the profile-anchored DynISF curve instead) |
 | `isfShadow_ratioEma` | The 3-hour exponentially-smoothed version of the same ratio |
 | `isfShadow_warmup` | A 0.0–1.0 number that climbs to 1.0 over the first five days of EMA history. While warming up, the shadow leans toward "no smoothing" so the user isn't comparing against an unsettled smoother. |
 | `isfShadow_variableSens` | What `variable_sens` would have been if the smoothed ratio had been used (mg/dL/U) |
 | `isfShadow_insulinReq` | What this cycle's `insulinReq` would have been |
 | `isfShadow_microBolus` | What the delivered microbolus would have been |
-| `isfShadow_deltaPct` | A single-number summary: `(shadow / actual − 1) × 100`. Negative means the smoothed version would have given more insulin this cycle; positive means it would have given less. |
+| `isfShadow_deltaPct` | A single-number ISF summary: `(shadow variable_sens / actual variable_sens − 1) × 100`, implemented as `(ratio_v1 / ratio_ema − 1) × 100`. This is an ISF delta, not a dose delta: negative means the smoothed version would have given more insulin this cycle; positive means it would have given less. |
 
-The interesting field to watch is `deltaPct`. In steady-state — TDD this week broadly matches TDD this month — it sits near 0%. When TDD is rising fast (heavy day, illness, bigger meals) the instantaneous ratio responds immediately and the smoothed ratio lags — so `deltaPct` goes mildly **negative**, meaning the smoothed approach would have delivered slightly more insulin. When TDD is falling fast (active day, smaller meals, fasting) the opposite holds and `deltaPct` goes mildly **positive**. The two ratios diverge most during the first few hours of a TDD shift; over a 24-hour window they converge.
+The interesting field to watch is `deltaPct`. In steady-state — TDD this week broadly matches TDD this month — it sits near 0%. When TDD is rising fast (heavy day, illness, bigger meals), the instantaneous ratio rises above the lagging EMA. Because `deltaPct` is the ISF delta, it goes mildly **positive**: the smoothed shadow has a higher `variable_sens` and would deliver slightly less insulin. When TDD is falling fast (active day, smaller meals, fasting), the instantaneous ratio falls below the lagging EMA, so `deltaPct` goes mildly **negative** and the smoothed shadow would deliver slightly more insulin. The sign is opposite to the dose delta. The two ratios diverge most during the first few hours of a TDD shift; over a 24-hour window they converge.
 
 Over a week of observation, plotting `isfShadow_deltaPct` against actual outcomes (time-in-range, time-below-70, peak-after-meal) will tell whether the smoothing approach would have improved the user's day or simply produced different doses with similar results. If `deltaPct` ranges within ±5% and outcomes look similar, the instantaneous approach is a perfectly reasonable choice. If `deltaPct` swings to ±15-25% and bigger swings correlate with hypos or highs, the smoothing approach has a real argument behind it.
 
