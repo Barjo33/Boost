@@ -51,6 +51,9 @@ class HealthConnectStepsIngest @Inject constructor(
         private set
     @Volatile var chosenSource: String? = null
         private set
+    /** All step-writing source packages seen in the last window (for diagnostics / NS visibility). */
+    @Volatile var availableSources: List<String> = emptyList()
+        private set
 
     val isAvailable: Boolean
         get() = HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_AVAILABLE
@@ -117,23 +120,49 @@ class HealthConnectStepsIngest @Inject constructor(
             perSourceDay.getOrPut(src) { HashMap() }.merge(day, r.count) { a, b -> a + b }
             perSourceTotal.merge(src, r.count) { a, b -> a + b }
         }
-        val dominant = perSourceTotal.maxByOrNull { it.value }?.key
-        if (dominant == null) {
+        availableSources = perSourceTotal.entries.sortedByDescending { it.value }.map { it.key }
+        val chosen = chooseSource(perSourceTotal)
+        if (chosen == null) {
             latestDailyTotals = emptyList()
             chosenSource = null
             aapsLogger.info(LTag.APS, "HealthConnectStepsIngest: no step records in window")
             return
         }
-        latestDailyTotals = perSourceDay[dominant]!!
-            .map { (day, steps) -> DailyTotal(day, steps.toInt(), dominant) }
+        latestDailyTotals = perSourceDay[chosen]!!
+            .map { (day, steps) -> DailyTotal(day, steps.toInt(), chosen) }
             .sortedBy { it.dayIndex }
-        chosenSource = dominant
-        aapsLogger.info(LTag.APS, "HealthConnectStepsIngest: sources=${perSourceTotal.keys} chose=$dominant days=${latestDailyTotals.size}")
+        chosenSource = chosen
+        aapsLogger.info(LTag.APS, "HealthConnectStepsIngest: sources=${perSourceTotal.keys} chose=$chosen days=${latestDailyTotals.size}")
     }
 
     /** Force a sync regardless of throttle — e.g. a settings "test now" button. */
     fun forceSync() {
         lastSyncRunMs = 0L
         syncIfDue()
+    }
+
+    companion object {
+        /**
+         * Single-source selection preference, highest priority first (package-name substrings).
+         * The first priority source that actually wrote steps in the window wins; only if none of
+         * them are present do we fall back to the source with the most steps (normally the phone's
+         * own pedometer). Garmin (watch) is preferred as the most reliable continuous step source;
+         * the phone is the fallback for when the watch isn't worn or isn't syncing.
+         *   Garmin Connect = com.garmin.android.apps.connectmobile
+         */
+        val SOURCE_PRIORITY = listOf("garmin")
+
+        /** Pick the step source: highest-priority present-with-data, else dominant-by-total ("phone"). */
+        internal fun chooseSource(perSourceTotal: Map<String, Long>): String? {
+            val withData = perSourceTotal.filterValues { it > 0 }
+            if (withData.isEmpty()) return null
+            for (pref in SOURCE_PRIORITY) {
+                withData.keys
+                    .filter { it.contains(pref, ignoreCase = true) }
+                    .maxByOrNull { withData.getValue(it) }
+                    ?.let { return it }
+            }
+            return withData.maxByOrNull { it.value }!!.key   // fallback: dominant source = the phone
+        }
     }
 }

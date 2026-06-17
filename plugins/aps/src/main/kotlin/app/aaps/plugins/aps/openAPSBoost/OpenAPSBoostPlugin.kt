@@ -1316,6 +1316,11 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     if (sf.baselineSteps != null && sf.ratio != null) {
                         val sign = if (sf.wouldDeltaIsfPct >= 0) "+" else ""
                         it.reason.append("activityLoad: base ${sf.baselineSteps} last ${sf.lastDaySteps} (${Round.roundTo(sf.ratio!!, 0.01)}x) wouldΔISF $sign${Round.roundTo(sf.wouldDeltaIsfPct, 0.1)}% [${sf.note}]; ")
+                    } else {
+                        // No baseline yet — surface what HC actually offers so a missing/empty step
+                        // source (e.g. Garmin not syncing to Health Connect) is visible on Nightscout.
+                        val avail = healthConnectStepsIngest.availableSources.joinToString(",") { it.substringAfterLast('.') }
+                        it.reason.append("activityLoad: no baseline (chosen=${healthConnectStepsIngest.chosenSource?.substringAfterLast('.') ?: "none"} avail=[$avail] days=${dailyStepHistoryCached.days.size}); ")
                     }
                 } catch (t: Throwable) {
                     aapsLogger.error(LTag.APS, "Activity-load shadow failed", t)
