@@ -51,6 +51,9 @@ class HealthConnectStepsIngest @Inject constructor(
         private set
     @Volatile var chosenSource: String? = null
         private set
+    /** Per-source coverage seen in the last window, "shortname:daysWithSteps/totalSteps", for NS visibility. */
+    @Volatile var availableSources: List<String> = emptyList()
+        private set
 
     val isAvailable: Boolean
         get() = HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_AVAILABLE
@@ -102,33 +105,63 @@ class HealthConnectStepsIngest @Inject constructor(
         }
         val sinceMs = nowMs - windowMs
         val offsetMs = ZoneId.systemDefault().rules.getOffset(Instant.now()).totalSeconds * 1000L
-        val resp = hc.readRecords(
-            ReadRecordsRequest(
-                recordType = StepsRecord::class,
-                timeRangeFilter = TimeRangeFilter.between(Instant.ofEpochMilli(sinceMs), Instant.ofEpochMilli(nowMs))
-            )
-        )
-        // Sum per (source package, local day); pick the dominant source; emit only its per-day totals.
+        // Paginate — a single readRecords() returns only the first page (~1000 records, oldest
+        // first), which would truncate a full 28-day history from a continuous source. Loop on
+        // pageToken so we see every source's complete coverage.
         val perSourceDay = HashMap<String, HashMap<Long, Long>>()
-        val perSourceTotal = HashMap<String, Long>()
-        for (r in resp.records) {
-            val src = r.metadata.dataOrigin.packageName.ifBlank { "unknown" }
-            val day = DailyStepHistoryTracker.dayIndex(r.startTime.toEpochMilli(), offsetMs)
-            perSourceDay.getOrPut(src) { HashMap() }.merge(day, r.count) { a, b -> a + b }
-            perSourceTotal.merge(src, r.count) { a, b -> a + b }
-        }
-        val dominant = perSourceTotal.maxByOrNull { it.value }?.key
-        if (dominant == null) {
+        var pageToken: String? = null
+        do {
+            val resp = hc.readRecords(
+                ReadRecordsRequest(
+                    recordType = StepsRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(Instant.ofEpochMilli(sinceMs), Instant.ofEpochMilli(nowMs)),
+                    pageToken = pageToken
+                )
+            )
+            for (r in resp.records) {
+                val src = r.metadata.dataOrigin.packageName.ifBlank { "unknown" }
+                val day = DailyStepHistoryTracker.dayIndex(r.startTime.toEpochMilli(), offsetMs)
+                perSourceDay.getOrPut(src) { HashMap() }.merge(day, r.count) { a, b -> a + b }
+            }
+            pageToken = resp.pageToken
+        } while (pageToken != null)
+
+        // Diagnostics: every source's coverage (days-with-steps / total), best-covered first.
+        availableSources = perSourceDay.entries
+            .sortedByDescending { e -> e.value.count { it.value > 0 } }
+            .map { e -> "${e.key.substringAfterLast('.')}:${e.value.count { it.value > 0 }}/${e.value.values.sum()}" }
+
+        val chosen = chooseSourceByCoverage(perSourceDay)
+        if (chosen == null) {
             latestDailyTotals = emptyList()
             chosenSource = null
             aapsLogger.info(LTag.APS, "HealthConnectStepsIngest: no step records in window")
             return
         }
-        latestDailyTotals = perSourceDay[dominant]!!
-            .map { (day, steps) -> DailyTotal(day, steps.toInt(), dominant) }
+        latestDailyTotals = perSourceDay[chosen]!!
+            .map { (day, steps) -> DailyTotal(day, steps.toInt(), chosen) }
             .sortedBy { it.dayIndex }
-        chosenSource = dominant
-        aapsLogger.info(LTag.APS, "HealthConnectStepsIngest: sources=${perSourceTotal.keys} chose=$dominant days=${latestDailyTotals.size}")
+        chosenSource = chosen
+        aapsLogger.info(LTag.APS, "HealthConnectStepsIngest: coverage=$availableSources chose=$chosen days=${latestDailyTotals.size}")
+    }
+
+    companion object {
+        /**
+         * Pick the step source with the most **daily coverage** — the count of distinct local days
+         * that have real step data — with total steps as a tiebreaker. A continuous on-body source
+         * (the phone's own pedometer) therefore wins over an app/aggregator that holds only sparse
+         * or no daily history. "Most total steps" got this wrong: it picked a high-count source with
+         * no usable per-day history, so the baseline never formed. Coverage is what the
+         * deviation-from-baseline metric actually needs.
+         */
+        internal fun chooseSourceByCoverage(perSourceDay: Map<String, HashMap<Long, Long>>): String? {
+            val withData = perSourceDay.filterValues { days -> days.values.any { it > 0 } }
+            if (withData.isEmpty()) return null
+            return withData.maxWith(
+                compareBy<Map.Entry<String, HashMap<Long, Long>>> { it.value.count { d -> d.value > 0 } }
+                    .thenBy { it.value.values.sum() }
+            ).key
+        }
     }
 
     /** Force a sync regardless of throttle — e.g. a settings "test now" button. */

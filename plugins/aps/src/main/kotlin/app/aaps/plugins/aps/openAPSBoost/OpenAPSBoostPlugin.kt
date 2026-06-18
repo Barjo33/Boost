@@ -1392,6 +1392,10 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     if (sf.baselineSteps != null && sf.ratio != null) {
                         val sign = if (sf.wouldDeltaIsfPct >= 0) "+" else ""
                         it.reason.append("activityLoad: base ${sf.baselineSteps} last ${sf.lastDaySteps} (${Round.roundTo(sf.ratio!!, 0.01)}x) wouldΔISF $sign${Round.roundTo(sf.wouldDeltaIsfPct, 0.1)}% [${sf.note}]; ")
+                    } else {
+                        // No baseline yet — surface chosen source + every source's coverage
+                        // (days-with-steps/total) so a continuous feed being ignored is visible on NS.
+                        it.reason.append("activityLoad: no baseline (chosen=${healthConnectStepsIngest.chosenSource?.substringAfterLast('.') ?: "none"} cov=${healthConnectStepsIngest.availableSources} days=${dailyStepHistoryCached.days.size}); ")
                     }
                 } catch (t: Throwable) {
                     aapsLogger.error(LTag.APS, "Activity-load shadow failed", t)
