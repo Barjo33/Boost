@@ -134,6 +134,10 @@ data class RT(
     var boostActivityLoad_ratio: Double? = null,        // decay-weighted recent load ÷ baseline
     var boostActivityLoad_wouldDeltaIsfPct: Double? = null, // signed: + raise ISF (activity) / − lower (inactivity)
     var boostActivityLoad_source: String? = null,       // chosen HC step source package
+    // Intraday activity-load SHADOW (2026-06-19): today's cumulative steps vs typical pace by hour.
+    var boostActivityLoad_stepsToday: Int? = null,      // cumulative steps since local midnight (phone)
+    var boostActivityLoad_intradayRatio: Double? = null, // stepsToday ÷ expected-by-now
+    var boostActivityLoad_intradayDeltaIsfPct: Double? = null, // raise-only would-ΔISF from intraday pace
     // Autosens / TDD-DynISF coordination telemetry (2026-06-16). Logs which sensitivity mechanism
     // is driving basal/target/CR scaling, plus the would-be alternative — so the
     // ApsBoostAutosensWhenNoTdd fix can be validated on real data before it's enabled.

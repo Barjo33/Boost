@@ -54,6 +54,10 @@ class HealthConnectStepsIngest @Inject constructor(
     /** Per-source coverage seen in the last window, "shortname:daysWithSteps/totalSteps", for NS visibility. */
     @Volatile var availableSources: List<String> = emptyList()
         private set
+    /** Chosen source's step total for the CURRENT (partial) local day — used once to seed the
+     *  phone pedometer's intraday counter. -1 until the first sync produces a value. */
+    @Volatile var todayStepsSoFar: Int = -1
+        private set
 
     val isAvailable: Boolean
         get() = HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_AVAILABLE
@@ -142,6 +146,8 @@ class HealthConnectStepsIngest @Inject constructor(
             .map { (day, steps) -> DailyTotal(day, steps.toInt(), chosen) }
             .sortedBy { it.dayIndex }
         chosenSource = chosen
+        val todayIdx = DailyStepHistoryTracker.dayIndex(nowMs, offsetMs)
+        todayStepsSoFar = perSourceDay[chosen]?.get(todayIdx)?.toInt() ?: 0
         aapsLogger.info(LTag.APS, "HealthConnectStepsIngest: coverage=$availableSources chose=$chosen days=${latestDailyTotals.size}")
     }
 

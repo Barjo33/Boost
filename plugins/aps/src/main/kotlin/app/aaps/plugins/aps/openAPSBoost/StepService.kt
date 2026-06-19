@@ -79,4 +79,35 @@ object StepService : SensorEventListener {
         }
         return stepCount
     }
+
+    // ── Cumulative steps-since-local-midnight (2026-06-19, intraday activity-load shadow) ──
+    // The hardware TYPE_STEP_COUNTER value (previousStepCount) is cumulative-since-boot. Today's
+    // steps = current − a baseline captured at local midnight. Zero extra cost: the sensor is
+    // already running; getStepsToday() is one subtraction off in-memory state, called once/cycle.
+    @Volatile private var dayKey = -1L
+    @Volatile private var midnightRaw = -1
+
+    /** Steps since local midnight from the phone pedometer. Re-baselines on day rollover / reboot. */
+    @Synchronized fun getStepsToday(localOffsetMs: Long): Int {
+        val cur = previousStepCount
+        if (cur < 0) return 0
+        val day = (System.currentTimeMillis() + localOffsetMs) / 86_400_000L
+        if (day != dayKey || midnightRaw < 0 || cur < midnightRaw) {  // new local day, uninit, or reboot
+            midnightRaw = cur; dayKey = day
+        }
+        return (cur - midnightRaw).coerceAtLeast(0)
+    }
+
+    /**
+     * One-time seed so a mid-day app start counts today's earlier steps: sets the midnight baseline
+     * so getStepsToday() returns [hcTodaySteps] now, then the live sensor carries on from there.
+     * Caller invokes this once (after the first Health Connect sync). No-op until a sensor reading
+     * exists. A real midnight rollover later re-zeros without needing HC again.
+     */
+    @Synchronized fun seedTodayFromHc(hcTodaySteps: Int, localOffsetMs: Long) {
+        val cur = previousStepCount
+        if (cur < 0) return
+        midnightRaw = (cur - hcTodaySteps).coerceIn(0, cur)
+        dayKey = (System.currentTimeMillis() + localOffsetMs) / 86_400_000L
+    }
 }

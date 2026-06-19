@@ -32,6 +32,32 @@ object DailyStepHistoryTracker {
     /** Local epoch-day index from a UTC instant + local offset (so day boundaries are the user's). */
     fun dayIndex(utcMs: Long, localOffsetMs: Long): Long = (utcMs + localOffsetMs) / DAY_MS
 
+    // ── Intraday activity-load (2026-06-19, SHADOW). Acute same-day sensitivity: today's cumulative
+    // steps vs the user's typical pace by this hour. Complements the next-day (24-48h) factor above.
+    // Fraction of a day's steps typically completed by the END of each local hour (generic diurnal
+    // curve; not personalised in v1). Index = hour 0..23. ~0 overnight, rising through the day.
+    private val DIURNAL_FRACTION = doubleArrayOf(
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.01, 0.03, 0.07, 0.13, 0.20, 0.28, 0.36,
+        0.44, 0.52, 0.59, 0.66, 0.73, 0.80, 0.86, 0.91, 0.95, 0.98, 0.99, 1.00
+    )
+
+    data class IntradayFactor(val ratio: Double?, val wouldDeltaIsfPct: Double, val expectedByNow: Int)
+
+    /**
+     * Intraday "running hot?" factor: today's cumulative [stepsToday] vs expected-by-now
+     * ([baseline] × the diurnal fraction for [hour]). RAISE-ONLY (acute exercise → more sensitive →
+     * +ISF), capped at [ACTIVITY_MAX_ISF_PCT]; below-pace returns 0 (the next-day factor owns the
+     * lower-activity direction). Null baseline → no factor. ~6 ops; no I/O.
+     */
+    fun intradayFactor(stepsToday: Int, baseline: Int?, hour: Int): IntradayFactor {
+        if (baseline == null || baseline <= 0) return IntradayFactor(null, 0.0, 0)
+        val frac = DIURNAL_FRACTION[hour.coerceIn(0, 23)].coerceAtLeast(0.02)
+        val expected = baseline * frac
+        val ratio = stepsToday / expected
+        val pct = (((ratio - 1.0) / (ACTIVITY_RATIO_FULL - 1.0)).coerceIn(0.0, 1.0)) * ACTIVITY_MAX_ISF_PCT
+        return IntradayFactor(ratio, pct, expected.toInt())
+    }
+
     /** One completed local day's step total from the chosen single source. */
     data class DailyTotal(val dayIndex: Long, val steps: Int, val source: String)
 
