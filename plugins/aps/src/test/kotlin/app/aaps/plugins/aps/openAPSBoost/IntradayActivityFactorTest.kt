@@ -24,7 +24,7 @@ class IntradayActivityFactorTest {
         assertThat(f.wouldDeltaIsfPct).isEqualTo(0.0)
     }
 
-    @Test fun `below pace returns zero (raise-only; next-day factor owns the low side)`() {
+    @Test fun `below pace returns zero - raise-only, next-day factor owns the low side`() {
         val f = DailyStepHistoryTracker.intradayFactor(stepsToday = 2000, baseline = baseline, hour = 15)
         assertThat(f.wouldDeltaIsfPct).isEqualTo(0.0)
     }
