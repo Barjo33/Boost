@@ -1405,7 +1405,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     // counted today (mid-day restart, or phone-not-carried undercount). Upward-only,
                     // so it never double-counts or goes backwards, and self-heals each HC sync.
                     val hcToday = healthConnectStepsIngest.todayStepsSoFar
-                    if (hcToday > StepService.getStepsToday(offsetMs)) {
+                    // Only anchor to HC when its value is for the CURRENT local day — across midnight
+                    // HC's last (hourly) sync still holds yesterday's total, which must not bleed in.
+                    if (healthConnectStepsIngest.todayStepsDay == todayIdx && hcToday > StepService.getStepsToday(offsetMs)) {
                         StepService.seedTodayFromHc(hcToday, offsetMs)
                     }
                     val stepsToday = StepService.getStepsToday(offsetMs)
