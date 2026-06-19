@@ -1323,9 +1323,12 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     // Intraday activity-load SHADOW (2026-06-19): today's cumulative steps vs typical
                     // pace by hour, from the phone pedometer (realtime, free). HC seeds the midnight
                     // baseline ONCE so a mid-day start counts earlier steps. Logged only.
-                    if (!intradaySeeded && healthConnectStepsIngest.todayStepsSoFar >= 0) {
-                        StepService.seedTodayFromHc(healthConnectStepsIngest.todayStepsSoFar, offsetMs)
-                        intradaySeeded = true
+                    // Re-anchor the phone counter UP to HC whenever HC knows more than the phone has
+                    // counted today (mid-day restart, or phone-not-carried undercount). Upward-only,
+                    // so it never double-counts or goes backwards, and self-heals each HC sync.
+                    val hcToday = healthConnectStepsIngest.todayStepsSoFar
+                    if (hcToday > StepService.getStepsToday(offsetMs)) {
+                        StepService.seedTodayFromHc(hcToday, offsetMs)
                     }
                     val stepsToday = StepService.getStepsToday(offsetMs)
                     val intraHour = java.time.LocalTime.now().hour
@@ -1446,8 +1449,6 @@ open class OpenAPSBoostPlugin @Inject constructor(
     // Activity-load SHADOW (2026-06-16) — rolling 28-day single-source daily-step history.
     @Volatile private var dailyStepHistoryCached: DailyStepHistoryTracker.History =
         DailyStepHistoryTracker.History.deserialize(preferences.get(StringKey.ApsBoostDailyStepHistory))
-    // Intraday step counter seeded from HC once (mid-day start -> count earlier steps); 2026-06-19.
-    @Volatile private var intradaySeeded: Boolean = false
     // V6 pre-meal (2026-06-16) — learned habitual meal times, + prior-cycle V5 state so a FRESH
     // CONFIRMED (the meal event) is detected by transition on this shadow build (no v5decision here).
     @Volatile private var mealTimeHistoryCached: MealTimeLearner.History =
