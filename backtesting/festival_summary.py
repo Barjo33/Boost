@@ -106,94 +106,111 @@ print(f"POOLED TIR {P['tir']:.1f} TITR {P['titr']:.1f} TINR {P['tinr']:.1f} mean
 print("HR present in festival window:", hr_any)
 
 # ================= CHARTS =================
-plt.rcParams.update({"font.size":9,"font.family":"sans-serif","figure.dpi":130})
-fig=plt.figure(figsize=(13,9)); fig.suptitle("Boost V5 — Festival summary  (Thu 18 – Mon 22 Jun 2026)  •  self, anonymised",fontsize=13,fontweight="bold")
-gs=fig.add_gridspec(3,2,hspace=0.45,wspace=0.22)
-x=range(len(DAYS))
+import matplotlib.patches as mpatches
+plt.rcParams.update({"font.size":9,"font.family":"sans-serif","figure.dpi":140,
+                     "axes.titlesize":10.5,"axes.titleweight":"bold","axes.titlepad":10})
 # ADA-consensus band colours
-C_VLO,C_LO,C_TIR,C_HI,C_VHI="#8e24aa","#ef5350","#43a047","#ffb300","#fb8c00"
+C_VLO,C_LO,C_TIR,C_HI,C_VHI="#7e57c2","#ef5350","#43a047","#ffb300","#fb8c00"
 
-# 1 TIR by day (standard stacked)
-ax=fig.add_subplot(gs[0,0]); b=[0]*len(DAYS)
-for key,lab,c in [('vlo','<54','#8e24aa'),('lo','54–70',C_LO),('tir','70–180 (TIR)',C_TIR),('hi','180–250',C_HI),('vhi','>250',C_VHI)]:
-    vals=[DS[d][key] for d in DAYS]; ax.bar(x,vals,bottom=b,color=c,label=lab,width=0.72); b=[bb+vv for bb,vv in zip(b,vals)]
-ax.set_xticks(x); ax.set_xticklabels(DAYS,fontsize=8); ax.set_ylim(0,100); ax.set_ylabel("% of day")
-ax.set_title("Time in Range by day (70–180)",fontweight="bold")
-ax.legend(fontsize=6.5,ncol=5,loc="lower center",bbox_to_anchor=(0.5,-0.32))
-for i,d in enumerate(DAYS): ax.text(i,DS[d]['vlo']+DS[d]['lo']+DS[d]['tir']/2,f"{DS[d]['tir']:.0f}",ha="center",va="center",color="white",fontsize=7,fontweight="bold")
+def standalone(ax,grid=True):
+    """Open the box: drop top/right/left spines so bars 'stand' on a baseline; faint y-grid."""
+    for sp in ("top","right","left"): ax.spines[sp].set_visible(False)
+    ax.spines["bottom"].set_color("#bdbdbd")
+    ax.tick_params(left=False,colors="#555",labelsize=8)
+    if grid:
+        ax.set_axisbelow(True); ax.yaxis.grid(True,color="#ececec",lw=0.9)
 
-# 2 TITR & TINR by day (grouped)
-ax=fig.add_subplot(gs[0,1])
-ax.bar([i-0.18 for i in x],[DS[d]['titr'] for d in DAYS],width=0.36,color="#2e7d32",label="TITR 70–140")
-ax.bar([i+0.18 for i in x],[DS[d]['tinr'] for d in DAYS],width=0.36,color="#66bb6a",label="TINR 63–140")
-ax.set_xticks(x); ax.set_xticklabels(DAYS,fontsize=8); ax.set_ylim(0,100); ax.set_ylabel("% of day")
-ax.set_title("Tight & Normal range by day",fontweight="bold"); ax.legend(fontsize=7,loc="upper right")
+fig=plt.figure(figsize=(13,9.6))
+fig.suptitle("Boost V5 — Festival summary",fontsize=15,fontweight="bold",y=0.985)
+fig.text(0.5,0.952,"Thu 18 – Mon 22 June 2026  ·  self, anonymised",ha="center",fontsize=9.5,color="#666")
+gs=fig.add_gridspec(3,2,hspace=0.55,wspace=0.20,top=0.90,bottom=0.10,left=0.07,right=0.95)
+x=list(range(len(DAYS)))
+
+# 1 TIR by day (standard stacked) — frameless
+ax=fig.add_subplot(gs[0,0]); standalone(ax); b=[0.0]*len(DAYS)
+for key,c in [('vlo',C_VLO),('lo',C_LO),('tir',C_TIR),('hi',C_HI),('vhi',C_VHI)]:
+    vals=[DS[d][key] for d in DAYS]; ax.bar(x,vals,bottom=b,color=c,width=0.66); b=[bb+vv for bb,vv in zip(b,vals)]
+ax.set_xticks(x); ax.set_xticklabels(DAYS); ax.set_ylim(0,100); ax.set_yticks(range(0,101,25)); ax.set_ylabel("% of day")
+ax.set_title("Time in Range by day")
+for i,d in enumerate(DAYS): ax.text(i,DS[d]['vlo']+DS[d]['lo']+DS[d]['tir']/2,f"{DS[d]['tir']:.0f}%",ha="center",va="center",color="white",fontsize=8,fontweight="bold")
+
+# 2 TITR & TINR by day (grouped) — frameless
+ax=fig.add_subplot(gs[0,1]); standalone(ax)
+ax.bar([i-0.19 for i in x],[DS[d]['titr'] for d in DAYS],width=0.36,color="#2e7d32",label="TITR  70–140")
+ax.bar([i+0.19 for i in x],[DS[d]['tinr'] for d in DAYS],width=0.36,color="#81c784",label="TINR  63–140")
+ax.set_xticks(x); ax.set_xticklabels(DAYS); ax.set_ylim(0,100); ax.set_yticks(range(0,101,25)); ax.set_ylabel("% of day")
+ax.set_title("Tight & Normal range by day")
+ax.legend(fontsize=7.5,loc="upper center",bbox_to_anchor=(0.5,1.0),ncol=2,frameon=False)
 for i,d in enumerate(DAYS):
-    ax.text(i-0.18,DS[d]['titr']+1.5,f"{DS[d]['titr']:.0f}",ha="center",fontsize=6.5)
-    ax.text(i+0.18,DS[d]['tinr']+1.5,f"{DS[d]['tinr']:.0f}",ha="center",fontsize=6.5)
+    ax.text(i-0.19,DS[d]['titr']+1.5,f"{DS[d]['titr']:.0f}",ha="center",fontsize=7,color="#2e7d32")
+    ax.text(i+0.19,DS[d]['tinr']+1.5,f"{DS[d]['tinr']:.0f}",ha="center",fontsize=7,color="#388e3c")
 
-# 3 Activity (steps) + HR
-ax=fig.add_subplot(gs[1,0]); ax2=ax.twinx()
-ax.bar(x,[steps[d] for d in DAYS],width=0.6,color="#26a69a",label="steps (daily total)")
-ax.set_xticks(x); ax.set_xticklabels(DAYS,fontsize=8); ax.set_ylabel("steps")
-ax2.set_ylabel("peak HR (bpm)",color="#5e35b1"); ax2.set_ylim(60,150)
-ax2.plot(x,[hr_peak[d] for d in DAYS],"D-",color="#5e35b1",label="peak HR")
+# 3 Activity (steps) + HR — frameless left, coloured right axis for HR
+ax=fig.add_subplot(gs[1,0]); standalone(ax); ax2=ax.twinx()
+ax.bar(x,[steps[d]/1000 for d in DAYS],width=0.62,color="#26a69a",label="steps (000s)")
+ax.set_xticks(x); ax.set_xticklabels(DAYS); ax.set_ylabel("steps (thousands)")
+ax2.spines[["top","left"]].set_visible(False); ax2.spines["right"].set_color("#7e57c2")
+ax2.tick_params(colors="#7e57c2",labelsize=8); ax2.set_ylabel("peak HR (bpm)",color="#7e57c2"); ax2.set_ylim(60,150)
+ax2.plot(x,[hr_peak[d] for d in DAYS],"D-",color="#7e57c2",lw=1.6,ms=5,label="peak HR")
 for i,d in enumerate(DAYS):
     if hr_peak[d] is not None:
-        ax2.annotate(f"{hr_peak[d]:.0f}",(i,hr_peak[d]),textcoords="offset points",xytext=(0,6),ha="center",fontsize=6.5,color="#5e35b1",fontweight="bold")
-h1,l1=ax.get_legend_handles_labels(); h2,l2=ax2.get_legend_handles_labels(); ax.legend(h1+h2,l1+l2,fontsize=6.5,loc="upper left")
-ax.set_title("Activity (steps) + heart rate",fontweight="bold")
-ax.text(0.5,-0.27,"high steps + high HR = aerobic load → glycogen depletion (next-day sensitivity).  "
-        f"HR feed partial ({min(hr_cov.values())}–{max(hr_cov.values())}% of cycles).",
-        transform=ax.transAxes,ha="center",fontsize=6.2,style="italic",color="#555")
+        ax2.annotate(f"{hr_peak[d]:.0f}",(i,hr_peak[d]),textcoords="offset points",xytext=(0,7),ha="center",fontsize=7,color="#7e57c2",fontweight="bold")
+h1,l1=ax.get_legend_handles_labels(); h2,l2=ax2.get_legend_handles_labels()
+ax.legend(h1+h2,l1+l2,fontsize=7.5,loc="upper left",frameon=False)
+ax.set_title("Activity & heart rate by day")
+ax.text(0.0,-0.20,f"High steps + high HR = aerobic load → glycogen depletion (next-day sensitivity).  HR feed partial ({min(hr_cov.values())}–{max(hr_cov.values())}% of cycles).",
+        transform=ax.transAxes,ha="left",fontsize=6.6,style="italic",color="#888")
 
-# 4 AGP
-ax=fig.add_subplot(gs[1,1]); hrs=list(range(24))
+# 4 AGP — clean line/area, open box
+ax=fig.add_subplot(gs[1,1]); ax.spines[["top","right"]].set_visible(False); ax.spines[["left","bottom"]].set_color("#bdbdbd")
+ax.tick_params(colors="#555",labelsize=8); hrs=list(range(24))
 q=lambda p:[ (np.percentile(hourly[h],p)/18 if hourly[h] else np.nan) for h in hrs]
-ax.fill_between(hrs,q(10),q(90),color="#90caf9",alpha=0.4,label="10–90%")
-ax.fill_between(hrs,q(25),q(75),color="#42a5f5",alpha=0.5,label="25–75%")
+ax.axhspan(3.9,10,color="#43a047",alpha=0.10)
+ax.fill_between(hrs,q(10),q(90),color="#bbdefb",alpha=0.7,label="10–90%")
+ax.fill_between(hrs,q(25),q(75),color="#64b5f6",alpha=0.7,label="25–75%")
 ax.plot(hrs,q(50),color="#1565c0",lw=2,label="median")
-ax.axhspan(3.9,10,color="#a5d6a7",alpha=0.25); ax.axhline(3.9,color="#e53935",lw=0.8,ls="--")
-ax.set_xticks(range(0,24,3)); ax.set_xlabel("hour (BST)"); ax.set_ylabel("glucose (mmol/L)"); ax.set_ylim(2,16)
-ax.set_title("Glucose by time of day (5-day AGP)",fontweight="bold"); ax.legend(fontsize=6.5,loc="upper right")
+ax.axhline(3.9,color="#e53935",lw=0.8,ls="--"); ax.axhline(10,color="#43a047",lw=0.8,ls="--")
+ax.set_xticks(range(0,24,3)); ax.set_xlim(0,23); ax.set_xlabel("hour of day (BST)"); ax.set_ylabel("glucose (mmol/L)"); ax.set_ylim(2,16)
+ax.set_title("Glucose by time of day  (5-day AGP)"); ax.legend(fontsize=7,loc="upper right",frameon=False)
 
-# 5 Pooled standard range bars (TIR / TITR / TINR) — standard vertical stacked presentation
-ax=fig.add_subplot(gs[2,0])
-def bar3(ax,xpos,below_v,below_lo,ingreen,above,label,pct):
-    # below split into <54-equivalent (dark) + rest (red); single green; above (amber)
-    ax.bar(xpos,below_v,color='#8e24aa',width=0.55)
-    ax.bar(xpos,below_lo,bottom=below_v,color=C_LO,width=0.55)
-    ax.bar(xpos,ingreen,bottom=below_v+below_lo,color=C_TIR,width=0.55)
-    ax.bar(xpos,above,bottom=below_v+below_lo+ingreen,color=C_HI,width=0.55)
-    ax.text(xpos,below_v+below_lo+ingreen/2,f"{pct:.0f}%",ha="center",va="center",color="white",fontweight="bold",fontsize=10)
-    ax.text(xpos,103,label,ha="center",fontsize=8,fontweight="bold")
-# TIR
-bar3(ax,0,P['vlo'],P['lo'],P['tir'],P['hi']+P['vhi'],"TIR\n70–180",P['tir'])
-# TITR: below=<70(<54 dark + 54-70), green 70-140, above >140
-titr_above=100-(P['vlo']+P['lo']+P['titr'])
-bar3(ax,1,P['vlo'],P['lo'],P['titr'],titr_above,"TITR\n70–140",P['titr'])
-# TINR: below=<63, green 63-140, above >140
-below63=100*sum(1 for d in DAYS for v in byday[d] if v<63)/ (P['n'] or 1)
-tinr_above=100-(below63+P['tinr'])
-bar3(ax,2,below63*0.45,below63*0.55,P['tinr'],tinr_above,"TINR\n63–140",P['tinr'])
-ax.set_xlim(-0.6,2.6); ax.set_ylim(0,108); ax.set_xticks([]); ax.set_ylabel("% of time")
-ax.set_title("Period ranges (standard bars)",fontweight="bold",loc="left")
-ax.text(0.5,-0.10,"green = in range • purple/red = below • amber = above",transform=ax.transAxes,ha="center",fontsize=6.3,style="italic",color="#555")
+# 5 Pooled standard range bars (TIR / TITR / TINR) — fully frameless, direct labels
+ax=fig.add_subplot(gs[2,0]); ax.axis("off"); ax.set_xlim(-0.6,2.6); ax.set_ylim(0,116)
+ax.text(-0.55,108,"Period ranges",fontsize=10.5,fontweight="bold",ha="left")
+below63=100*sum(1 for d in DAYS for v in byday[d] if v<63)/(P['n'] or 1)
+def bar3(xpos,below_dark,below_red,ingreen,above,title,pct):
+    w=0.5
+    ax.bar(xpos,below_dark,color=C_VLO,width=w)
+    ax.bar(xpos,below_red,bottom=below_dark,color=C_LO,width=w)
+    ax.bar(xpos,ingreen,bottom=below_dark+below_red,color=C_TIR,width=w)
+    ax.bar(xpos,above,bottom=below_dark+below_red+ingreen,color=C_HI,width=w)
+    ax.text(xpos,below_dark+below_red+ingreen/2,f"{pct:.0f}%",ha="center",va="center",color="white",fontweight="bold",fontsize=11)
+    ax.text(xpos,-4,title,ha="center",va="top",fontsize=8.2,fontweight="bold")
+bar3(0,P['vlo'],P['lo'],P['tir'],P['hi']+P['vhi'],"TIR\n70–180",P['tir'])
+bar3(1,P['vlo'],P['lo'],P['titr'],100-(P['vlo']+P['lo']+P['titr']),"TITR\n70–140",P['titr'])
+bar3(2,below63*0.45,below63*0.55,P['tinr'],100-(below63+P['tinr']),"TINR\n63–140",P['tinr'])
 
-# 6 Summary stats
+# 6 Summary stats — clean key/value list
 ax=fig.add_subplot(gs[2,1]); ax.axis("off")
-ax.set_title("Period summary  (5 days, n=%d)"%P['n'],fontweight="bold")
-rows=[("mean glucose",f"{P['mean']:.0f} mg/dL ({P['mean']/18:.1f} mmol/L)"),
+ax.text(0.0,1.02,"Period summary",fontsize=10.5,fontweight="bold",transform=ax.transAxes)
+ax.text(1.0,1.02,f"5 days · n={P['n']}",fontsize=8.5,color="#888",ha="right",transform=ax.transAxes)
+rows=[("Mean glucose",f"{P['mean']:.0f} mg/dL  ({P['mean']/18:.1f} mmol/L)"),
       ("TIR  70–180",f"{P['tir']:.1f}%"),("TITR 70–140",f"{P['titr']:.1f}%"),("TINR 63–140",f"{P['tinr']:.1f}%"),
-      ("time <70",f"{P['lo']+P['vlo']:.1f}%"),("time <54",f"{P['vlo']:.1f}%"),("time >180",f"{P['hi']+P['vhi']:.1f}%"),
+      ("Time <70 / <54",f"{P['lo']+P['vlo']:.1f}%  /  {P['vlo']:.1f}%"),("Time >180",f"{P['hi']+P['vhi']:.1f}%"),
       ("TDD",f"~{np.mean([tdd[d] for d in DAYS if tdd[d]>0]):.0f} U/day"),
-      ("activity",f"~{min(steps.values())//1000}–{max(steps.values())//1000}k steps/day"),
+      ("Activity",f"~{min(steps.values())//1000}–{max(steps.values())//1000}k steps/day"),
       ("HR peak",f"{min(hr_peaks)}–{max(hr_peaks)} bpm (partial feed)")]
-y=0.90; dy=0.092
+y=0.88; dy=0.105
 for k,v in rows:
-    ax.text(0.02,y,k,ha="left",va="center",fontsize=8.7,color="#555",transform=ax.transAxes)
-    ax.text(0.98,y,v,ha="right",va="center",fontsize=8.7,fontweight="bold",transform=ax.transAxes)
+    ax.text(0.0,y,k,ha="left",va="center",fontsize=8.8,color="#666",transform=ax.transAxes)
+    ax.text(1.0,y,v,ha="right",va="center",fontsize=8.8,fontweight="bold",transform=ax.transAxes)
+    ax.plot([0.0,1.0],[y-dy/2,y-dy/2],color="#eee",lw=0.6,transform=ax.transAxes)
     y-=dy
+
+# shared band legend across the bottom
+bands=[mpatches.Patch(color=C_VLO,label="Very Low <54"),mpatches.Patch(color=C_LO,label="Low 54–70"),
+       mpatches.Patch(color=C_TIR,label="In Range 70–180"),mpatches.Patch(color=C_HI,label="High 180–250"),
+       mpatches.Patch(color=C_VHI,label="Very High >250")]
+fig.legend(handles=bands,loc="lower center",ncol=5,fontsize=8.5,frameon=False,bbox_to_anchor=(0.5,0.018))
 
 fig.savefig("Boost-Festival-Summary-2026-06-18_22.png",bbox_inches="tight")
 try: fig.savefig("Boost-Festival-Summary-2026-06-18_22.pdf",bbox_inches="tight")
