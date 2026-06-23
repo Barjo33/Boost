@@ -57,8 +57,7 @@ DynISF, predictions, every safety gate); V5 replaces only the *SMB decision*.
 | TDD | ~13–17 U/day (Mon 22 spiked to 22 — see below) |
 
 Five festival days held **82–89% TIR on very high activity** — a strong result for an experimental
-closed loop under that much exercise. *(The pre-festival Wed 17 is excluded: it ran flat/over-sensitive
-ISF from a DynISF-velocity preference left at 0, since corrected, and isn't representative.)*
+closed loop under that much exercise.
 
 **V5 vs V1 dosing — the honest version.** On the diverging cycles V5 withholds correction SMB at
 highs (e.g. BG 240, RECOVERING: V5 0.75 U vs V1-would 1.65 U), and it does so **one-directionally
