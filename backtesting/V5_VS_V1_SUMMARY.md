@@ -51,10 +51,13 @@ DynISF, predictions, every safety gate); V5 replaces only the *SMB decision*.
 |---|---|
 | mean glucose | 129 mg/dL (7.1 mmol/L) |
 | TIR 70–180 | **85.9%** (per day 82–89%) |
+| TITR 70–140 (3.9–7.8) | 65.2% |
+| TINR 63–140 (3.5–7.8) | 66.8% |
 | time < 70 | 2.8% |
 | time < 54 | 0.6% |
 | time > 180 | 11.2% |
 | TDD | ~13–17 U/day (Mon 22 spiked to 22 — see below) |
+| activity | ~13–28k steps/day; HR peaks 95–126 bpm (partial feed) |
 
 Five festival days held **82–89% TIR on very high activity** — a strong result for an experimental
 closed loop under that much exercise.
@@ -86,15 +89,14 @@ and consistently every day**. But the headline must be stated carefully:
 
 ## Chart guide (`Boost-Festival-Summary-2026-06-18_22.pdf`)
 
-1. **TIR by day** — stacked bands; festival days sit ~82–89% green.
-2. **Daily insulin & mean** — TDD vs basal bars + mean-glucose line; shows TDD steady ~13–17 U and
-   how much of it is shared basal.
-3. **Activity vs time-low** — steps against % time < 70; the activity-heavy days are where the
-   (dose-driven) lows cluster.
-4. **V5 vs V1-would SMB** — per-day correction totals; V5 consistently below V1. *(SMB only — not
-   TDD; basal is shared.)*
-5. **5-day AGP** — glucose by time of day, median + IQR; the overnight band sits comfortably in range.
-6. **Period summary** — pooled TIR donut + headline stats.
+1. **Time in Range by day** — standard stacked bands (70–180), ~82–89% green.
+2. **Tight & Normal range by day** — TITR (70–140) and TINR (63–140) per day.
+3. **Activity + heart rate** — daily steps with peak HR overlaid; the high-step **and** high-HR days
+   are where genuine aerobic/glycogen-depletion load (and the next-day sensitivity) shows. *(HR feed
+   partial — Garmin→HC intermittent — so peaks are a floor, not a ceiling.)*
+4. **5-day AGP** — glucose by time of day, median + IQR; the overnight band sits comfortably in range.
+5. **Period ranges (standard bars)** — pooled TIR / TITR / TINR as standard vertical range bars.
+6. **Period summary** — headline stats (mean, TIR/TITR/TINR, time low/high, TDD, activity, HR).
 
 ---
 
