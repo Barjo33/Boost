@@ -1,6 +1,6 @@
 # Boost V5 vs V1 — what changed, and what difference it makes
 
-*With festival data, 17–22 June 2026. Companion chart: `Boost-Festival-Summary-2026-06-17_22.pdf`.*
+*With festival data, 18–22 June 2026. Companion chart: `Boost-Festival-Summary-2026-06-18_22.pdf`.*
 
 > Experimental AndroidAPS fork; nothing here is medical advice. On the developer's build V5 was the
 > **acting** engine; the V1 figures are the logged `V1 would=` counterfactual (what plain Boost would
@@ -43,21 +43,22 @@ DynISF, predictions, every safety gate); V5 replaces only the *SMB decision*.
 
 ---
 
-## What the festival showed (17–22 June, ~18–28k steps/day)
+## What the festival showed (18–22 June, ~18–28k steps/day)
 
-**Glycemia (6 days pooled, sensor artifact removed):**
+**Glycemia (5 days pooled, sensor artifact removed):**
 
 | metric | value |
 |---|---|
-| mean glucose | 131 mg/dL (7.3 mmol/L) |
-| TIR 70–180 | **82.7%** (Thu–Mon, the festival proper, 84–89%) |
-| time < 70 | 3.2% |
-| time < 54 | 0.8% |
-| time > 180 | 14.1% |
+| mean glucose | 129 mg/dL (7.1 mmol/L) |
+| TIR 70–180 | **85.9%** (per day 82–89%) |
+| time < 70 | 2.8% |
+| time < 54 | 0.6% |
+| time > 180 | 11.2% |
 | TDD | ~13–17 U/day (Mon 22 spiked to 22 — see below) |
 
-Five active festival days held **84–89% TIR on very high activity** — a strong result for an
-experimental closed loop under that much exercise.
+Five festival days held **82–89% TIR on very high activity** — a strong result for an experimental
+closed loop under that much exercise. *(The pre-festival Wed 17 is excluded: it ran flat/over-sensitive
+ISF from a DynISF-velocity preference left at 0, since corrected, and isn't representative.)*
 
 **V5 vs V1 dosing — the honest version.** On the diverging cycles V5 withholds correction SMB at
 highs (e.g. BG 240, RECOVERING: V5 0.75 U vs V1-would 1.65 U), and it does so **one-directionally
@@ -84,21 +85,17 @@ and consistently every day**. But the headline must be stated carefully:
 
 ---
 
-## Chart guide (`Boost-Festival-Summary-2026-06-17_22.pdf`)
+## Chart guide (`Boost-Festival-Summary-2026-06-18_22.pdf`)
 
-1. **TIR by day** — stacked bands; festival days sit ~84–89% green.
+1. **TIR by day** — stacked bands; festival days sit ~82–89% green.
 2. **Daily insulin & mean** — TDD vs basal bars + mean-glucose line; shows TDD steady ~13–17 U and
    how much of it is shared basal.
 3. **Activity vs time-low** — steps against % time < 70; the activity-heavy days are where the
    (dose-driven) lows cluster.
 4. **V5 vs V1-would SMB** — per-day correction totals; V5 consistently below V1. *(SMB only — not
    TDD; basal is shared.)*
-5. **6-day AGP** — glucose by time of day, median + IQR; the overnight band sits comfortably in range.
+5. **5-day AGP** — glucose by time of day, median + IQR; the overnight band sits comfortably in range.
 6. **Period summary** — pooled TIR donut + headline stats.
-
-*Note on the Wed 17 column:* pre-festival baseline day (TIR 66%, mean 144) — this was the day the
-DynISF velocity preference was found set to 0 (flat, over-sensitive ISF making the loop timid at
-highs); corrected after.
 
 ---
 
@@ -108,6 +105,6 @@ V5 keeps everything V1 does well and replaces the dosing decision with a meal-aw
 hypo-throttled state machine. On six real high-activity days it held **~83–89% TIR at a normal total
 daily dose**, distinctly gentler on high-corrections than V1 would have been, with the genuine lows
 traceable to specific, fixable causes (exercise-into-correction; one over-eager meal confirm) rather
-than to the design. It remains **shadow / pre-alpha for other users** — V1 still doses; V5 logs what
-it would do — which is how that gentler profile gets confirmed across more people before it ever
-drives a pump.
+than to the design. On the five festival days it held **~86% TIR (82–89%/day) at a normal total daily
+dose**. It remains **shadow / pre-alpha for other users** — V1 still doses; V5 logs what it would do
+— which is how that gentler profile gets confirmed across more people before it ever drives a pump.

@@ -16,12 +16,12 @@ def get(path,params):
     return json.loads(urllib.request.urlopen(f"{base}/api/v1/{path}.json?"+urllib.parse.urlencode(p,safe="[]$<>"),timeout=120).read())
 BST=timezone(timedelta(hours=1))
 iso=lambda ms: datetime.fromtimestamp(ms/1000,tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
-S=int(datetime(2026,6,17,0,0,tzinfo=BST).timestamp()*1000)
+S=int(datetime(2026,6,18,0,0,tzinfo=BST).timestamp()*1000)
 E=int(datetime(2026,6,22,23,59,tzinfo=BST).timestamp()*1000)
 # sensor-artifact discard window (dying G6 + G7 warmup)
 AS=int(datetime(2026,6,21,22,40,tzinfo=BST).timestamp()*1000); AE=int(datetime(2026,6,22,0,20,tzinfo=BST).timestamp()*1000)
 dlabel=lambda ms: datetime.fromtimestamp(ms/1000,tz=BST).strftime("%a %d")
-DAYS=["Wed 17","Thu 18","Fri 19","Sat 20","Sun 21","Mon 22"]
+DAYS=["Thu 18","Fri 19","Sat 20","Sun 21","Mon 22"]
 
 # ---- CGM ----
 ent=get("entries/sgv",{"count":3000,"find[date][$gte]":S,"find[date][$lte]":E})
@@ -120,7 +120,7 @@ print(f"POOLED: n{pooled['n']} mean {pooled['mean']:.0f} ({pooled['mean']/18:.1f
 
 # ================= CHARTS =================
 plt.rcParams.update({"font.size":9,"font.family":"sans-serif","figure.dpi":130})
-fig=plt.figure(figsize=(13,9)); fig.suptitle("Boost V5 — Festival summary  (Wed 17 – Mon 22 Jun 2026)  •  self, anonymised",fontsize=13,fontweight="bold")
+fig=plt.figure(figsize=(13,9)); fig.suptitle("Boost V5 — Festival summary  (Thu 18 – Mon 22 Jun 2026)  •  self, anonymised",fontsize=13,fontweight="bold")
 gs=fig.add_gridspec(3,2,hspace=0.42,wspace=0.22)
 COL={'vlo':'#7b1fa2','lo':'#e53935','tir':'#43a047','hi':'#fb8c00','vhi':'#c62828'}
 
@@ -170,7 +170,7 @@ ax.fill_between(hrs,p25,p75,color="#42a5f5",alpha=0.5,label="25–75%")
 ax.plot(hrs,med,color="#1565c0",lw=2,label="median")
 ax.axhspan(3.9,10,color="#a5d6a7",alpha=0.25); ax.axhline(3.9,color="#e53935",lw=0.8,ls="--")
 ax.set_xticks(range(0,24,3)); ax.set_xlabel("hour of day (BST)"); ax.set_ylabel("glucose (mmol/L)"); ax.set_ylim(2,16)
-ax.set_title("Glucose by time of day (6-day AGP)",fontweight="bold"); ax.legend(fontsize=6.5,loc="upper right")
+ax.set_title("Glucose by time of day (5-day AGP)",fontweight="bold"); ax.legend(fontsize=6.5,loc="upper right")
 
 # 6 pooled summary text + donut
 ax=fig.add_subplot(gs[2,1]); ax.axis("off")
@@ -178,7 +178,7 @@ sizes=[pooled['vlo'],pooled['lo'],pooled['tir'],pooled['hi'],pooled['vhi']]
 cols=['#6a1b9a','#ef5350','#66bb6a','#ffa726','#c62828']
 w,_=ax.pie(sizes,colors=cols,startangle=90,counterclock=False,radius=0.85,center=(0.25,0.5),wedgeprops=dict(width=0.38))
 ax.text(0.25,0.5,f"{pooled['tir']:.0f}%\nTIR",ha="center",va="center",fontsize=12,fontweight="bold")
-txt=(f"6-day pooled (n={pooled['n']})\n"
+txt=(f"5-day pooled (n={pooled['n']})\n"
      f"mean  {pooled['mean']:.0f} mg/dL ({pooled['mean']/18:.1f} mmol/L)\n"
      f"TIR 70–180   {pooled['tir']:.1f}%\n"
      f"time <70     {pooled['lo']+pooled['vlo']:.1f}%\n"
@@ -189,8 +189,8 @@ txt=(f"6-day pooled (n={pooled['n']})\n"
 ax.text(0.62,0.5,txt,ha="left",va="center",fontsize=9,family="monospace")
 ax.set_title("Period summary",fontweight="bold",loc="left")
 
-fig.savefig("Boost-Festival-Summary-2026-06-17_22.png",bbox_inches="tight")
+fig.savefig("Boost-Festival-Summary-2026-06-18_22.png",bbox_inches="tight")
 try:
-    fig.savefig("Boost-Festival-Summary-2026-06-17_22.pdf",bbox_inches="tight")
+    fig.savefig("Boost-Festival-Summary-2026-06-18_22.pdf",bbox_inches="tight")
 except Exception as e: print("pdf skip",e)
 print("charts written")
