@@ -1398,18 +1398,13 @@ open class OpenAPSBoostPlugin @Inject constructor(
                         it.reason.append("activityLoad: no baseline (chosen=${healthConnectStepsIngest.chosenSource?.substringAfterLast('.') ?: "none"} cov=${healthConnectStepsIngest.availableSources} days=${dailyStepHistoryCached.days.size}); ")
                     }
 
-                    // ── Intraday activity-load SHADOW (2026-06-19): today's cumulative steps vs
-                    // typical pace by hour, from the phone pedometer (realtime, free). HC seeds the
-                    // midnight baseline ONCE so a mid-day start counts earlier steps. Logged only. ──
-                    // Re-anchor the phone counter UP to HC whenever HC knows more than the phone has
-                    // counted today (mid-day restart, or phone-not-carried undercount). Upward-only,
-                    // so it never double-counts or goes backwards, and self-heals each HC sync.
-                    val hcToday = healthConnectStepsIngest.todayStepsSoFar
-                    // Only anchor to HC when its value is for the CURRENT local day — across midnight
-                    // HC's last (hourly) sync still holds yesterday's total, which must not bleed in.
-                    if (healthConnectStepsIngest.todayStepsDay == todayIdx && hcToday > StepService.getStepsToday(offsetMs)) {
-                        StepService.seedTodayFromHc(hcToday, offsetMs)
-                    }
+                    // ── Intraday activity-load SHADOW (2026-06-19): today's cumulative steps vs typical
+                    // pace by hour, from the phone pedometer (the authoritative step source; realtime,
+                    // free, reset-resilient). Reconcile with HC's today total — seedTodayFromHc holds the
+                    // HIGHER of the two, never anchors down. Only when HC's value is for the CURRENT
+                    // local day, so across midnight HC's stale yesterday total can't bleed in. ──
+                    if (healthConnectStepsIngest.todayStepsDay == todayIdx)
+                        StepService.seedTodayFromHc(healthConnectStepsIngest.todayStepsSoFar, offsetMs)
                     val stepsToday = StepService.getStepsToday(offsetMs)
                     val intraHour = java.time.LocalTime.now().hour
                     val intra = DailyStepHistoryTracker.intradayFactor(stepsToday, sf.baselineSteps, intraHour)
