@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Festival summary stats + chart set (Wed 2026-06-17 -> Mon 2026-06-22 BST). Privacy: self only,
+"""Festival summary stats + chart set (Thu 2026-06-18 -> Mon 2026-06-22 BST). Privacy: self only,
 no URLs/tokens/raw traces in outputs — anonymised aggregate stats + charts. Mirrors the privacy
 design of the other backtesting scripts (config/cache outside repo)."""
 import json, os, urllib.parse, urllib.request, time, re
@@ -102,8 +102,8 @@ for t,s in sorted(ar.items()):
 
 
 # steps per day = the COMPLETED HC daily total, reported as next-day's lastDaySteps (authoritative;
-# stepsToday telemetry only exists from 06-19, so this backfills Wed/Thu too).
-DAY_ORDER=["Wed 17","Thu 18","Fri 19","Sat 20","Sun 21","Mon 22","Tue 23"]
+# stepsToday telemetry only exists from 06-19, so this backfills the earlier days too).
+DAY_ORDER=["Thu 18","Fri 19","Sat 20","Sun 21","Mon 22","Tue 23"]
 lastday_on={}
 for t,s2 in sorted(ar.items()):
     dd=dlabel(t); ld=s2.get("boostActivityLoad_lastDaySteps")
