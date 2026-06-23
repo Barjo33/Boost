@@ -172,22 +172,26 @@ ax.axhspan(3.9,10,color="#a5d6a7",alpha=0.25); ax.axhline(3.9,color="#e53935",lw
 ax.set_xticks(range(0,24,3)); ax.set_xlabel("hour of day (BST)"); ax.set_ylabel("glucose (mmol/L)"); ax.set_ylim(2,16)
 ax.set_title("Glucose by time of day (5-day AGP)",fontweight="bold"); ax.legend(fontsize=6.5,loc="upper right")
 
-# 6 pooled summary text + donut
+# 6 pooled summary — donut (left inset) + stats (right), kept clear of the title
 ax=fig.add_subplot(gs[2,1]); ax.axis("off")
+ax.set_title("Period summary  (5 days, n=%d)"%pooled['n'],fontweight="bold")
 sizes=[pooled['vlo'],pooled['lo'],pooled['tir'],pooled['hi'],pooled['vhi']]
 cols=['#6a1b9a','#ef5350','#66bb6a','#ffa726','#c62828']
-w,_=ax.pie(sizes,colors=cols,startangle=90,counterclock=False,radius=0.85,center=(0.25,0.5),wedgeprops=dict(width=0.38))
-ax.text(0.25,0.5,f"{pooled['tir']:.0f}%\nTIR",ha="center",va="center",fontsize=12,fontweight="bold")
-txt=(f"5-day pooled (n={pooled['n']})\n"
-     f"mean  {pooled['mean']:.0f} mg/dL ({pooled['mean']/18:.1f} mmol/L)\n"
-     f"TIR 70–180   {pooled['tir']:.1f}%\n"
-     f"time <70     {pooled['lo']+pooled['vlo']:.1f}%\n"
-     f"time <54     {pooled['vlo']:.1f}%\n"
-     f"time >180    {pooled['hi']+pooled['vhi']:.1f}%\n"
-     f"TDD          ~{np.mean([tdd[d] for d in DAYS if tdd[d]>0]):.0f} U/day\n"
-     f"activity     ~18–26k steps/day")
-ax.text(0.62,0.5,txt,ha="left",va="center",fontsize=9,family="monospace")
-ax.set_title("Period summary",fontweight="bold",loc="left")
+axd=ax.inset_axes([0.00,0.04,0.40,0.80])   # donut in left 40%, below the title
+axd.pie(sizes,colors=cols,startangle=90,counterclock=False,wedgeprops=dict(width=0.38))
+axd.text(0,0,f"{pooled['tir']:.0f}%\nTIR",ha="center",va="center",fontsize=12,fontweight="bold")
+rows=[("mean",f"{pooled['mean']:.0f} mg/dL ({pooled['mean']/18:.1f})"),
+      ("TIR 70–180",f"{pooled['tir']:.1f}%"),
+      ("time <70",f"{pooled['lo']+pooled['vlo']:.1f}%"),
+      ("time <54",f"{pooled['vlo']:.1f}%"),
+      ("time >180",f"{pooled['hi']+pooled['vhi']:.1f}%"),
+      ("TDD",f"~{np.mean([tdd[d] for d in DAYS if tdd[d]>0]):.0f} U/day"),
+      ("activity","~18–28k steps/day")]
+y=0.74; dy=0.115
+for k,v in rows:
+    ax.text(0.46,y,k,ha="left",va="center",fontsize=8.5,color="#555",transform=ax.transAxes)
+    ax.text(0.99,y,v,ha="right",va="center",fontsize=8.5,fontweight="bold",transform=ax.transAxes)
+    y-=dy
 
 fig.savefig("Boost-Festival-Summary-2026-06-18_22.png",bbox_inches="tight")
 try:
