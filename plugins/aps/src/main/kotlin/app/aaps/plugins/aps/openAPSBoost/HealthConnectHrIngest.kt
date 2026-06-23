@@ -150,7 +150,19 @@ class HealthConnectHrIngest @Inject constructor(
             )
         )
         val resp = hc.readRecords(request)
-        var inserted = 0
+        // Gap-filler dedup (2026-06-24): the Garmin Connect IQ side-channel writes realtime HR
+        // whenever the watch is awake. HC must only BACKFILL the gaps it leaves (overnight, or when
+        // the watch wasn't polling) — not duplicate the live feed. Load the HR already in the window
+        // once, bucket existing readings to the minute, and skip any HC sample whose minute already
+        // has a reading. One DB read per poll, then O(1) membership checks.
+        val existingMinutes = HashSet<Long>()
+        try {
+            for (h in persistenceLayer.getHeartRatesFromTimeToTime(sinceMs, nowMs))
+                existingMinutes.add(h.timestamp / 60_000L)
+        } catch (t: Throwable) {
+            aapsLogger.warn(LTag.APS, "HealthConnectHrIngest: could not load existing HR for dedup: ${t.message}")
+        }
+        var inserted = 0; var skippedCovered = 0
         // HeartRateRecord groups multiple samples per record (a "session" of HR ticks).
         for (record in resp.records) {
             val device = record.metadata.device?.let { d ->
@@ -160,6 +172,7 @@ class HealthConnectHrIngest @Inject constructor(
                 val sampleMs = sample.time.toEpochMilli()
                 if (sampleMs < sinceMs) continue
                 if (!ingestedSampleMs.add(sampleMs)) continue   // already persisted this session
+                if (sampleMs / 60_000L in existingMinutes) { skippedCovered++; continue }  // live feed already covered this minute
                 val hr = HR(
                     timestamp = sampleMs,
                     duration = 60_000L,                       // HC samples are point-in-time; treat as 1-min weight
@@ -175,7 +188,7 @@ class HealthConnectHrIngest @Inject constructor(
         }
         ingestedSampleMs.removeIf { it < sinceMs }   // prune dedupe set to the lookback window
         preferences.put(LongNonKey.ApsBoostHealthConnectLastSyncMs, nowMs)   // diagnostics only
-        aapsLogger.info(LTag.APS, "HealthConnectHrIngest: window [${sinceMs}..${nowMs}] records=${resp.records.size} newSamples=$inserted set=${ingestedSampleMs.size}")
+        aapsLogger.info(LTag.APS, "HealthConnectHrIngest: window [${sinceMs}..${nowMs}] records=${resp.records.size} backfilled=$inserted skipped-live=$skippedCovered set=${ingestedSampleMs.size}")
     }
 
     /** Force a sync regardless of throttle — e.g. from a settings "test now" button. Returns immediately; result via logs. */
