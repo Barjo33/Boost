@@ -1328,7 +1328,15 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     // midnight HC's stale yesterday total can't bleed in.
                     if (healthConnectStepsIngest.todayStepsDay == todayIdx)
                         StepService.seedTodayFromHc(healthConnectStepsIngest.todayStepsSoFar, offsetMs)
-                    val stepsToday = StepService.getStepsToday(offsetMs)
+                    // Source preference: a WORN AAPS Wear watch is the best step source (on-body,
+                    // continuous, independent of Garmin/HC). Use it for today's cumulative when its
+                    // feed is fresh; otherwise fall back to the phone pedometer. Both shadow.
+                    val dayStartMs = todayIdx * 86_400_000L - offsetMs
+                    val wearSc = try { persistenceLayer.getStepsCountFromTimeToTime(dayStartMs, now) } catch (t: Throwable) { emptyList() }
+                    val wearFresh = WearStepSource.isFresh(wearSc, now)
+                    val stepsToday = if (wearFresh) WearStepSource.stepsToday(wearSc, dayStartMs, now)
+                                     else StepService.getStepsToday(offsetMs)
+                    it.boostActivityLoad_stepsSource = if (wearFresh) "wear" else "phone"
                     val intraHour = java.time.LocalTime.now().hour
                     val intra = DailyStepHistoryTracker.intradayFactor(stepsToday, sf.baselineSteps, intraHour)
                     it.boostActivityLoad_stepsToday = stepsToday
