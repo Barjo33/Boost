@@ -15,6 +15,7 @@ import app.aaps.wear.complications.IobIconComplication
 import app.aaps.wear.complications.LongStatusComplication
 import app.aaps.wear.complications.LongStatusFlippedComplication
 import app.aaps.wear.complications.SgvComplication
+import app.aaps.wear.complications.SgvRangedComplication
 import app.aaps.wear.complications.SgvComplicationExt1
 import app.aaps.wear.complications.SgvComplicationExt2
 import app.aaps.wear.complications.UploaderBatteryComplication
@@ -55,6 +56,7 @@ abstract class WearServicesModule {
     @ContributesAndroidInjector abstract fun contributesLongStatusComplication(): LongStatusComplication
     @ContributesAndroidInjector abstract fun contributesLongStatusFlippedComplication(): LongStatusFlippedComplication
     @ContributesAndroidInjector abstract fun contributesSgvComplication(): SgvComplication
+    @ContributesAndroidInjector abstract fun contributesSgvRangedComplication(): SgvRangedComplication
     @ContributesAndroidInjector abstract fun contributesSgvComplicationExt1(): SgvComplicationExt1
     @ContributesAndroidInjector abstract fun contributesSgvComplicationExt2(): SgvComplicationExt2
     @ContributesAndroidInjector abstract fun contributesUploaderBatteryComplication(): UploaderBatteryComplication
