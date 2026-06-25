@@ -118,7 +118,12 @@ object SleepStateDetector {
     data class Result(
         val newState: State,
         val transitioned: Boolean,
-        val debug: String
+        val debug: String,
+        // Why a SLEEPING→AWAKE transition happened this cycle, else null. Lets the learner train
+        // its wake time ONLY on genuine wakes ("hr_steps", "resume") and ignore "boundary" (the
+        // hard morning-exit at the night-window end) — otherwise the exit feeds its own learned
+        // wake and the window ratchets earlier every night (the 2026-06-25 collapse).
+        val wakeReason: String? = null
     )
 
     /**
@@ -177,6 +182,7 @@ object SleepStateDetector {
 
         var newState = prev.copy()
         var transitioned = false
+        var wakeReason: String? = null
 
         // 2026-06-05: drought-based sleep + transmission-resumed wake signals.
         // Compute the most recent fresh HR sample (timestamp within last freshHrWindowMin
@@ -299,6 +305,7 @@ object SleepStateDetector {
                     newState = State(state = SleepState.AWAKE, enteredAtMs = inputs.nowMs,
                                      lastFreshHrSampleMs = newState.lastFreshHrSampleMs)
                     transitioned = true
+                    wakeReason = "boundary"   // hard night-window exit — NOT a genuine wake; excluded from learning
                     debug.append(" | →AWAKE (outer window exit)")
                 } else if (transmissionResumeWake) {
                     // Sync burst arrived after drought → user just resumed phone interaction.
@@ -307,6 +314,7 @@ object SleepStateDetector {
                     newState = State(state = SleepState.AWAKE, enteredAtMs = inputs.nowMs,
                                      lastFreshHrSampleMs = newState.lastFreshHrSampleMs)
                     transitioned = true
+                    wakeReason = "resume"   // genuine wake signal
                     debug.append(" | →AWAKE (transmission resumed — ${freshSamplesInLast15Min} fresh after ${priorDroughtMinutes}m drought)")
                 } else {
                     // Wake requires BOTH steps AND HR — per spec. BG trend alone is NOT sufficient.
@@ -322,6 +330,7 @@ object SleepStateDetector {
                                 newState = State(state = SleepState.AWAKE, enteredAtMs = inputs.nowMs,
                                                  lastFreshHrSampleMs = newState.lastFreshHrSampleMs)
                                 transitioned = true
+                                wakeReason = "hr_steps"   // genuine wake signal
                                 debug.append(" | →AWAKE (held ${heldMin}m — HR+steps confirmed)")
                             } else {
                                 debug.append(" | wake-candidate-held=${heldMin}m")
@@ -336,7 +345,7 @@ object SleepStateDetector {
         }
 
         aapsLogger?.debug(LTag.APS, "SleepStateDetector: ${newState.state} ${if (transitioned) "[T]" else "" } $debug")
-        return Result(newState, transitioned, debug.toString())
+        return Result(newState, transitioned, debug.toString(), wakeReason)
     }
 
     /** Duration-weighted average HR over a window. null if no readings. */

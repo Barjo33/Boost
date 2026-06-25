@@ -50,7 +50,11 @@ object SleepHistoryTracker {
         val sleepStartMs: Long,
         val wakeMs: Long,
         val sleepHrP10: Int? = null,
-        val daytimeHrP10: Int? = null
+        val daytimeHrP10: Int? = null,
+        // Why the session ended: "hr_steps"/"resume" = genuine wake (trains the learned wake time);
+        // "boundary" = hard night-window exit (excluded from wake learning); null = legacy/unknown
+        // (also excluded, so the pre-fix collapsed history is discarded rather than re-learned).
+        val wakeReason: String? = null
     )
 
     /**
@@ -71,6 +75,7 @@ object SleepHistoryTracker {
                     .put("wakeMs", s.wakeMs)
                 if (s.sleepHrP10 != null) o.put("sleepHrP10", s.sleepHrP10)
                 if (s.daytimeHrP10 != null) o.put("daytimeHrP10", s.daytimeHrP10)
+                if (s.wakeReason != null) o.put("wakeReason", s.wakeReason)
                 arr.put(o)
             }
             return JSONObject()
@@ -92,7 +97,8 @@ object SleepHistoryTracker {
                             sleepStartMs = o.getLong("sleepStartMs"),
                             wakeMs = o.getLong("wakeMs"),
                             sleepHrP10 = if (o.has("sleepHrP10")) o.getInt("sleepHrP10") else null,
-                            daytimeHrP10 = if (o.has("daytimeHrP10")) o.getInt("daytimeHrP10") else null
+                            daytimeHrP10 = if (o.has("daytimeHrP10")) o.getInt("daytimeHrP10") else null,
+                            wakeReason = if (o.has("wakeReason")) o.getString("wakeReason") else null
                         ))
                     }
                     val openVal = j.opt("openSleepStartMs")
@@ -149,7 +155,8 @@ object SleepHistoryTracker {
         h: History,
         wakeMs: Long,
         sleepHrBpms: List<Double> = emptyList(),
-        daytimeHrBpms: List<Double> = emptyList()
+        daytimeHrBpms: List<Double> = emptyList(),
+        wakeReason: String? = null
     ): History {
         val open = h.openSleepStartMs ?: return h.copy()      // no open session; nothing to do
         val newSessions = h.sessions.toMutableList()
@@ -158,7 +165,8 @@ object SleepHistoryTracker {
                 sleepStartMs = open,
                 wakeMs = wakeMs,
                 sleepHrP10 = p10(sleepHrBpms),
-                daytimeHrP10 = p10(daytimeHrBpms)
+                daytimeHrP10 = p10(daytimeHrBpms),
+                wakeReason = wakeReason
             )
         )
         // Trim sessions whose start is older than the rolling window
@@ -177,9 +185,18 @@ object SleepHistoryTracker {
         val restingHr = if (restingHrSamples.size >= MIN_SESSIONS_FOR_LEARNED) median(restingHrSamples) else null
         val daytimeHr = if (daytimeHrSamples.size >= MIN_SESSIONS_FOR_LEARNED) median(daytimeHrSamples) else null
 
+        // Learned WAKE time is trained ONLY on genuine wakes ("hr_steps"/"resume"); "boundary"
+        // hard-exit wakes (and legacy null) are excluded, with its own session-count gate. This
+        // breaks the hard-exit→learned-wake feedback loop: without a genuine wake signal (e.g. a
+        // sparse-HR night) wakeMinAvg stays null and the caller falls back to the configured wake.
+        val genuineWakeMins = h.sessions
+            .filter { it.wakeReason == "hr_steps" || it.wakeReason == "resume" }
+            .map { msToMinOfDay(it.wakeMs, localOffsetMs) }
+        val wakeAvg = if (genuineWakeMins.size >= MIN_SESSIONS_FOR_LEARNED) circularMean(genuineWakeMins) else null
+
         if (h.sessions.size < MIN_SESSIONS_FOR_LEARNED) {
             return Aggregate(
-                sleepStartMinAvg = null, wakeMinAvg = null,
+                sleepStartMinAvg = null, wakeMinAvg = wakeAvg,
                 sleepDurationMinAvg = null, sessionCount = h.sessions.size,
                 restingHrBpm = restingHr, daytimeHrBpm = daytimeHr,
                 restingHrSampleCount = restingHrSamples.size,
@@ -187,11 +204,10 @@ object SleepHistoryTracker {
             )
         }
         val sleepStartMin = h.sessions.map { msToMinOfDay(it.sleepStartMs, localOffsetMs) }
-        val wakeMin = h.sessions.map { msToMinOfDay(it.wakeMs, localOffsetMs) }
         val durations = h.sessions.map { ((it.wakeMs - it.sleepStartMs) / 60_000L).toInt() }
         return Aggregate(
             sleepStartMinAvg = circularMean(sleepStartMin),
-            wakeMinAvg = circularMean(wakeMin),
+            wakeMinAvg = wakeAvg,
             sleepDurationMinAvg = if (durations.isNotEmpty()) durations.sum() / durations.size else null,
             sessionCount = h.sessions.size,
             restingHrBpm = restingHr,

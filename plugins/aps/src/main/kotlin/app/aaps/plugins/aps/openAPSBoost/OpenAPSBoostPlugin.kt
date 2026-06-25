@@ -723,6 +723,24 @@ open class OpenAPSBoostPlugin @Inject constructor(
     private fun parseTimeToMinutesOfDay(timeStr: String): Int =
         (parseTimeToMillis(timeStr) / 60_000L).toInt()
 
+    /**
+     * Clamp a learned minute-of-day to within ±[bandMin] of the configured minute-of-day, on the
+     * 24h circle. Returns [configured] when [learned] is null (no/insufficient learned data). This
+     * caps how far the learned sleep window can drift from the user's configured times — the safety
+     * bound that, with the genuine-wake-only training in SleepHistoryTracker, stops the night-window
+     * collapse (each night ratcheting the wake earlier).
+     */
+    /** Max minutes the learned sleep window may move from the configured night start/end. */
+    private val LEARNED_WINDOW_BAND_MIN = 90
+
+    private fun clampToConfiguredBand(learned: Int?, configured: Int, bandMin: Int): Int {
+        if (learned == null) return configured
+        // signed circular delta in [-720, 719]
+        val delta = ((learned - configured + 1440 + 720) % 1440) - 720
+        val clamped = delta.coerceIn(-bandMin, bandMin)
+        return ((configured + clamped) % 1440 + 1440) % 1440
+    }
+
     /** Format a minute-of-day [0..1439] as "HH:mm" for telemetry. */
     private fun formatClockMin(min: Int): String {
         val m = ((min % 1440) + 1440) % 1440
@@ -1269,8 +1287,14 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 // to configured nightStart / nightEnd.
                 val localOffsetMs = java.time.ZoneId.systemDefault().rules.getOffset(java.time.Instant.now()).totalSeconds * 1000L
                 val agg = SleepHistoryTracker.aggregate(sleepHistoryCached, localOffsetMs)
-                val effectiveNightStartMin = agg.sleepStartMinAvg ?: configuredNightStartMin
-                val effectiveNightEndMin = agg.wakeMinAvg ?: configuredNightEndMin
+                // The learned window may only nudge the configured night window by ±BAND, and the
+                // wake side trains on genuine wakes only (see SleepHistoryTracker). Together these
+                // anchor the hard sleep/wake bounds to the user's configured times and cap how far
+                // learning can move them — preventing the self-reinforcing earlier-every-night
+                // collapse seen when the hard-exit fed its own learned wake. No/insufficient data
+                // → effective == configured.
+                val effectiveNightStartMin = clampToConfiguredBand(agg.sleepStartMinAvg, configuredNightStartMin, LEARNED_WINDOW_BAND_MIN)
+                val effectiveNightEndMin = clampToConfiguredBand(agg.wakeMinAvg, configuredNightEndMin, LEARNED_WINDOW_BAND_MIN)
                 // Learned resting HR (sleep p10 median, ≥7 sessions) overrides the configured static value
                 // for sleep state evaluation; fallback is the existing user-set hrRestingBpm.
                 val effectiveHrResting = agg.restingHrBpm ?: hrRestingBpm
@@ -1328,7 +1352,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
                             sleepHistoryCached = SleepHistoryTracker.onWake(
                                 sleepHistoryCached, now,
                                 sleepHrBpms = sleepHrSamples,
-                                daytimeHrBpms = daytimeHrSamples
+                                daytimeHrBpms = daytimeHrSamples,
+                                wakeReason = sleepResult.wakeReason
                             )
                             true
                         }
