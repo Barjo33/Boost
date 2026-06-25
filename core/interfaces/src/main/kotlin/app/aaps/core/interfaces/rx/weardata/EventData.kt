@@ -366,7 +366,8 @@ sealed class EventData : Event() {
         val tempTargetLevel: Int,
         val reservoirString: String,
         val reservoir: Double,
-        val reservoirLevel: Int
+        val reservoirLevel: Int,
+        val variableSens: String = ""   // current DynISF / variable sensitivity in profile units (empty if N/A). Default keeps wire-compat with older wear apps.
     ) : EventData(), EventDataSet
 
     @Serializable

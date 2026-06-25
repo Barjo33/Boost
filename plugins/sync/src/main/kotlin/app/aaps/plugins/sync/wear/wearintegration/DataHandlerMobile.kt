@@ -1520,6 +1520,15 @@ class DataHandlerMobile @Inject constructor(
             reservoir <= resWarn   -> 1
             else                   -> 0
         }
+        // Current DynISF / variable sensitivity (from the last APS run), formatted in profile units.
+        // Display-only: this never influences dosing. Empty when no APS result or value is unavailable.
+        val variableSensString = (if (config.APS) loop.lastRun?.constraintsProcessed?.variableSens
+        else processedDeviceStatusData.getAPSResult()?.variableSens)?.let { sensMgdl ->
+            if (sensMgdl > 0) {
+                if (units == GlucoseUnit.MGDL) decimalFormatter.to0Decimal(sensMgdl)
+                else decimalFormatter.to1Decimal(profileUtil.fromMgdlToUnits(sensMgdl, GlucoseUnit.MMOL))
+            } else null
+        } ?: ""
 
         rxBus.send(
             EventMobileToWear(
@@ -1540,7 +1549,8 @@ class DataHandlerMobile @Inject constructor(
                     tempTargetLevel = tempTargetLevel,
                     reservoirString = reservoirString,
                     reservoir = reservoir,
-                    reservoirLevel = reservoirLevel
+                    reservoirLevel = reservoirLevel,
+                    variableSens = variableSensString
                 )
             )
         )
