@@ -4,7 +4,8 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.Test
 
 /**
- * 2026-06-16 fast-carb fast-path. Single-cycle OBSERVING/IDLE → CONFIRMED when the rise is sharp
+ * 2026-06-16 fast-carb fast-path (2026-06-26: OBSERVING-only; cold IDLE no longer fast-confirms).
+ * Single-cycle OBSERVING → CONFIRMED when the rise is sharp
  * (delta ≥ 8) AND accelerating (deltaAccl ≥ 15) AND score corroborates (≥ 0.60) AND awake AND not
  * exercising AND the toggle is on — replay-validated to recover the ~15-min confirm latency that
  * crashed the 2026-06-16 fast carb, without firing on sleep/compression. Pure-function tests on step().
@@ -26,11 +27,18 @@ class MealHypothesisFastConfirmTest {
         assertThat(r.committedInSession).isTrue()
     }
 
-    @Test fun `fast-confirm fires straight from IDLE`() {
-        val r = step(idle(), score = S, eventualBg = 150.0, targetBg = 100.0,
+    @Test fun `does NOT fast-confirm from a cold IDLE (one beat first) but confirms next cycle`() {
+        // 2026-06-26: a cold IDLE single-cycle spike is a transient/compression signature. From IDLE
+        // a fast-carb signal enters OBSERVING (one beat), then fast-confirms on the next cycle.
+        val first = step(idle(), score = S, eventualBg = 150.0, targetBg = 100.0,
             delta = D, deltaAccl = A, deltaDeclining = false,
             asleep = false, exerciseActive = false, fastConfirmEnabled = true)
-        assertThat(r.state).isEqualTo(MealHypothesis.CONFIRMED)
+        assertThat(first.state).isEqualTo(MealHypothesis.OBSERVING)
+        // still-sharp next cycle from OBSERVING → fast-confirm (lead time preserved, one cycle later)
+        val second = step(first, score = S, eventualBg = 150.0, targetBg = 100.0,
+            delta = D, deltaAccl = A, deltaDeclining = false,
+            asleep = false, exerciseActive = false, fastConfirmEnabled = true)
+        assertThat(second.state).isEqualTo(MealHypothesis.CONFIRMED)
     }
 
     @Test fun `does NOT fire while asleep (compression guard)`() {

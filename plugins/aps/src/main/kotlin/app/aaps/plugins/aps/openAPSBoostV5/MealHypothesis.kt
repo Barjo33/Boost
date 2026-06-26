@@ -175,10 +175,16 @@ fun step(
 
     return when (state) {
         MealHypothesis.IDLE ->
-            if (fastConfirm)
-                // Fast carb caught from IDLE — go straight to CONFIRMED (committedInSession=true).
-                MealHypothesisState(MealHypothesis.CONFIRMED, 0, 0.0, 0.0, true)
-            else if (score >= ENTER_OBSERVING_SCORE)
+            // 2026-06-26: the fast-path no longer fires from a cold IDLE. A single-cycle spike with no
+            // prior OBSERVING build-up is structurally a compression/transient artifact: a rise sharp
+            // enough to fast-confirm has nearly always already tripped ENTER_OBSERVING the cycle before,
+            // so reaching IDLE + Δ≥8/accl≥15/score≥0.60 in ONE cycle means a near-instantaneous blip.
+            // Replay (30d × 5 users): IDLE→CONFIRMED fired exactly ONCE and that fire was a false
+            // positive that undershot (06-26 07:08, in-range 6.4→treated→4.3). Routing it through
+            // OBSERVING instead costs zero real meals (the branch caught none) — a genuine fast carb
+            // still fast-confirms on the NEXT cycle from OBSERVING, one beat later, still ahead of the
+            // age-gated normal path. (fastConfirm is still honoured in the OBSERVING branch below.)
+            if (score >= ENTER_OBSERVING_SCORE)
                 // Fresh session: seed both peaks with entry-cycle values; committedInSession=false
                 // explicitly (new meal session begins here — Fix 6).
                 MealHypothesisState(MealHypothesis.OBSERVING, 0, score, currentOffset, false)
