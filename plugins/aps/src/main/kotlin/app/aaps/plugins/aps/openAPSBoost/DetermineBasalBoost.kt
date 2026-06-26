@@ -306,7 +306,7 @@ class DetermineBasalBoost @Inject constructor(
         // Boost Dynamic ISF for predictions
         // =====================================================================
         consoleError.add("═════════════════════════════════════════════════════════")
-        consoleError.add("  Boost v4.1.5 (Kotlin) | Profile: ${profile.profileSwitch}%")
+        consoleError.add("  Boost V6 (Kotlin) | Profile: ${profile.profileSwitch}%")
         consoleError.add("═════════════════════════════════════════════════════════")
         consoleError.add("Steps: 5m=${profile.recentSteps5Minutes} 15m=${profile.recentSteps15Minutes} 30m=${profile.recentSteps30Minutes} 60m=${profile.recentSteps60Minutes}")
 
