@@ -200,11 +200,17 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
 
         preferences.put(BooleanKey.ApsBoostV5AutoConfigDone, true)
         aapsLogger.info(LTag.APS, "BoostV5 auto-config applied [$applied]; rationale: ${suggestion.rationale}")
-        uiInteraction.addNotification(
-            Notification.USER_MESSAGE,
-            "Boost V5 configured from your last 14 days: " + suggestion.rationale.joinToString("; "),
-            Notification.INFO
-        )
+        // Only surface a banner if we ACTUALLY changed something. If every knob was already tuned by
+        // the user, putDoubleIfUnset is a no-op (applied is empty) — announcing "configured" then
+        // changing nothing was the confusing behaviour Tim hit. One concise, readable line per knob.
+        if (applied.isNotEmpty()) {
+            val pretty = applied.joinToString("\n") { "• " + it.removePrefix("ApsBoostV5").removePrefix("ApsBoost") }
+            uiInteraction.addNotification(
+                Notification.USER_MESSAGE,
+                "Boost V5 set ${applied.size} setting(s) from your last 14 days (your other settings were kept):\n$pretty",
+                Notification.INFO
+            )
+        }
     }
 
     private fun putDoubleIfUnset(key: DoubleKey, value: Double, applied: MutableList<String>) {
@@ -277,6 +283,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             rT.boostV5_actionMult = decision.actionMultiplier
             rT.boostV5_finalDose = decision.finalDose
             rT.boostV5_gateReduction = formatGateReduction(decision)
+            rT.boostV5_active = activeMode   // true => V5 is the selected/active doser (drives the V5 overview/widget)
 
             val rtJson = v5DecisionToRtJson(decision)
             aapsLogger.info(LTag.APS, "BoostV5_RT: ${rtJson} actual_smb=${rT.units ?: 0.0} actual_insulinReq=${rT.insulinReq ?: 0.0} activeMode=$activeMode")

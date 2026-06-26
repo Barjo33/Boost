@@ -5,7 +5,6 @@ import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
-import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.data.model.TE
@@ -26,8 +25,7 @@ class BoostOverviewHelper @Inject constructor(
     private val iobCobCalculator: IobCobCalculator,
     private val tddCalculator: TddCalculator,
     private val persistenceLayer: PersistenceLayer,
-    private val dateUtil: DateUtil,
-    private val activePlugin: ActivePlugin
+    private val dateUtil: DateUtil
 ) {
 
     // Cache to avoid recalculating TDD and querying DB on every UI event
@@ -154,9 +152,10 @@ class BoostOverviewHelper @Inject constructor(
 
     private fun computeBoostStatus(): BoostStatus {
         val request = loop.lastRun?.request
-        // AAPSClient fallback: when Loop isn't running locally, read the RT
-        // object received from Nightscout via ProcessedDeviceStatusData
-        val rt: RT? = (request as? RT) ?: processedDeviceStatusData.openAPSData.suggested
+        // The live RT is held inside the APSResult wrapper (DetermineBasalResult.rawData()); the
+        // APSResult itself is NOT an RT, so the old `request as? RT` always failed and silently fell
+        // back to NS. Pull rawData() first; AAPSClient fallback = NS-synced suggested RT.
+        val rt: RT? = (request?.rawData() as? RT) ?: (request as? RT) ?: processedDeviceStatusData.openAPSData.suggested
         val json = try { request?.json() } catch (_: Exception) { null }
         val reason = request?.reason ?: rt?.reason?.toString() ?: ""
         val scriptDebug = request?.scriptDebug ?: rt?.consoleLog ?: emptyList()
@@ -212,9 +211,9 @@ class BoostOverviewHelper @Inject constructor(
         val tddFromDebug = parseTddFromText(allText)
 
         // ── Boost V5 state machine (active-only; D4 sign-off) ──
-        // V5 is shown only when the V5 plugin is the active doser. Detected by class name to
-        // avoid a plugins.main → plugins.aps module dependency; gated on RT actually carrying state.
-        val v5Active = isV5ActiveAps() && rt?.boostV5_state != null
+        // The engine stamps rt.boostV5_active=true only when V5 is the selected/active doser (not
+        // shadow). This is R8-safe (a serialized flag, not a class name) and needs no plugin coupling.
+        val v5Active = rt?.boostV5_active == true
         val v5State = BoostV5State.fromName(rt?.boostV5_state)
         val v5Brakes = if (v5Active) parseGateReductions(rt?.boostV5_gateReduction) else emptyList()
 
@@ -252,9 +251,6 @@ class BoostOverviewHelper @Inject constructor(
         )
     }
 
-    /** True when the V5 plugin is the selected/active APS (class-name check avoids module coupling). */
-    private fun isV5ActiveAps(): Boolean =
-        runCatching { activePlugin.activeAPS.javaClass.simpleName == "OpenAPSBoostV5Plugin" }.getOrDefault(false)
 
     /** Parse "Tier N - Label" from combined text. Returns (BoostTier, display label) or null. */
     private fun parseTierFromText(text: String): Pair<BoostTier, String>? {

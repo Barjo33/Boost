@@ -94,6 +94,7 @@ data class RT(
     var boostV5_actionMult: Double? = null,      // action multiplier for the current state
     var boostV5_finalDose: Double? = null,       // V5's would-have-delivered SMB (U) — direct comparator to rT.units
     var boostV5_gateReduction: String? = null,   // compact summary of which Phase 3 gates fired
+    var boostV5_active: Boolean? = null,         // true when V5 was the ACTIVE doser this cycle (not shadow) — drives the V5 overview/widget
 
     // HR + sleep telemetry (2026-06-02) — emitted into NS devicestatus for retrospective
     // sleep-model tuning. Cadence = one observation per Boost cycle (~5 min), which
