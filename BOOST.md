@@ -55,25 +55,59 @@ V5 *would* have done in Nightscout for a couple of weeks, then decide.
 ## 3. Auto-configuration (first activation)
 
 The first time V5 runs active, Boost **seeds its settings from your own recent dosing history**
-(last 14 days) rather than dropping you onto generic defaults. The principle: *start where your prior
-dosing left off*, then tune — a safer transition than a cold jump to a stranger's calibration.
+(last 14 days) rather than dropping you onto generic defaults. The principle (from the shadow-equivalence
+work): V5's dose calibration is *co-adapted to the individual*, so the safe onboarding is to **start
+where your prior dosing left off** and tune from there — not a cold jump to a stranger's numbers. It
+works from **any prior engine** (standard oref/AndroidAPS, not just Boost), since it reads only dosing
+history + glycaemia.
 
-It runs once, in the background, and is **suggestion-only**: it writes a setting **only if you
-haven't already changed it**, never overriding anything you've tuned. It needs ≥ 7 days of data; if
-there isn't enough yet it does nothing and retries on a later cycle. When it runs it **logs the full
-reasoning and shows you a notification** of exactly what it set and why.
+**How it behaves (the guard-rails):**
+- Runs **once**, in the background, the first cycle V5 is active. Gated by a one-shot flag.
+- **Suggestion-only** — it writes a setting **only if you haven't already changed it** from the factory
+  default. It never overrides anything you've tuned.
+- Needs **≥ 7 days of data and ≥ 1500 CGM readings**. If there isn't enough yet it does nothing and
+  **retries on a later cycle** until there is.
+- **Never auto-raises aggression** above neutral on day one; safety knobs only ever *tighten*.
+- **Wrapped so any failure is logged and swallowed** — it can never block or alter the dose path itself.
+- It **logs the full reasoning and shows you a notification** of exactly what it set and why.
 
-| Setting it seeds | Derived from your history |
+### How it determines each setting (the exact rules)
+
+It gathers, over the last 14 days: your **true TDD** (basal + bolus, from the platform's TDD
+calculator), your **bolus and micro-bolus (SMB) sizes** (split into meal boluses vs SMBs), your
+**time-below-range** (% < 70 and % < 54 mg/dL), and your existing **max-IOB / max-bolus** limits. Then:
+
+| Setting (range) | Rule |
 |---|---|
-| **HypoCaution** | your time-below-range (<70 and <54) vs the consensus targets (4% / 1%) — more lows ⇒ more caution |
-| **Aggression** | neutral, eased gentler for a hypo-prone history — **never auto-raised** above neutral on day one |
-| **Confirmed / Committed caps** | your actual meal-bolus and micro-bolus sizes (so big meals aren't clipped, routine holds stay modest) |
-| **Max IOB / Bolus cap** | carried from your existing AndroidAPS limits |
-| **Fast-carb confirm** | on, unless your history is markedly hypo-prone (then off, cautiously) |
+| **HypoCaution** (1.0–2.0) | `clamp(1.0 + max(0, TBR<70% − 4)/4 + max(0, TBR<54% − 1)×0.5, 1.0, 2.0)` — climbs above 1.0 only as your time-low exceeds the consensus targets (4% / 1%). |
+| **Aggression** (0.7–1.3) | `0.85` if hypo-prone (TBR<54% > 1.5 **or** TBR<70% > 6%); `0.92` if TBR<70% > 4%; else **1.0**. Never set above 1.0. |
+| **Confirmed cap** (0–7.5 U) | `clamp(max(p90 of meal boluses, p95 of SMBs), 1.5, 7.5)` — covers your biggest *typical* single dose so real meals aren't clipped. |
+| **Committed cap** (0–2.5 U) | `clamp(max(p75 of SMBs, TDD/40), 0.25, 2.5)` — your routine per-cycle hold. |
+| **Cumulative SMB cap / 60 min** (0–5 U) | `clamp(Confirmed cap + 2×Committed cap, 1.0, 5.0)` — bounds dose *frequency* (the per-shot caps only bound magnitude). |
+| **Max IOB / Bolus cap** | carried from your existing limits (clamped to range). |
+| **Fast-carb confirm** | **off** if hypo-prone (as above), otherwise on. |
 
-Aggression can only be matched *precisely* once shadow data exists (it needs paired cycles), so the
-day-one value is intentionally on the cautious side and is the one knob most worth reviewing after a
-couple of weeks.
+"Hypo-prone" = TBR<54% > 1.5% **or** TBR<70% > 6%. A well-controlled user therefore lands on a fully
+neutral config (Aggression 1.0, HypoCaution 1.0, fast-carb on); a low-prone user gets gentler
+aggression, more hypo damping, tighter caps, and fast-carb off — all in the conservative direction.
+
+Aggression can only be matched *precisely* once shadow data has accrued (it needs paired cycles), so the
+day-one value is deliberately cautious and is the one knob most worth reviewing after a couple of weeks.
+
+### Validation
+
+The derivation was checked against **12 real users from a research database** (an OpenAPS/Trio cohort
+and an AndroidAPS cohort, 400–720 days each): for every user the rules were applied to their real
+history to produce the knobs, then those knobs were run through the **Boost V5 engine over the user's
+own logged cycles**, and the resulting dosing was probed for danger.
+
+**Result: no dangerous dosing.** Dose-into-low events were ≤ 0.2% of dosing cycles — the engine's hard
+*minGuardBG ≥ 80* gate blocks dosing into a projected low regardless of the knobs. Well-controlled users
+ran at stock (neutral) V5 behaviour; for the hypo-prone users the protective knobs fired and **reduced**
+dose-into-low events 15–24%. In no case did auto-config make dosing *more* aggressive than the engine's
+own default. (Caveat: that replay is *open-loop* — it doesn't feed V5's doses back into glucose — so
+absolute daily/hourly insulin totals from it are inflated artifacts, not real closed-loop amounts.) The
+validation is what prompted adding the cumulative-60-min cap above.
 
 ---
 
