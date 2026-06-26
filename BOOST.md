@@ -84,7 +84,7 @@ calculator), your **bolus and micro-bolus (SMB) sizes** (split into meal boluses
 | **Aggression** (0.7–1.3) | `0.85` if hypo-prone (TBR<54% > 1.5 **or** TBR<70% > 6%); `0.92` if TBR<70% > 4%; else **1.0**. Never set above 1.0. |
 | **Confirmed cap** (0–7.5 U) | `clamp(max(p90 of meal boluses, p95 of SMBs), 1.5, 7.5)` — covers your biggest *typical* single dose so real meals aren't clipped. |
 | **Committed cap** (0–2.5 U) | `clamp(max(p75 of SMBs, TDD/40), 0.25, 2.5)` — your routine per-cycle hold. |
-| **Cumulative SMB cap / 60 min** (0–5 U) | `clamp(Confirmed cap + 2×Committed cap, 1.0, 5.0)` — bounds dose *frequency* (the per-shot caps only bound magnitude). |
+| **Cumulative SMB cap / 60 min** (≥ 1 U) | `clamp(Confirmed cap + 2×Committed cap, 1.0, max(5.0, Confirmed cap))` — bounds dose *frequency* (the per-shot caps only bound magnitude); the ceiling tracks the Confirmed cap so a big-meal user's hourly budget is never set below a single confirmed shot. |
 | **Max IOB / Bolus cap** | carried from your existing limits (clamped to range). |
 | **Fast-carb confirm** | **off** if hypo-prone (as above), otherwise on. |
 
@@ -109,6 +109,15 @@ dose-into-low events 15–24%. In no case did auto-config make dosing *more* agg
 own default. (Caveat: that replay is *open-loop* — it doesn't feed V6's doses back into glucose — so
 absolute daily/hourly insulin totals from it are inflated artifacts, not real closed-loop amounts.) The
 validation is what prompted adding the cumulative-60-min cap above.
+
+**Later hardening (2026-06-26 adversarial review).** A multi-perspective review of the auto-config and
+the active-override path (Android + the Trio port) closed three things: the cumulative-60-min cap is now
+re-checked on the V6 active-override path itself (it had only been enforced inside the base engine, so a
+V6 override could bypass it); V6's IOB headroom is clamped to the system/oref max-IOB so a higher Boost
+max-IOB can't exceed the limit the base engine enforces; and the cumulative-cap ceiling was raised to
+track the Confirmed cap (the rule above) so it can't sit below one confirmed shot for a big-meal user.
+None changed the derivation; all tightened the safety envelope. The numeric derivation itself was checked
+line-for-line against the Trio (Swift) port and is in full parity.
 
 ---
 
