@@ -281,9 +281,14 @@ class BoostWidget : AppWidgetProvider() {
         val status = boostOverviewHelper.getBoostStatus()
         val units = profileFunction.getUnits()
 
-        // Tier
-        views.setTextViewText(R.id.tier_label, status.tierLabel)
-        views.setTextColor(R.id.tier_label, status.tier.colorHex.toInt())
+        // Headline: V5 state (+ action multiplier) when V5 is the active APS; otherwise the tier label
+        if (status.isV5Active) {
+            views.setTextViewText(R.id.tier_label, "${status.v5State.short} ×${String.format(Locale.getDefault(), "%.1f", status.v5ActionMult)}")
+            views.setTextColor(R.id.tier_label, status.v5State.colorHex.toInt())
+        } else {
+            views.setTextViewText(R.id.tier_label, status.tierLabel)
+            views.setTextColor(R.id.tier_label, status.tier.colorHex.toInt())
+        }
 
         // DynISF
         val dynIsfText = if (status.variableSens > 0) {
@@ -301,16 +306,23 @@ class BoostWidget : AppWidgetProvider() {
         val tddText = if (tddValue > 0) String.format(Locale.getDefault(), "%.1f U", tddValue) else "--"
         views.setTextViewText(R.id.tdd, tddText)
 
-        // Activity mode
-        views.setTextViewText(R.id.activity_mode, status.activityDetail)
-        val activityColor = when (status.activityMode) {
-            BoostOverviewHelper.ActivityMode.ACTIVE   -> Color.parseColor("#42A5F5")
-            BoostOverviewHelper.ActivityMode.INACTIVE  -> Color.parseColor("#FF9800")
-            BoostOverviewHelper.ActivityMode.SLEEP_IN  -> Color.parseColor("#AB47BC")
-            BoostOverviewHelper.ActivityMode.BOOST_OFF -> Color.parseColor("#78909C")
-            BoostOverviewHelper.ActivityMode.NORMAL    -> Color.WHITE
+        // Activity cell — V5: repurposed as the meal Score (state-coloured); legacy: activity mode
+        if (status.isV5Active) {
+            views.setTextViewText(R.id.label_activity, "Score")
+            views.setTextViewText(R.id.activity_mode, String.format(Locale.getDefault(), "%.2f", status.v5Score))
+            views.setTextColor(R.id.activity_mode, status.v5State.colorHex.toInt())
+        } else {
+            views.setTextViewText(R.id.label_activity, "Activity")
+            views.setTextViewText(R.id.activity_mode, status.activityDetail)
+            val activityColor = when (status.activityMode) {
+                BoostOverviewHelper.ActivityMode.ACTIVE    -> Color.parseColor("#42A5F5")
+                BoostOverviewHelper.ActivityMode.INACTIVE  -> Color.parseColor("#FF9800")
+                BoostOverviewHelper.ActivityMode.SLEEP_IN  -> Color.parseColor("#AB47BC")
+                BoostOverviewHelper.ActivityMode.BOOST_OFF -> Color.parseColor("#78909C")
+                BoostOverviewHelper.ActivityMode.NORMAL    -> Color.WHITE
+            }
+            views.setTextColor(R.id.activity_mode, activityColor)
         }
-        views.setTextColor(R.id.activity_mode, activityColor)
 
         // Profile percentage
         val pctText = "${status.profilePercentage}%"

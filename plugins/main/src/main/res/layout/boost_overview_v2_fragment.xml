@@ -473,6 +473,110 @@
                 </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
 
+            <!-- ═══ Boost V5 state strip (shown only when V5 is the active APS) ═══ -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/v2_v5_strip"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:layout_marginBottom="4dp"
+                android:visibility="gone"
+                app:cardBackgroundColor="#10121a"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="0dp"
+                app:strokeColor="#1a1d28"
+                app:strokeWidth="1dp"
+                android:foreground="?attr/selectableItemBackground"
+                tools:visibility="visible">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="10dp">
+
+                    <!-- Row 1: state chip + dose/budget -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <TextView
+                            android:id="@+id/v2_v5_state"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:textSize="15sp"
+                            android:textStyle="bold"
+                            android:letterSpacing="0.05"
+                            android:textColor="#ff6e40"
+                            tools:text="CONFIRMED  ×1.8 · 2c" />
+
+                        <TextView
+                            android:id="@+id/v2_v5_dose"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="12sp"
+                            android:gravity="end"
+                            android:textColor="#aaaaaa"
+                            tools:text="dose 0.45U · budget 0.78U" />
+                    </LinearLayout>
+
+                    <!-- Row 2: meal score gauge -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="6dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="SCORE"
+                            android:textSize="9sp"
+                            android:textColor="#444444"
+                            android:letterSpacing="0.1"
+                            android:layout_marginEnd="8dp"
+                            tools:ignore="HardcodedText" />
+
+                        <ProgressBar
+                            android:id="@+id/v2_v5_score_bar"
+                            style="?android:attr/progressBarStyleHorizontal"
+                            android:layout_width="0dp"
+                            android:layout_height="6dp"
+                            android:layout_weight="1"
+                            android:max="100"
+                            tools:progress="62" />
+
+                        <TextView
+                            android:id="@+id/v2_v5_score_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="12sp"
+                            android:textStyle="bold"
+                            android:textColor="#e8eaf0"
+                            android:layout_marginStart="8dp"
+                            android:minWidth="36dp"
+                            android:gravity="end"
+                            tools:text="0.62" />
+                    </LinearLayout>
+
+                    <!-- Row 3: active brakes (hidden when none) -->
+                    <TextView
+                        android:id="@+id/v2_v5_brakes"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:textSize="11sp"
+                        android:visibility="gone"
+                        android:textColor="#fb923c"
+                        tools:visibility="visible"
+                        tools:text="⛔ min_guard_bg · iob 0.85 · decel 0.50" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- ═══ BG Chart Card ═══ -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/v2_graph_card"

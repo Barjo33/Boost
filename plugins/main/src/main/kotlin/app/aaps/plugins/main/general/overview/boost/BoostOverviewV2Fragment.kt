@@ -1,6 +1,7 @@
 package app.aaps.plugins.main.general.overview.boost
 
 import android.annotation.SuppressLint
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
@@ -221,6 +222,7 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
         binding.v2PillDynisf.setOnClickListener(this)
         binding.v2PillTdd.setOnClickListener(this)
         binding.v2PillProfile.setOnClickListener(this)
+        binding.v2V5Strip.setOnClickListener(this)
 
         // Bottom action buttons
         binding.v2BtnInsulin.setOnClickListener(this)
@@ -602,21 +604,90 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
             }
             binding.v2PillTddValue.text = if (tddDisplay > 0) String.format(Locale.getDefault(), "%.1fu", tddDisplay) else "---"
 
-            // Profile pill — shows tier label + profile percentage
-            val tierShort = boostStatus.tierLabel
-                .replace(Regex("""^Tier\s+\d+\s*-\s*"""), "")
-                .take(12)
-            binding.v2PillProfileTier.text = tierShort
-            binding.v2PillProfileTier.setTextColor(boostStatus.tier.colorHex.toInt())
+            // Profile pill — V5: state short name (coloured by state); legacy: tier label
+            if (boostStatus.isV5Active) {
+                binding.v2PillProfileTier.text = boostStatus.v5State.short
+                binding.v2PillProfileTier.setTextColor(boostStatus.v5State.colorHex.toInt())
+            } else {
+                val tierShort = boostStatus.tierLabel
+                    .replace(Regex("""^Tier\s+\d+\s*-\s*"""), "")
+                    .take(12)
+                binding.v2PillProfileTier.text = tierShort
+                binding.v2PillProfileTier.setTextColor(boostStatus.tier.colorHex.toInt())
+            }
             binding.v2PillProfilePct.text = "${boostStatus.profilePercentage}%"
+
+            // V5 state strip (active-only)
+            updateV5Strip(boostStatus)
 
             // TalkBack
             binding.v2PillIob.contentDescription = "Insulin on board: ${String.format(Locale.getDefault(), "%.2f", totalIob)} units"
             val unitsStr = if (profileFunction.getUnits() == GlucoseUnit.MGDL) "mg/dL per unit" else "mmol/L per unit"
             binding.v2PillDynisf.contentDescription = "Dynamic ISF: $dynDisp $unitsStr"
             binding.v2PillTdd.contentDescription = "Total daily dose: ${if (tddDisplay > 0) String.format(Locale.getDefault(), "%.1f units", tddDisplay) else "unavailable"}"
-            binding.v2PillProfile.contentDescription = "Boost tier: $tierShort, profile ${boostStatus.profilePercentage} percent"
+            binding.v2PillProfile.contentDescription =
+                if (boostStatus.isV5Active) "Boost V5 ${boostStatus.v5State.verb}, profile ${boostStatus.profilePercentage} percent"
+                else "Boost tier: ${binding.v2PillProfileTier.text}, profile ${boostStatus.profilePercentage} percent"
         }
+    }
+
+    // --- Boost V5 state strip (active-only) ---
+
+    @SuppressLint("SetTextI18n")
+    private fun updateV5Strip(bs: BoostOverviewHelper.BoostStatus) {
+        _binding ?: return
+        if (!bs.isV5Active) {
+            binding.v2V5Strip.visibility = View.GONE
+            return
+        }
+        binding.v2V5Strip.visibility = View.VISIBLE
+        val color = bs.v5State.colorHex.toInt()
+
+        // Row 1: state · action multiplier · age, then dose / budget
+        binding.v2V5State.text = "${bs.v5State.label.uppercase(Locale.getDefault())}  ×${String.format(Locale.getDefault(), "%.1f", bs.v5ActionMult)} · ${bs.v5Age}c"
+        binding.v2V5State.setTextColor(color)
+        binding.v2V5Dose.text = "dose ${String.format(Locale.getDefault(), "%.2f", bs.v5FinalDose)}U · budget ${String.format(Locale.getDefault(), "%.2f", bs.v5Budget)}U"
+
+        // Row 2: meal-score gauge (0..1 → 0..100), tinted by state colour
+        binding.v2V5ScoreBar.progress = (bs.v5Score * 100).toInt().coerceIn(0, 100)
+        binding.v2V5ScoreBar.progressTintList = ColorStateList.valueOf(color)
+        binding.v2V5ScoreText.text = String.format(Locale.getDefault(), "%.2f", bs.v5Score)
+
+        // Row 3: active brakes — red if any hard gate fired, else amber; hidden when none
+        if (bs.v5Brakes.isEmpty()) {
+            binding.v2V5Brakes.visibility = View.GONE
+        } else {
+            binding.v2V5Brakes.visibility = View.VISIBLE
+            binding.v2V5Brakes.text = bs.v5Brakes.joinToString("   ·   ") { b ->
+                if (b.isHard) "⛔ ${b.label}" else "${b.label} ${String.format(Locale.getDefault(), "%.2f", b.factor)}"
+            }
+            val hasHard = bs.v5Brakes.any { it.isHard }
+            binding.v2V5Brakes.setTextColor(Color.parseColor(if (hasHard) "#ff5252" else "#fb923c"))
+        }
+
+        binding.v2V5Strip.contentDescription =
+            "Boost V5 ${bs.v5State.verb}, score ${String.format(Locale.getDefault(), "%.2f", bs.v5Score)}, dose ${String.format(Locale.getDefault(), "%.2f", bs.v5FinalDose)} units"
+    }
+
+    @SuppressLint("SetTextI18n")
+    private fun showV5Detail() {
+        val a = activity ?: return
+        val bs = lastBoostStatus
+        val sb = StringBuilder()
+        sb.append("State: ${bs.v5State.label} (${bs.v5State.verb}) · age ${bs.v5Age} cycle${if (bs.v5Age == 1) "" else "s"}")
+        sb.append("\n\nMeal score: ${String.format(Locale.getDefault(), "%.2f", bs.v5Score)}   (enter 0.44 · confirm 0.55)")
+        sb.append("\nAction multiplier: ×${String.format(Locale.getDefault(), "%.2f", bs.v5ActionMult)}")
+        sb.append("\nAggression budget: ${String.format(Locale.getDefault(), "%.2f", bs.v5Budget)}U")
+        sb.append("\nDose this cycle: ${String.format(Locale.getDefault(), "%.2f", bs.v5FinalDose)}U")
+        sb.append("\n\nBrakes:")
+        if (bs.v5Brakes.isEmpty()) sb.append("\n  none")
+        else bs.v5Brakes.forEach { b ->
+            if (b.isHard) sb.append("\n  ⛔ ${b.label} (hard disable)")
+            else sb.append("\n  ${b.label}: ×${String.format(Locale.getDefault(), "%.2f", b.factor)}")
+        }
+        sb.append("\n\nDelta accel: ${String.format(Locale.getDefault(), "%.1f", bs.deltaAccl)}%")
+        sb.append("\n\n--- Script Debug ---\n${bs.scriptDebugText.ifEmpty { "(no debug output)" }}")
+        OKDialog.show(a, "Boost V5 decision", sb.toString())
     }
 
     // --- Profile ---
@@ -979,10 +1050,17 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
                 }
                 R.id.v2_pill_profile -> {
                     val bs = lastBoostStatus
-                    val fcLine = if (bs.fastCarbProtection) "Fast Carb Protection active\n\n" else ""
-                    OKDialog.show(a, "Boost Decision",
-                        "${fcLine}Current tier: ${bs.tierLabel}\n\nReason: ${bs.tierReason}\n\nDelta accel: ${String.format(Locale.getDefault(), "%.1f", bs.deltaAccl)}")
+                    if (bs.isV5Active) {
+                        showV5Detail()
+                    } else {
+                        val fcLine = if (bs.fastCarbProtection) "Fast Carb Protection active\n\n" else ""
+                        OKDialog.show(a, "Boost Decision",
+                            "${fcLine}Current tier: ${bs.tierLabel}\n\nReason: ${bs.tierReason}\n\nDelta accel: ${String.format(Locale.getDefault(), "%.1f", bs.deltaAccl)}")
+                    }
                 }
+
+                // V5 state strip tap -> V5 decision detail
+                R.id.v2_v5_strip -> showV5Detail()
 
                 // Target value tap -> temp target dialog
                 R.id.v2_target_value -> {
