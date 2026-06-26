@@ -63,6 +63,14 @@ class BoostV5AutoConfigTest {
         assertThat(big.confirmedCapU).isGreaterThan(small.confirmedCapU)
     }
 
+    @Test fun `cumulative cap is never below a single confirmed shot, even for a big-meal user`() {
+        // Big eater: confirmedCap clamps to its 7.5 ceiling. The hourly cumulative budget must not
+        // saturate below that (was clamped to 5.0 before the 2026-06-26 fix).
+        val s = BoostV5AutoConfig.compute(profile(manual = listOf(5.0, 7.0, 9.0, 11.0)))!!
+        assertThat(s.confirmedCapU).isEqualTo(7.5)
+        assertThat(s.cumulativeSmbCap60MinU).isAtLeast(s.confirmedCapU - 1e-9)
+    }
+
     @Test fun `maxIob and bolus cap are carried and clamped`() {
         val s = BoostV5AutoConfig.compute(profile(maxIob = 15.0, maxBolus = 12.0))!!
         assertThat(s.maxIobU).isEqualTo(12.0)   // clamped to key max

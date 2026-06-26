@@ -399,7 +399,10 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             minGuardThreshold = opb.lgsThreshold?.toDouble() ?: 80.0,
             deltaHistory = deltaHistory,
             iob = iob,
-            maxIob = opb.boost_maxIOB,
+            // Hard-ceiling V5's IOB headroom to the system/oref maxIOB (opb.max_iob, already
+            // constraint-applied) so a higher ApsBoostMaxIob can never let V5 exceed the IOB limit
+            // V1 enforces. (Review 2026-06-26, LOW — defense-in-depth.)
+            maxIob = minOf(opb.boost_maxIOB, opb.max_iob),
             baseInsulinReq = baseInsulinReq,
             roundSmbTo = pumpBolusStep,
             enableSmbPreChecks = enableSmbPreChecks,

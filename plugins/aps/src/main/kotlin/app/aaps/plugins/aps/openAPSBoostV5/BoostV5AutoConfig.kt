@@ -96,8 +96,10 @@ object BoostV5AutoConfig {
         reasons += "Committed cap ${committedCapU}U (≈ your routine SMB size)"
 
         // Rolling-60-min cumulative SMB cap: bounds dose *frequency* (the per-shot caps only bound
-        // magnitude). Allow ~one confirm shot plus a couple of holds per hour.
-        val cumulativeSmbCap60MinU = round1((confirmedCapU + 2.0 * committedCapU).coerceIn(1.0, 5.0))
+        // magnitude). Allow ~one confirm shot plus a couple of holds per hour. Upper bound is at
+        // least confirmedCapU so the hourly budget can never sit BELOW a single confirmed shot for a
+        // big-meal user (confirmedCap up to 7.5). (Review 2026-06-26, LOW correctness.)
+        val cumulativeSmbCap60MinU = round1((confirmedCapU + 2.0 * committedCapU).coerceIn(1.0, max(5.0, confirmedCapU)))
         reasons += "Cumulative SMB cap/60min ${cumulativeSmbCap60MinU}U (limits dose frequency)"
 
         // Carry proven constraints.
