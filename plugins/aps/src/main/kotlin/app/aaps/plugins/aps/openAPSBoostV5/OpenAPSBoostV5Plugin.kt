@@ -190,6 +190,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         putDoubleIfUnset(DoubleKey.ApsBoostV5HypoCaution, suggestion.hypoCaution, applied)
         putDoubleIfUnset(DoubleKey.ApsBoostV5ConfirmedCapU, suggestion.confirmedCapU, applied)
         putDoubleIfUnset(DoubleKey.ApsBoostV5CommittedCapU, suggestion.committedCapU, applied)
+        putDoubleIfUnset(DoubleKey.ApsBoostCumulativeSmbCap60Min, suggestion.cumulativeSmbCap60MinU, applied)
         putDoubleIfUnset(DoubleKey.ApsBoostMaxIob, suggestion.maxIobU, applied)
         putDoubleIfUnset(DoubleKey.ApsBoostBolus, suggestion.bolusCapU, applied)
         if (preferences.getIfExists(BooleanKey.ApsBoostV5FastCarbConfirm) == null) {

@@ -51,6 +51,10 @@ class BoostV5AutoConfigTest {
         assertThat(s.confirmedCapU).isAtMost(7.5)
         assertThat(s.committedCapU).isAtLeast(0.25)
         assertThat(s.committedCapU).isAtMost(2.5)
+        assertThat(s.cumulativeSmbCap60MinU).isAtLeast(1.0)
+        assertThat(s.cumulativeSmbCap60MinU).isAtMost(5.0)
+        // cumulative cap is never below a single confirm shot (it must allow ≥1 confirm)
+        assertThat(s.cumulativeSmbCap60MinU).isAtLeast(s.confirmedCapU - 1e-9)
     }
 
     @Test fun `confirmed cap covers a big-meal bolus user`() {

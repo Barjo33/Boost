@@ -52,6 +52,7 @@ object BoostV5AutoConfig {
         val hypoCaution: Double,
         val confirmedCapU: Double,
         val committedCapU: Double,
+        val cumulativeSmbCap60MinU: Double,
         val maxIobU: Double,
         val bolusCapU: Double,
         val fastCarbConfirm: Boolean,
@@ -94,6 +95,11 @@ object BoostV5AutoConfig {
         )
         reasons += "Committed cap ${committedCapU}U (≈ your routine SMB size)"
 
+        // Rolling-60-min cumulative SMB cap: bounds dose *frequency* (the per-shot caps only bound
+        // magnitude). Allow ~one confirm shot plus a couple of holds per hour.
+        val cumulativeSmbCap60MinU = round1((confirmedCapU + 2.0 * committedCapU).coerceIn(1.0, 5.0))
+        reasons += "Cumulative SMB cap/60min ${cumulativeSmbCap60MinU}U (limits dose frequency)"
+
         // Carry proven constraints.
         val maxIobU = round1(p.currentMaxIobU.coerceIn(0.1, 12.0))
         val bolusCapU = round1(p.currentMaxBolusU.coerceIn(0.1, 10.0))
@@ -106,6 +112,7 @@ object BoostV5AutoConfig {
         return V5Suggestion(
             aggression = aggression, hypoCaution = hypoCaution,
             confirmedCapU = confirmedCapU, committedCapU = committedCapU,
+            cumulativeSmbCap60MinU = cumulativeSmbCap60MinU,
             maxIobU = maxIobU, bolusCapU = bolusCapU,
             fastCarbConfirm = fastCarbConfirm, rationale = reasons
         )
