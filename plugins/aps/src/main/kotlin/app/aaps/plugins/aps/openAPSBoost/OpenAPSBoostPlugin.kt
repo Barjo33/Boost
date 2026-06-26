@@ -1254,11 +1254,20 @@ open class OpenAPSBoostPlugin @Inject constructor(
             // (oref1/Boost) SMB, which already respects night mode. V5 still computes its shadow
             // telemetry above (runShadow ran), so the V5-vs-V1 comparison continues overnight; only
             // the dose override is suppressed. Robust to overnight CGM artifacts tripping V5.
-            if (v5Active && microBolusAllowed && v5decision != null && !v5Asleep) {
+            // Anti-stacking hard gate: the rolling-60-min cumulative SMB cap is enforced inside V1
+            // (DetermineBasalBoost), but the V5 override below replaces it.units AFTER determine_basal
+            // returns — so re-check the SAME cap here (same prior-volume semantics as V1) or V5 could
+            // deliver on a cycle V1 suspended for cumulative volume. (Review 2026-06-26, MEDIUM.)
+            val cumulativeCapReached = cumulativeSmbCap60Min > 0.0 && recentSmbVolume60Min >= cumulativeSmbCap60Min
+            if (v5Active && microBolusAllowed && v5decision != null && !v5Asleep && !cumulativeCapReached) {
                 val v1WouldDose = it.units ?: 0.0
                 it.units = v5decision.finalDose
                 it.reason.append("V5-ACTIVE drove SMB ${Round.roundTo(v5decision.finalDose, 0.001)}U (V1 would=${Round.roundTo(v1WouldDose, 0.001)}U, state=${v5decision.mealHypothesis}); ")
                 aapsLogger.info(LTag.APS, "V5-ACTIVE override: SMB ${v1WouldDose} → ${v5decision.finalDose} state=${v5decision.mealHypothesis}")
+            } else if (v5Active && v5decision != null && cumulativeCapReached) {
+                it.units = 0.0
+                it.reason.append("V5 suppressed (cumulative SMB cap ${Round.roundTo(recentSmbVolume60Min, 0.01)}U/${Round.roundTo(cumulativeSmbCap60Min, 0.01)}U reached); ")
+                aapsLogger.info(LTag.APS, "V5-ACTIVE cumulative SMB cap reached (${recentSmbVolume60Min}/${cumulativeSmbCap60Min}U) — SMB suspended")
             } else if (v5Active && v5Asleep && v5decision != null) {
                 it.reason.append("V5 suppressed (SLEEPING) — V1 SMB ${Round.roundTo(it.units ?: 0.0, 0.001)}U; ")
             }
