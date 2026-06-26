@@ -55,10 +55,13 @@ CANDIDATES = [
 def _get(base, token, path, params, attempts=4, backoff=15):
     p = dict(params); p["token"] = token
     url = f"{base}/api/v1/{path}.json?" + urllib.parse.urlencode(p, safe="[]$<>")
+    # Browser-ish User-Agent: some hosts (e.g. *.nightscoutpro.com behind Cloudflare) 403 the bare
+    # Python-urllib UA. Tokens still authorise; this just gets us past the bot filter.
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (boost-backtest)"})
     last = None
     for i in range(attempts):
         try:
-            with urllib.request.urlopen(url, timeout=180) as r:
+            with urllib.request.urlopen(req, timeout=180) as r:
                 return json.loads(r.read())
         except Exception as e:  # noqa: BLE001
             last = e
