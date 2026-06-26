@@ -21,6 +21,13 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.data.model.BS
+import app.aaps.core.interfaces.constraints.ConstraintsChecker
+import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.notifications.Notification
+import app.aaps.core.interfaces.stats.TddCalculator
+import app.aaps.core.interfaces.ui.UiInteraction
+import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -75,6 +82,12 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
     private val determineBasalBoostV5: DetermineBasalBoostV5,
     // Provider breaks the DI cycle (OpenAPSBoostPlugin injects Provider<OpenAPSBoostV5Plugin> for runShadow).
     private val openAPSBoostEngine: Provider<OpenAPSBoostPlugin>,
+    // Auto-config from V1 history on first activation (2026-06-26).
+    private val persistenceLayer: PersistenceLayer,
+    private val tddCalculator: TddCalculator,
+    private val constraintsChecker: ConstraintsChecker,
+    private val dateUtil: DateUtil,
+    private val uiInteraction: UiInteraction,
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -112,9 +125,98 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
      * override the SMB. Selecting plain "Boost" runs the same engine with v5Active=false.
      */
     override fun invoke(initiator: String, tempBasalFallback: Boolean) {
+        // First-activation: seed the V5 knobs from the user's own V1 history (before the first dose
+        // this cycle, so the engine picks up the values immediately). One-shot, guarded, never
+        // overrides a knob the user already tuned.
+        runCatching { maybeAutoConfigure() }
+            .onFailure { aapsLogger.error(LTag.APS, "BoostV5 auto-config failed (non-fatal)", it) }
         // Run the shared engine with the V5 override active. lastAPSResult/lastAPSRun delegate to
         // the engine (see above), so the result is exposed the instant runEngine sets it.
         openAPSBoostEngine.get().runEngine(initiator, tempBasalFallback, v5Active = true)
+    }
+
+    /**
+     * Populate the V5 knobs from the user's last-14-day V1 dosing + glycaemia the first time V5 runs
+     * active. Suggestion-only: writes a knob ONLY if the user hasn't already set it (getIfExists ==
+     * null). If there isn't enough history yet, does nothing and leaves the flag UNSET so it retries
+     * on a later cycle once data accrues. Never changes the dosing path itself — only its settings.
+     */
+    private fun maybeAutoConfigure() {
+        if (preferences.get(BooleanKey.ApsBoostV5AutoConfigDone)) return
+
+        val now = dateUtil.now()
+        val start = now - 14L * 24 * 60 * 60 * 1000
+
+        // TDD (median over available days) + days-of-data.
+        val tdds = tddCalculator.calculate(14, allowMissingDays = true)
+        val tddValues = mutableListOf<Double>()
+        if (tdds != null) for (i in 0 until tdds.size()) {
+            val t = tdds.valueAt(i)
+            val total = if (t.totalAmount > 0) t.totalAmount else t.basalAmount + t.bolusAmount
+            if (total > 0) tddValues.add(total)
+        }
+        val tddMedian = median(tddValues)
+        val daysWithData = tddValues.size
+
+        // Boluses split into manual (meal) vs SMB.
+        val boluses = persistenceLayer.getBolusesFromTimeToTime(start, now, true)
+        val manual = boluses.filter { it.type == BS.Type.NORMAL && it.amount > 0 }.map { it.amount }
+        val smb = boluses.filter { it.type == BS.Type.SMB && it.amount > 0 }.map { it.amount }
+
+        // Glycaemia (TBR / severe / mean) from CGM.
+        val bgs = persistenceLayer.getBgReadingsDataFromTimeToTime(start, now, true)
+        val n = bgs.size
+        val tbr70 = if (n > 0) 100.0 * bgs.count { it.value in 1.0..69.9 } / n else 0.0
+        val sev54 = if (n > 0) 100.0 * bgs.count { it.value in 1.0..53.9 } / n else 0.0
+        val meanBg = if (n > 0) bgs.sumOf { it.value } / n else 0.0
+
+        val suggestion = BoostV5AutoConfig.compute(
+            BoostV5AutoConfig.V1Profile(
+                daysWithData = daysWithData, bgReadingCount = n, tddMedianU = tddMedian,
+                manualBolusesU = manual, smbAmountsU = smb,
+                tbrBelow70Pct = tbr70, timeBelow54Pct = sev54, meanGlucoseMgdl = meanBg,
+                currentMaxIobU = constraintsChecker.getMaxIOBAllowed().value(),
+                currentMaxBolusU = constraintsChecker.getMaxBolusAllowed().value()
+            )
+        )
+        if (suggestion == null) {
+            aapsLogger.info(LTag.APS, "BoostV5 auto-config: insufficient V1 history (days=$daysWithData, bg=$n) — will retry")
+            return
+        }
+
+        // Apply only knobs the user hasn't explicitly set.
+        val applied = mutableListOf<String>()
+        putDoubleIfUnset(DoubleKey.ApsBoostV5Aggression, suggestion.aggression, applied)
+        putDoubleIfUnset(DoubleKey.ApsBoostV5HypoCaution, suggestion.hypoCaution, applied)
+        putDoubleIfUnset(DoubleKey.ApsBoostV5ConfirmedCapU, suggestion.confirmedCapU, applied)
+        putDoubleIfUnset(DoubleKey.ApsBoostV5CommittedCapU, suggestion.committedCapU, applied)
+        putDoubleIfUnset(DoubleKey.ApsBoostMaxIob, suggestion.maxIobU, applied)
+        putDoubleIfUnset(DoubleKey.ApsBoostBolus, suggestion.bolusCapU, applied)
+        if (preferences.getIfExists(BooleanKey.ApsBoostV5FastCarbConfirm) == null) {
+            preferences.put(BooleanKey.ApsBoostV5FastCarbConfirm, suggestion.fastCarbConfirm)
+            applied += "fastCarbConfirm=${suggestion.fastCarbConfirm}"
+        }
+
+        preferences.put(BooleanKey.ApsBoostV5AutoConfigDone, true)
+        aapsLogger.info(LTag.APS, "BoostV5 auto-config applied [$applied]; rationale: ${suggestion.rationale}")
+        uiInteraction.addNotification(
+            Notification.USER_MESSAGE,
+            "Boost V5 configured from your last 14 days: " + suggestion.rationale.joinToString("; "),
+            Notification.INFO
+        )
+    }
+
+    private fun putDoubleIfUnset(key: DoubleKey, value: Double, applied: MutableList<String>) {
+        if (preferences.getIfExists(key) == null) {
+            preferences.put(key, value)
+            applied += "${key.key}=$value"
+        }
+    }
+
+    private fun median(xs: List<Double>): Double {
+        if (xs.isEmpty()) return 0.0
+        val s = xs.sorted()
+        return if (s.size % 2 == 1) s[s.size / 2] else (s[s.size / 2 - 1] + s[s.size / 2]) / 2.0
     }
 
     // Enable/show under the same condition as plain Boost (temp-basal-capable pump) — delegate to
