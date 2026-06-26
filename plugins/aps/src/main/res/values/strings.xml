@@ -76,9 +76,9 @@
     <string name="boost_v5_active_dosing_title">V5 active dosing (ALPHA)</string>
     <string name="boost_v5_active_dosing_summary">EXPERIMENTAL — when ON, the V5 observe-confirm-commit engine replaces the SMB dose on cycles SMBs are permitted. V1 still controls basal and all safety gates. WARNING: this delivers insulin from an alpha algorithm; review closely and turn OFF to revert instantly.</string>
     <string name="boost_v5_confirmed_cap_title">V5 CONFIRMED dose cap (U)</string>
-    <string name="boost_v5_confirmed_cap_summary">Hard upper limit on V5\'s CONFIRMED commit-shot SMB. Lower this to tighten V5 during alpha. Default: 1.0 U</string>
+    <string name="boost_v5_confirmed_cap_summary">Hard upper limit on V5\'s CONFIRMED commit-shot SMB. Lower this to tighten V5 during alpha. Default: 2.5 U</string>
     <string name="boost_v5_committed_cap_title">V5 COMMITTED dose cap (U)</string>
-    <string name="boost_v5_committed_cap_summary">Hard upper limit on V5\'s per-cycle COMMITTED holding SMB. Default: 0.25 U</string>
+    <string name="boost_v5_committed_cap_summary">Hard upper limit on V5\'s per-cycle COMMITTED holding SMB. Default: 0.5 U</string>
     <string name="boost_v6_pre_meal_target_title">V6 anticipatory pre-meal target</string>
     <string name="boost_v6_pre_meal_target_summary">EXPERIMENTAL — learns your habitual meal times (from V5 meal commits) and applies a low target shortly before a learned meal so insulin is working when carbs land. Exercise and post-exercise recovery override it. When OFF it runs in SHADOW (logs \"V6 pre-meal WOULD apply\" without changing dosing) so you can verify the learned times first.</string>
     <string name="boost_v6_pre_meal_target_mgdl_title">V6 pre-meal target (mg/dL)</string>

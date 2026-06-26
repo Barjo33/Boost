@@ -69,11 +69,11 @@ enum class DoubleKey(
     // Boost V5 — three (and only three) user-facing knobs per the minimal-settings tenet
     ApsBoostV5Aggression("boost_v5_aggression", 1.0, 0.7, 1.3, defaultedBySM = true),
     // Boost V5 active-dosing alpha (2026-06-11) — user-adjustable dose caps so the operator can
-    // tune V5's commit/holding doses live. Default to the validated Fix-6 value; range to 5.0U so
-    // higher-insulin-need users (and big meals) aren't clipped — 2026-06-14: a 90g meal's commit
-    // wanted 3.31U but was clipped to the old 2.0 ceiling, delaying coverage (peak 255).
-    ApsBoostV5ConfirmedCapU("boost_v5_confirmed_cap_u", 1.0, 0.0, 5.0, defaultedBySM = true),
-    ApsBoostV5CommittedCapU("boost_v5_committed_cap_u", 0.25, 0.0, 1.0, defaultedBySM = true),
+    // tune V5's commit/holding doses live. 2026-06-26: defaults raised to match the developer's
+    // running build (confirmed 1.0→2.5, committed 0.25→0.5) and ranges widened (confirmed 5.0→7.5,
+    // committed 1.0→2.5) so higher-insulin-need users and big meals aren't clipped.
+    ApsBoostV5ConfirmedCapU("boost_v5_confirmed_cap_u", 2.5, 0.0, 7.5, defaultedBySM = true),
+    ApsBoostV5CommittedCapU("boost_v5_committed_cap_u", 0.5, 0.0, 2.5, defaultedBySM = true),
     ApsBoostV5HypoCaution("boost_v5_hypo_caution", 1.0, 1.0, 2.0, defaultedBySM = true),
     ApsBoostV5Sensitivity("boost_v5_sensitivity", 1.0, 0.8, 1.2, defaultedBySM = true),
 
