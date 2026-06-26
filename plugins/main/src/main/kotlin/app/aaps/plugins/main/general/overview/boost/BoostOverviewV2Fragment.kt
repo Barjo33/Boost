@@ -626,7 +626,7 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
             binding.v2PillDynisf.contentDescription = "Dynamic ISF: $dynDisp $unitsStr"
             binding.v2PillTdd.contentDescription = "Total daily dose: ${if (tddDisplay > 0) String.format(Locale.getDefault(), "%.1f units", tddDisplay) else "unavailable"}"
             binding.v2PillProfile.contentDescription =
-                if (boostStatus.isV5Active) "Boost V5 ${boostStatus.v5State.verb}, profile ${boostStatus.profilePercentage} percent"
+                if (boostStatus.isV5Active) "Boost V6 ${boostStatus.v5State.verb}, profile ${boostStatus.profilePercentage} percent"
                 else "Boost tier: ${binding.v2PillProfileTier.text}, profile ${boostStatus.profilePercentage} percent"
         }
     }
@@ -666,7 +666,7 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
         }
 
         binding.v2V5Strip.contentDescription =
-            "Boost V5 ${bs.v5State.verb}, score ${String.format(Locale.getDefault(), "%.2f", bs.v5Score)}, dose ${String.format(Locale.getDefault(), "%.2f", bs.v5FinalDose)} units"
+            "Boost V6 ${bs.v5State.verb}, score ${String.format(Locale.getDefault(), "%.2f", bs.v5Score)}, dose ${String.format(Locale.getDefault(), "%.2f", bs.v5FinalDose)} units"
     }
 
     @SuppressLint("SetTextI18n")
@@ -687,7 +687,7 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
         }
         sb.append("\n\nDelta accel: ${String.format(Locale.getDefault(), "%.1f", bs.deltaAccl)}%")
         sb.append("\n\n--- Script Debug ---\n${bs.scriptDebugText.ifEmpty { "(no debug output)" }}")
-        OKDialog.show(a, "Boost V5 decision", sb.toString())
+        OKDialog.show(a, "Boost V6 decision", sb.toString())
     }
 
     // --- Profile ---

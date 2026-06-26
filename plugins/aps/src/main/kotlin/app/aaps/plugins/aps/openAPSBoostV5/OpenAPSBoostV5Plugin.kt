@@ -207,7 +207,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             val pretty = applied.joinToString("\n") { "• " + it.removePrefix("ApsBoostV5").removePrefix("ApsBoost") }
             uiInteraction.addNotification(
                 Notification.USER_MESSAGE,
-                "Boost V5 set ${applied.size} setting(s) from your last 14 days (your other settings were kept):\n$pretty",
+                "Boost V6 set ${applied.size} setting(s) from your last 14 days (your other settings were kept):\n$pretty",
                 Notification.INFO
             )
         }

@@ -1262,14 +1262,14 @@ open class OpenAPSBoostPlugin @Inject constructor(
             if (v5Active && microBolusAllowed && v5decision != null && !v5Asleep && !cumulativeCapReached) {
                 val v1WouldDose = it.units ?: 0.0
                 it.units = v5decision.finalDose
-                it.reason.append("V5-ACTIVE drove SMB ${Round.roundTo(v5decision.finalDose, 0.001)}U (V1 would=${Round.roundTo(v1WouldDose, 0.001)}U, state=${v5decision.mealHypothesis}); ")
-                aapsLogger.info(LTag.APS, "V5-ACTIVE override: SMB ${v1WouldDose} → ${v5decision.finalDose} state=${v5decision.mealHypothesis}")
+                it.reason.append("V6-ACTIVE drove SMB ${Round.roundTo(v5decision.finalDose, 0.001)}U (base would=${Round.roundTo(v1WouldDose, 0.001)}U, state=${v5decision.mealHypothesis}); ")
+                aapsLogger.info(LTag.APS, "V6-ACTIVE override: SMB ${v1WouldDose} → ${v5decision.finalDose} state=${v5decision.mealHypothesis}")
             } else if (v5Active && v5decision != null && cumulativeCapReached) {
                 it.units = 0.0
-                it.reason.append("V5 suppressed (cumulative SMB cap ${Round.roundTo(recentSmbVolume60Min, 0.01)}U/${Round.roundTo(cumulativeSmbCap60Min, 0.01)}U reached); ")
-                aapsLogger.info(LTag.APS, "V5-ACTIVE cumulative SMB cap reached (${recentSmbVolume60Min}/${cumulativeSmbCap60Min}U) — SMB suspended")
+                it.reason.append("V6 suppressed (cumulative SMB cap ${Round.roundTo(recentSmbVolume60Min, 0.01)}U/${Round.roundTo(cumulativeSmbCap60Min, 0.01)}U reached); ")
+                aapsLogger.info(LTag.APS, "V6-ACTIVE cumulative SMB cap reached (${recentSmbVolume60Min}/${cumulativeSmbCap60Min}U) — SMB suspended")
             } else if (v5Active && v5Asleep && v5decision != null) {
-                it.reason.append("V5 suppressed (SLEEPING) — V1 SMB ${Round.roundTo(it.units ?: 0.0, 0.001)}U; ")
+                it.reason.append("V6 suppressed (SLEEPING) — base SMB ${Round.roundTo(it.units ?: 0.0, 0.001)}U; ")
             }
 
             // V6: surface the anticipatory pre-meal target decision computed earlier this cycle.

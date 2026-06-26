@@ -1,4 +1,4 @@
-# Boost (V5 / V6) — experimental AndroidAPS fork
+# Boost V6 — experimental AndroidAPS fork
 
 > ⚠️ **Experimental. Not medical advice. Not a released or approved product.**
 > This is a developer's research fork of AndroidAPS that changes the automated insulin-dosing
@@ -11,10 +11,11 @@
 
 Boost keeps the entire AndroidAPS engine — basal, DynISF / `future_sens`, glucose predictions and
 **every safety gate** — and replaces **only the SMB decision** with a meal-aware state machine plus
-a layer of personal context (activity, heart rate, sleep).
+a layer of personal context (activity, heart rate, sleep). The current generation is **V6**, and it
+has two layers: a meal-hypothesis dosing core, and a set of personal-context learners on top.
 
-**V5 — the meal-hypothesis state machine.** Instead of sizing one isolated micro-bolus each cycle,
-V5 carries a *meal hypothesis* across cycles and scales dosing to its confidence:
+**The dosing core — a meal-hypothesis state machine.** Instead of sizing one isolated micro-bolus
+each cycle, Boost carries a *meal hypothesis* across cycles and scales dosing to its confidence:
 
 `IDLE → OBSERVING → CONFIRMED → COMMITTED → RECOVERING`
 
@@ -30,9 +31,9 @@ Two cascade controls bound it: an **aggression budget** (a hard ceiling on insul
 throttles the budget — higher modelled risk allows less insulin — and a recent-low penalty pulls
 dosing back *before* a low rather than reacting after one.
 
-**V6 — personal context.** On top of V5, V6 adds the learners: a **heart-rate / step** feed
-(activity load + sleep detection), a **sleep-window** learner, and **meal-time** learning. These
-shape sensitivity and the overnight behaviour described in §5.
+**Personal context — the learners.** On top of the dosing core, V6 adds the learners: a
+**heart-rate / step** feed (activity load + sleep detection), a **sleep-window** learner, and
+**meal-time** learning. These shape sensitivity and the overnight behaviour described in §5.
 
 ---
 
@@ -43,26 +44,26 @@ Boost is selected as your APS plugin. **Active dosing is opt-in by which plugin 
 | APS plugin you select | What drives your pump |
 |---|---|
 | (any non-Boost engine) | unchanged — Boost not involved |
-| **"Boost"** | the shared engine with V5 in **shadow** — V5 computes what it *would* do and logs it to Nightscout, but it does **not** drive the pump |
-| **"Boost V5"** | V5 **active** — the state machine drives the SMB |
+| **"Boost"** | the shared engine with the override in **shadow** — it computes what it *would* do and logs it to Nightscout, but it does **not** drive the pump |
+| **"Boost V6"** | **active** — the state machine drives the SMB |
 
-A freshly built copy does **not** auto-dose on V5 — you must deliberately select the "Boost V5"
+A freshly built copy does **not** auto-dose — you must deliberately select the "Boost V6"
 plugin. **The supported path for anyone but the developer is shadow first**: run "Boost", watch what
-V5 *would* have done in Nightscout for a couple of weeks, then decide.
+it *would* have done in Nightscout for a couple of weeks, then decide.
 
 ---
 
 ## 3. Auto-configuration (first activation)
 
-The first time V5 runs active, Boost **seeds its settings from your own recent dosing history**
+The first time V6 runs active, Boost **seeds its settings from your own recent dosing history**
 (last 14 days) rather than dropping you onto generic defaults. The principle (from the shadow-equivalence
-work): V5's dose calibration is *co-adapted to the individual*, so the safe onboarding is to **start
+work): the dose calibration is *co-adapted to the individual*, so the safe onboarding is to **start
 where your prior dosing left off** and tune from there — not a cold jump to a stranger's numbers. It
 works from **any prior engine** (standard oref/AndroidAPS, not just Boost), since it reads only dosing
 history + glycaemia.
 
 **How it behaves (the guard-rails):**
-- Runs **once**, in the background, the first cycle V5 is active. Gated by a one-shot flag.
+- Runs **once**, in the background, the first cycle V6 is active. Gated by a one-shot flag.
 - **Suggestion-only** — it writes a setting **only if you haven't already changed it** from the factory
   default. It never overrides anything you've tuned.
 - Needs **≥ 7 days of data and ≥ 1500 CGM readings**. If there isn't enough yet it does nothing and
@@ -98,25 +99,25 @@ day-one value is deliberately cautious and is the one knob most worth reviewing 
 
 The derivation was checked against **12 real users from a research database** (an OpenAPS/Trio cohort
 and an AndroidAPS cohort, 400–720 days each): for every user the rules were applied to their real
-history to produce the knobs, then those knobs were run through the **Boost V5 engine over the user's
+history to produce the knobs, then those knobs were run through the **Boost V6 engine over the user's
 own logged cycles**, and the resulting dosing was probed for danger.
 
 **Result: no dangerous dosing.** Dose-into-low events were ≤ 0.2% of dosing cycles — the engine's hard
 *minGuardBG ≥ 80* gate blocks dosing into a projected low regardless of the knobs. Well-controlled users
-ran at stock (neutral) V5 behaviour; for the hypo-prone users the protective knobs fired and **reduced**
+ran at stock (neutral) V6 behaviour; for the hypo-prone users the protective knobs fired and **reduced**
 dose-into-low events 15–24%. In no case did auto-config make dosing *more* aggressive than the engine's
-own default. (Caveat: that replay is *open-loop* — it doesn't feed V5's doses back into glucose — so
+own default. (Caveat: that replay is *open-loop* — it doesn't feed V6's doses back into glucose — so
 absolute daily/hourly insulin totals from it are inflated artifacts, not real closed-loop amounts.) The
 validation is what prompted adding the cumulative-60-min cap above.
 
 ---
 
-## 4. Settings reference (V5 / V6)
+## 4. Settings reference (V6)
 
 All Boost settings live under the plugin preferences. Defaults shown; most are auto-seeded (§3).
 
-**V5 dosing**
-- **Aggression** `0.7–1.3` (1.0) — global confidence/size multiplier on V5 dosing.
+**Dosing**
+- **Aggression** `0.7–1.3` (1.0) — global confidence/size multiplier on V6 dosing.
 - **HypoCaution** `1.0–2.0` (1.0) — scales the aggression budget down; higher = more hypo-defensive.
 - **Sensitivity** `0.8–1.2` (1.0) — fine sensitivity multiplier on top of DynISF.
 - **CONFIRMED dose cap** `0–7.5 U` (2.5) — hard limit on the meal-confirm commit shot.
@@ -164,7 +165,7 @@ ever-earlier when overnight HR data was sparse.
 
 **What night mode does to dosing** (`ApsBoostNightModeEnabled`, optionally auto-triggered by sleep
 detection rather than a clock): it **raises the BG target** by a configurable offset (default
-27 mg/dL) and **suppresses SMB** while you sleep, and V5's aggressive meal override is **gated off**
+27 mg/dL) and **suppresses SMB** while you sleep, and the aggressive meal override is **gated off**
 when asleep — so overnight Boost runs gentle and basal-led, then resumes full behaviour on a genuine
 wake. Optional guards disable night mode if carbs are on board or a low temp-target is set.
 
@@ -172,11 +173,11 @@ wake. Optional guards disable night mode if carbs are on board or a low temp-tar
 
 ## 6. Testing & evidence
 
-Single developer running V5 **active** on their own pump for ~5 months, plus a small cohort running it
+Single developer running V6 **active** on their own pump for ~5 months, plus a small cohort running it
 in **shadow** (their existing engine doses; Boost logs what it would do). **This is real-world
 experience and shadow analysis, not a clinical trial.**
 
-**Developer's own V5-active glycaemia** (honest, full picture):
+**Developer's own V6-active glycaemia** (honest, full picture):
 - **Time in range (70–180): ~85%**, mean ~6.9 mmol/L.
 - **Normal weeks: within hypo targets** — TBR<70 ~2.5–3%, severe <54 < 0.5%.
 - **Very-high-activity weeks (multi-day festival / heavy training): hypo above target** — TBR<70 7–8%,

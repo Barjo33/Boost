@@ -45,13 +45,13 @@
     <string name="openaps_boost_v3mlg3">Boost v4.4.2 (G3)</string>
     <string name="boost_v3mlg3_shortname">v4.4.2</string>
     <string name="description_boost_v3mlg3">Boost v4.4.2 (G3) — adds T4 velocity fallback (delta &gt; 8) for sustained climbs + fast-carb override eBG escape (eBG &gt; target+100), on top of v4.4.1 G3 release fixes</string>
-    <string name="openaps_boost_v5">Boost V5</string>
-    <string name="boost_v5_shortname">V5</string>
-    <string name="description_boost_v5">Boost V5 — Observe-Confirm-Commit dosing. Runs the Boost engine with V5\'s meal-aware SMB override. Select this as your APS to use V5; select plain \"Boost\" for V1 without the override.</string>
-    <string name="boost_v5_v6_settings">Boost V5 / V6 controls</string>
-    <string name="boost_v1_smb_sizing_title">Boost V1 SMB sizing</string>
-    <string name="boost_v5_fast_carb_confirm_title">V5 fast-carb fast-path</string>
-    <string name="boost_v5_fast_carb_confirm_summary">When a rise is sharp AND accelerating AND the meal score corroborates (and you\'re awake, not exercising), V5 confirms the meal in one cycle instead of waiting — so fast carbs get covered ~15 min earlier. Replay-validated to avoid firing on sleep/compression. Toggle off to revert to the standard observe-confirm timing.</string>
+    <string name="openaps_boost_v5">Boost V6</string>
+    <string name="boost_v5_shortname">V6</string>
+    <string name="description_boost_v5">Boost V6 — Observe-Confirm-Commit dosing. Runs the Boost engine with V6\'s meal-aware SMB override. Select this as your APS to use V6; select plain \"Boost\" to run the base engine with the override in shadow.</string>
+    <string name="boost_v5_v6_settings">Boost V6 controls</string>
+    <string name="boost_v1_smb_sizing_title">Boost base-engine SMB sizing</string>
+    <string name="boost_v5_fast_carb_confirm_title">V6 fast-carb fast-path</string>
+    <string name="boost_v5_fast_carb_confirm_summary">When a rise is sharp AND accelerating AND the meal score corroborates (and you\'re awake, not exercising), V6 confirms the meal in one cycle instead of waiting — so fast carbs get covered ~15 min earlier. Replay-validated to avoid firing on sleep/compression. Toggle off to revert to the standard observe-confirm timing.</string>
 
     <string name="boost_v5_aggression_title">Aggression</string>
     <string name="boost_v5_aggression_summary">Scales the catch-up dose at meal CONFIRMED. 1.0 = calibrated default; lower = gentler commit dose, higher = more aggressive. Range 0.7-1.3.</string>
@@ -73,14 +73,14 @@
     <string name="boost_max_iob_summary">Maximum IOB for accelerated bolusing. Above this, regular oref1 used. Default: 1.0 U</string>
     <string name="boost_cumulative_smb_cap_title">Cumulative SMB cap (60 min)</string>
     <string name="boost_cumulative_smb_cap_summary">Total SMB insulin (U) that may be delivered in any rolling 60-minute window. Caps insulin stacking during sustained climbs. Set to 0 to disable. Default: 1.5 U</string>
-    <string name="boost_v5_active_dosing_title">V5 active dosing (ALPHA)</string>
-    <string name="boost_v5_active_dosing_summary">EXPERIMENTAL — when ON, the V5 observe-confirm-commit engine replaces the SMB dose on cycles SMBs are permitted. V1 still controls basal and all safety gates. WARNING: this delivers insulin from an alpha algorithm; review closely and turn OFF to revert instantly.</string>
-    <string name="boost_v5_confirmed_cap_title">V5 CONFIRMED dose cap (U)</string>
-    <string name="boost_v5_confirmed_cap_summary">Hard upper limit on V5\'s CONFIRMED commit-shot SMB. Lower this to tighten V5 during alpha. Default: 2.5 U</string>
-    <string name="boost_v5_committed_cap_title">V5 COMMITTED dose cap (U)</string>
-    <string name="boost_v5_committed_cap_summary">Hard upper limit on V5\'s per-cycle COMMITTED holding SMB. Default: 0.5 U</string>
+    <string name="boost_v5_active_dosing_title">V6 active dosing (ALPHA)</string>
+    <string name="boost_v5_active_dosing_summary">EXPERIMENTAL — when ON, the V6 observe-confirm-commit engine replaces the SMB dose on cycles SMBs are permitted. The base engine still controls basal and all safety gates. WARNING: this delivers insulin from an alpha algorithm; review closely and turn OFF to revert instantly.</string>
+    <string name="boost_v5_confirmed_cap_title">V6 CONFIRMED dose cap (U)</string>
+    <string name="boost_v5_confirmed_cap_summary">Hard upper limit on V6\'s CONFIRMED commit-shot SMB. Lower this to tighten V6 during alpha. Default: 2.5 U</string>
+    <string name="boost_v5_committed_cap_title">V6 COMMITTED dose cap (U)</string>
+    <string name="boost_v5_committed_cap_summary">Hard upper limit on V6\'s per-cycle COMMITTED holding SMB. Default: 0.5 U</string>
     <string name="boost_v6_pre_meal_target_title">V6 anticipatory pre-meal target</string>
-    <string name="boost_v6_pre_meal_target_summary">EXPERIMENTAL — learns your habitual meal times (from V5 meal commits) and applies a low target shortly before a learned meal so insulin is working when carbs land. Exercise and post-exercise recovery override it. When OFF it runs in SHADOW (logs \"V6 pre-meal WOULD apply\" without changing dosing) so you can verify the learned times first.</string>
+    <string name="boost_v6_pre_meal_target_summary">EXPERIMENTAL — learns your habitual meal times (from V6 meal commits) and applies a low target shortly before a learned meal so insulin is working when carbs land. Exercise and post-exercise recovery override it. When OFF it runs in SHADOW (logs \"V6 pre-meal WOULD apply\" without changing dosing) so you can verify the learned times first.</string>
     <string name="boost_v6_pre_meal_target_mgdl_title">V6 pre-meal target (mg/dL)</string>
     <string name="boost_v6_pre_meal_target_mgdl_summary">The low target applied during the pre-meal window. Lower = more pre-emptive insulin. Default: 72 mg/dL (4.0 mmol).</string>
     <string name="boost_v6_pre_meal_lead_min_title">V6 pre-meal lead time (min)</string>
