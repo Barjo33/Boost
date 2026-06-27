@@ -179,8 +179,8 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
         binding.v2BgGraph.gridLabelRenderer?.reloadStyles()
         binding.v2BgGraph.gridLabelRenderer?.textSize = 11f * resources.displayMetrics.scaledDensity
         binding.v2BgGraph.gridLabelRenderer?.labelVerticalWidth = axisWidth
-        binding.v2BgGraph.gridLabelRenderer?.horizontalLabelsColor = Color.parseColor("#d4d9e1")
-        binding.v2BgGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#d4d9e1")
+        binding.v2BgGraph.gridLabelRenderer?.horizontalLabelsColor = Color.parseColor("#ffffff")
+        binding.v2BgGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#ffffff")
 
         binding.v2IobGraph.gridLabelRenderer?.gridColor = gridColor
         binding.v2IobGraph.gridLabelRenderer?.reloadStyles()
@@ -188,7 +188,7 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
         binding.v2IobGraph.gridLabelRenderer?.isHorizontalLabelsVisible = false
         binding.v2IobGraph.gridLabelRenderer?.labelVerticalWidth = axisWidth
         binding.v2IobGraph.gridLabelRenderer?.numVerticalLabels = 3
-        binding.v2IobGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#d4d9e1")
+        binding.v2IobGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#ffffff")
 
         binding.v2Notifications.setHasFixedSize(false)
         binding.v2Notifications.layoutManager = LinearLayoutManager(view.context)
@@ -928,7 +928,7 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
                 sensGraph.gridLabelRenderer?.labelVerticalWidth = axisWidth
                 sensGraph.gridLabelRenderer?.gridColor = Color.parseColor("#1a1d28")
                 sensGraph.gridLabelRenderer?.textSize = 11f * resources.displayMetrics.scaledDensity
-                sensGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#d4d9e1")
+                sensGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#ffffff")
 
                 val nowSeries = com.jjoe64.graphview.series.LineGraphSeries(arrayOf(
                     com.jjoe64.graphview.series.DataPoint(dateUtil.now().toDouble(), 0.7),
