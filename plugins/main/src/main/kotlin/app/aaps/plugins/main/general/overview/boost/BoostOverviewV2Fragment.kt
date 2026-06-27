@@ -606,17 +606,10 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
             }
             binding.v2PillTddValue.text = if (tddDisplay > 0) String.format(Locale.getDefault(), "%.1fu", tddDisplay) else "---"
 
-            // Profile pill — V5: state short name (coloured by state); legacy: tier label
-            if (boostStatus.isV5Active) {
-                binding.v2PillProfileTier.text = boostStatus.v5State.short
-                binding.v2PillProfileTier.setTextColor(boostStatus.v5State.colorHex.toInt())
-            } else {
-                val tierShort = boostStatus.tierLabel
-                    .replace(Regex("""^Tier\s+\d+\s*-\s*"""), "")
-                    .take(12)
-                binding.v2PillProfileTier.text = tierShort
-                binding.v2PillProfileTier.setTextColor(boostStatus.tier.colorHex.toInt())
-            }
+            // Profile pill — active profile name + percent only (meal-management state lives
+            // in the V5 strip below). Tap opens the profile-switch dialog.
+            binding.v2PillProfileTier.text = profileFunction.getOriginalProfileName()
+            binding.v2PillProfileTier.setTextColor(Color.parseColor("#00d4ff"))
             binding.v2PillProfilePct.text = "${boostStatus.profilePercentage}%"
 
             // V5 state strip (active-only)
@@ -628,8 +621,7 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
             binding.v2PillDynisf.contentDescription = "Dynamic ISF: $dynDisp $unitsStr"
             binding.v2PillTdd.contentDescription = "Total daily dose: ${if (tddDisplay > 0) String.format(Locale.getDefault(), "%.1f units", tddDisplay) else "unavailable"}"
             binding.v2PillProfile.contentDescription =
-                if (boostStatus.isV5Active) "Boost V6 ${boostStatus.v5State.verb}, profile ${boostStatus.profilePercentage} percent"
-                else "Boost tier: ${binding.v2PillProfileTier.text}, profile ${boostStatus.profilePercentage} percent"
+                "Profile ${profileFunction.getOriginalProfileName()}, ${boostStatus.profilePercentage} percent. Tap to change profile."
         }
     }
 
@@ -1052,14 +1044,9 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
                             "--- Script Debug ---\n${bs.scriptDebugText.ifEmpty { "(no debug output)" }}")
                 }
                 R.id.v2_pill_profile -> {
-                    val bs = lastBoostStatus
-                    if (bs.isV5Active) {
-                        showV5Detail()
-                    } else {
-                        val fcLine = if (bs.fastCarbProtection) "Fast Carb Protection active\n\n" else ""
-                        OKDialog.show(a, "Boost Decision",
-                            "${fcLine}Current tier: ${bs.tierLabel}\n\nReason: ${bs.tierReason}\n\nDelta accel: ${String.format(Locale.getDefault(), "%.1f", bs.deltaAccl)}")
-                    }
+                    // Profile pill opens the standard profile-switch dialog. Meal-management
+                    // state/detail is in the V5 strip below (tap it for the full decision).
+                    uiInteraction.runProfileSwitchDialog(childFragmentManager)
                 }
 
                 // V5 state strip tap -> V5 decision detail

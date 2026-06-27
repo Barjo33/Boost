@@ -295,7 +295,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
     override fun preprocessPreferences(preferenceFragment: PreferenceFragmentCompat) {
         super.preprocessPreferences(preferenceFragment)
         val smbAlwaysEnabled = preferences.get(BooleanKey.ApsUseSmbAlways)
-        val allowAllBgSources = preferences.get(BooleanKey.ApsBoostAllowAllBgSources)
+        val allowAllBgSources = true // Boost: always allow all BG sources (forced on; user toggle removed)
         val advancedFiltering = allowAllBgSources || activePlugin.activeBgSource.advancedFilteringSupported()
         preferenceFragment.findPreference<SwitchPreference>(BooleanKey.ApsUseSmbWithCob.key)?.isVisible = !smbAlwaysEnabled || !advancedFiltering
         preferenceFragment.findPreference<SwitchPreference>(BooleanKey.ApsUseSmbWithLowTt.key)?.isVisible = !smbAlwaysEnabled || !advancedFiltering
@@ -802,7 +802,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
         // End of checks, start gathering data
 
         val smbEnabled = preferences.get(BooleanKey.ApsUseSmb)
-        val allowAllBgSources = preferences.get(BooleanKey.ApsBoostAllowAllBgSources)
+        val allowAllBgSources = true // Boost: always allow all BG sources (forced on; user toggle removed)
         val advancedFiltering = allowAllBgSources || constraintsChecker.isAdvancedFilteringEnabled().also { inputConstraints.copyReasons(it) }.value()
         val now = dateUtil.now()
 
@@ -1820,8 +1820,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsMaxMinutesOfBasalToLimitSmb, title = R.string.smb_max_minutes_summary))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsUamMaxMinutesOfBasalToLimitSmb, dialogMessage = R.string.uam_smb_max_minutes, title = R.string.uam_smb_max_minutes_summary))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsCarbsRequestThreshold, dialogMessage = R.string.carbs_req_threshold_summary, title = R.string.carbs_req_threshold))
-                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostAllowAllBgSources, summary = R.string.boost_allow_all_bg_sources_summary, title = R.string.boost_allow_all_bg_sources_title))
-                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostBypassVersionCheck, summary = R.string.boost_bypass_version_check_summary, title = R.string.boost_bypass_version_check_title))
+                // allow-all-BG-sources + bypass-version-check toggles removed 2026-06-27 —
+                // both are now forced always-on in code (no longer user-facing levers).
                 // V5/V6 controls intentionally NOT here — they live in the selectable "Boost V5"
                 // plugin's screen (OpenAPSBoostV5Plugin.addPreferenceScreen). V1 is V5-free.
             })

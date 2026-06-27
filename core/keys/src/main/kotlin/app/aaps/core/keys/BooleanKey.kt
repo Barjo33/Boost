@@ -71,7 +71,7 @@ enum class BooleanKey(
     ApsBoostAllowWithHighTt("enableBoost_with_high_temptarget", false, defaultedBySM = true),
     ApsBoostUseTdd("boost_use_tdd", false, defaultedBySM = true),
     ApsBoostAdjustSensitivity("boost_adjust_sensitivity", false, defaultedBySM = true),
-    ApsBoostAllowAllBgSources("boost_allow_all_bg_sources", false, defaultedBySM = true),
+    ApsBoostAllowAllBgSources("boost_allow_all_bg_sources", true, defaultedBySM = true),
     ApsBoostNightModeEnabled("boost_night_mode_enabled", false, defaultedBySM = true),
     ApsBoostNightModeDisableWithCob("boost_night_mode_disable_with_cob", false, defaultedBySM = true),
     ApsBoostNightModeDisableWithLowTt("boost_night_mode_disable_with_low_tt", false, defaultedBySM = true),
@@ -82,7 +82,7 @@ enum class BooleanKey(
 
     // Health Connect HR ingest (2026-06-03) — bridge for overnight HR from Garmin/Wear OS via Android Health Connect
     ApsBoostHealthConnectHrEnabled("boost_health_connect_hr_enabled", false, defaultedBySM = true),
-    ApsBoostBypassVersionCheck("boost_bypass_version_check", false, defaultedBySM = true),
+    ApsBoostBypassVersionCheck("boost_bypass_version_check", true, defaultedBySM = true),
     // Boost V5 active-dosing alpha (2026-06-11) — when ON, V5's observe-confirm-commit SMB REPLACES
     // V1's SMB on cycles V1 permits one. V1 still owns basal + all safety gates. Toggle OFF = instant revert.
     // DEPRECATED 2026-06-15: V5 is now a selectable APS plugin ("Boost V5"); selecting it IS
