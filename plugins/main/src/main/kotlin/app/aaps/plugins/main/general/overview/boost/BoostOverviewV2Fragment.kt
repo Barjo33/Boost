@@ -178,15 +178,15 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
         binding.v2BgGraph.gridLabelRenderer?.gridColor = gridColor
         binding.v2BgGraph.gridLabelRenderer?.reloadStyles()
         binding.v2BgGraph.gridLabelRenderer?.labelVerticalWidth = axisWidth
-        binding.v2BgGraph.gridLabelRenderer?.horizontalLabelsColor = Color.parseColor("#444444")
-        binding.v2BgGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#444444")
+        binding.v2BgGraph.gridLabelRenderer?.horizontalLabelsColor = Color.parseColor("#9aa0ad")
+        binding.v2BgGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#9aa0ad")
 
         binding.v2IobGraph.gridLabelRenderer?.gridColor = gridColor
         binding.v2IobGraph.gridLabelRenderer?.reloadStyles()
         binding.v2IobGraph.gridLabelRenderer?.isHorizontalLabelsVisible = false
         binding.v2IobGraph.gridLabelRenderer?.labelVerticalWidth = axisWidth
         binding.v2IobGraph.gridLabelRenderer?.numVerticalLabels = 3
-        binding.v2IobGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#444444")
+        binding.v2IobGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#9aa0ad")
 
         binding.v2Notifications.setHasFixedSize(false)
         binding.v2Notifications.layoutManager = LinearLayoutManager(view.context)
@@ -557,7 +557,7 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
                 }
                 RM.Mode.DISABLED_LOOP -> {
                     binding.v2AidStatus.text = "OFF"
-                    binding.v2AidDot.setBackgroundColor(Color.parseColor("#444444"))
+                    binding.v2AidDot.setBackgroundColor(Color.parseColor("#9aa0ad"))
                 }
                 RM.Mode.SUPER_BOLUS -> {
                     binding.v2AidStatus.text = "S.BOLUS"
@@ -790,7 +790,7 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
                 BoostOverviewHelper.ActivityMode.ACTIVE    -> Color.parseColor("#ffb300")
                 BoostOverviewHelper.ActivityMode.INACTIVE  -> Color.parseColor("#60a5fa")
                 BoostOverviewHelper.ActivityMode.SLEEP_IN  -> Color.parseColor("#c084fc")
-                BoostOverviewHelper.ActivityMode.BOOST_OFF -> Color.parseColor("#444444")
+                BoostOverviewHelper.ActivityMode.BOOST_OFF -> Color.parseColor("#9aa0ad")
                 else                                       -> Color.parseColor("#aaaaaa")
             }
             binding.v2ExerciseLabel.setTextColor(actColor)
@@ -925,7 +925,7 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
                 sensGraph.gridLabelRenderer?.numVerticalLabels = 3
                 sensGraph.gridLabelRenderer?.labelVerticalWidth = axisWidth
                 sensGraph.gridLabelRenderer?.gridColor = Color.parseColor("#1a1d28")
-                sensGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#444444")
+                sensGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#9aa0ad")
 
                 val nowSeries = com.jjoe64.graphview.series.LineGraphSeries(arrayOf(
                     com.jjoe64.graphview.series.DataPoint(dateUtil.now().toDouble(), 0.7),

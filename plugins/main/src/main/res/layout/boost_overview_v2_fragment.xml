@@ -47,50 +47,13 @@
             android:gravity="center"
             android:orientation="horizontal">
 
-            <TextView
-                android:id="@+id/v2_tab_home"
-                android:layout_width="wrap_content"
+            <!-- Sub-tabs (HOME/AUTO/STATS/HISTORY) removed 2026-06-27: they were non-functional
+                 placeholders (no click handlers, no destination screens). This LinearLayout now
+                 acts as a centred spacer balancing the BOOST badge and the AID-ON indicator. -->
+            <Space
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="HOME"
-                android:textSize="11sp"
-                android:textStyle="bold"
-                android:textColor="#00d4ff"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
-                tools:ignore="HardcodedText" />
-
-            <TextView
-                android:id="@+id/v2_tab_auto"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="AUTO"
-                android:textSize="11sp"
-                android:textColor="#9aa0ad"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
-                tools:ignore="HardcodedText" />
-
-            <TextView
-                android:id="@+id/v2_tab_stats"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="STATS"
-                android:textSize="11sp"
-                android:textColor="#9aa0ad"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
-                tools:ignore="HardcodedText" />
-
-            <TextView
-                android:id="@+id/v2_tab_history"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="HISTORY"
-                android:textSize="11sp"
-                android:textColor="#9aa0ad"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
-                tools:ignore="HardcodedText" />
+                android:layout_weight="1" />
         </LinearLayout>
 
         <!-- AID ON indicator -->
@@ -175,32 +138,83 @@
                         android:textColor="#e8eaf0"
                         tools:text="87U" />
 
-                    <TextView
-                        android:id="@+id/v2_pump_battery"
+                    <!-- battery -->
+                    <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:textSize="12sp"
-                        android:textColor="#aaaaaa"
-                        android:layout_marginTop="4dp"
-                        tools:text="72%" />
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="4dp">
 
-                    <TextView
-                        android:id="@+id/v2_pump_cannula_age"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textSize="11sp"
-                        android:textColor="#aaaaaa"
-                        android:layout_marginTop="2dp"
-                        tools:text="1d 4h" />
+                        <ImageView
+                            android:layout_width="14dp"
+                            android:layout_height="14dp"
+                            app:srcCompat="@drawable/ic_cp_age_battery"
+                            app:tint="#aaaaaa"
+                            android:importantForAccessibility="no"
+                            tools:ignore="ContentDescription" />
 
-                    <TextView
-                        android:id="@+id/v2_pump_sensor_age"
+                        <TextView
+                            android:id="@+id/v2_pump_battery"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="12sp"
+                            android:textColor="#aaaaaa"
+                            android:layout_marginStart="4dp"
+                            tools:text="72%" />
+                    </LinearLayout>
+
+                    <!-- cannula age -->
+                    <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:textSize="11sp"
-                        android:textColor="#aaaaaa"
-                        android:layout_marginTop="2dp"
-                        tools:text="4d 2h" />
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="2dp">
+
+                        <ImageView
+                            android:layout_width="14dp"
+                            android:layout_height="14dp"
+                            app:srcCompat="@drawable/ic_cp_age_cannula"
+                            app:tint="#aaaaaa"
+                            android:importantForAccessibility="no"
+                            tools:ignore="ContentDescription" />
+
+                        <TextView
+                            android:id="@+id/v2_pump_cannula_age"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="11sp"
+                            android:textColor="#aaaaaa"
+                            android:layout_marginStart="4dp"
+                            tools:text="1d 4h" />
+                    </LinearLayout>
+
+                    <!-- sensor age -->
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="2dp">
+
+                        <ImageView
+                            android:layout_width="14dp"
+                            android:layout_height="14dp"
+                            app:srcCompat="@drawable/ic_cp_age_sensor"
+                            app:tint="#aaaaaa"
+                            android:importantForAccessibility="no"
+                            tools:ignore="ContentDescription" />
+
+                        <TextView
+                            android:id="@+id/v2_pump_sensor_age"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="11sp"
+                            android:textColor="#aaaaaa"
+                            android:layout_marginStart="4dp"
+                            tools:text="4d 2h" />
+                    </LinearLayout>
                 </LinearLayout>
 
                 <!-- Centre column: BG Bobble -->
