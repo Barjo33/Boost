@@ -48,7 +48,7 @@ import kotlin.math.max
  *  - IOB line:              #60a5fa (blue)
  *  - IOB fill:              #60a5fa at 40 % opacity
  *  - Grid lines:            #1a1d28
- *  - Axis labels:           #333333
+ *  - Axis labels:           #aaaaaa (matches non-highlighted period buttons)
  */
 @Suppress("UNCHECKED_CAST")
 class BoostV2GraphData @Inject constructor(
@@ -89,8 +89,10 @@ class BoostV2GraphData @Inject constructor(
         /** Grid colour */
         val GRID_COLOR = Color.parseColor("#1a1d28")
 
-        /** Axis label colour */
-        val LABEL_COLOR = Color.parseColor("#333333")
+        /** Axis label colour — matches the non-highlighted period-selector buttons (#aaaaaa).
+         *  applyV2Theme() re-applies this to the BG & IOB graphs on every refresh, so this
+         *  constant (not the one-time onViewCreated setup) is the effective colour. */
+        val LABEL_COLOR = Color.parseColor("#aaaaaa")
     }
 
     // ── Internal state (mirrors GraphData) ───────────────────────────────
