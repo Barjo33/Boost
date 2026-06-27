@@ -230,10 +230,12 @@ to move ± 90 min**, and only learns from *genuine* HR/step wakes. This anchorin
 that used to ratchet the learned wake ever-earlier when overnight HR data was sparse.
 
 **What night mode does** (`ApsBoostNightModeEnabled`, optionally auto-triggered by sleep detection
-rather than a clock): **raises the BG target** by a configurable offset (default 27 mg/dL) and
-**suppresses SMB** while you sleep, and the aggressive meal override is **gated off** when asleep — so
-overnight Boost runs gentle and basal-led, then resumes full behaviour on a genuine wake. Optional
-guards disable night mode if carbs are on board or a low temp-target is set.
+rather than a clock): it **suppresses SMB** while you sleep — `isSMBModeEnabled` returns false, so the
+loop runs **basal/temp-basal only** and the V6 meal-hypothesis override is gated off too. There is **no
+target raise**: the configurable BG offset (default 27 mg/dL) is an *activation gate*, not a target —
+night mode only suppresses while BG is below `profileTarget + offset`, so if you're running high it
+lets SMB correct. So overnight Boost runs gentle and basal-led, then resumes full behaviour on a
+genuine wake. Optional guards disable night mode if carbs are on board or a low temp-target is set.
 
 ---
 

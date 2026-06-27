@@ -30,9 +30,11 @@ import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.validators.preferences.AdaptiveDoublePreference
 import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
+import app.aaps.core.validators.preferences.AdaptiveUnitPreference
 import app.aaps.plugins.aps.OpenAPSFragment
 import app.aaps.plugins.aps.R
 import org.json.JSONObject
@@ -490,11 +492,11 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         context: Context,
         requiredKey: String?,
     ) {
-        // Allow the V5 root, the V5/V6 knob screen, AND the shared engine sub-screen keys (V5
-        // builds them too, since it runs on the V1 engine).
+        // Allow the V5 root, the Advanced parent, AND the shared engine sub-screen keys (rebuilt
+        // by name when navigated into; they now live nested under "Advanced").
         if (requiredKey != null &&
             requiredKey != "openapsboostv5_settings" &&
-            requiredKey != "openapsboostv5_v6_knobs" &&
+            requiredKey != "boost_advanced_settings" &&
             requiredKey != "absorption_smb_advanced" &&
             requiredKey != "boost_default_aaps_settings" &&
             requiredKey != "boost_dynisf_settings" &&
@@ -512,22 +514,34 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             title = rh.gs(R.string.openaps_boost_v5)
             initialExpandedChildrenCount = 0
         }
-        // Shared Boost engine settings (basal/ISF/activity/HR/night mode/SMB safety) — V5 runs ON
-        // the V1 engine, so these must be reachable when "Boost V5" is the active APS.
-        openAPSBoostEngine.get().addBoostEngineCategories(preferenceManager, category, context)
-        // V5/V6-specific knobs — the only settings unique to V5.
-        category.addPreference(preferenceManager.createPreferenceScreen(context).apply {
-            key = "openapsboostv5_v6_knobs"
-            title = rh.gs(R.string.boost_v5_v6_settings)
-            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5Aggression, dialogMessage = R.string.boost_v5_aggression_summary, title = R.string.boost_v5_aggression_title))
-            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5HypoCaution, dialogMessage = R.string.boost_v5_hypo_caution_summary, title = R.string.boost_v5_hypo_caution_title))
+        // ── Essentials (top level) — the handful most users touch. Aggression/HypoCaution are
+        //    auto-seeded by auto-config; everything else is auto-configured or learned and lives
+        //    under "Advanced" below. ──
+        category.addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5Aggression, dialogMessage = R.string.boost_v5_aggression_summary, title = R.string.boost_v5_aggression_title))
+        category.addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5HypoCaution, dialogMessage = R.string.boost_v5_hypo_caution_summary, title = R.string.boost_v5_hypo_caution_title))
+        category.addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostMaxIob, dialogMessage = R.string.boost_max_iob_summary, title = R.string.boost_max_iob_title))
+        category.addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsMaxBasal, dialogMessage = R.string.openapsma_max_basal_summary, title = R.string.openapsma_max_basal_title))
+        category.addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostNightModeEnabled, summary = R.string.boost_night_mode_enabled_summary, title = R.string.boost_night_mode_enabled_title))
+        category.addPreference(AdaptiveUnitPreference(ctx = context, unitKey = UnitDoubleKey.ApsBoostNightModeBgOffset, dialogMessage = R.string.boost_night_mode_bg_offset_summary, title = R.string.boost_night_mode_bg_offset_title))
+        category.addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmb, summary = R.string.enable_smb_summary, title = R.string.enable_smb))
+        category.addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseUam, summary = R.string.enable_uam_summary, title = R.string.enable_uam))
+
+        // ── Advanced — advanced V6 dosing knobs + the full grouped-by-function engine tree.
+        //    Build it fully BEFORE attaching to the category. ──
+        val advanced = preferenceManager.createPreferenceScreen(context).apply {
+            key = "boost_advanced_settings"
+            title = rh.gs(app.aaps.core.ui.R.string.advanced_settings_title)
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5Sensitivity, dialogMessage = R.string.boost_v5_sensitivity_summary, title = R.string.boost_v5_sensitivity_title))
-            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostV5FastCarbConfirm, summary = R.string.boost_v5_fast_carb_confirm_summary, title = R.string.boost_v5_fast_carb_confirm_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5ConfirmedCapU, dialogMessage = R.string.boost_v5_confirmed_cap_summary, title = R.string.boost_v5_confirmed_cap_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5CommittedCapU, dialogMessage = R.string.boost_v5_committed_cap_summary, title = R.string.boost_v5_committed_cap_title))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostV5FastCarbConfirm, summary = R.string.boost_v5_fast_carb_confirm_summary, title = R.string.boost_v5_fast_carb_confirm_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostV6PreMealTarget, summary = R.string.boost_v6_pre_meal_target_summary, title = R.string.boost_v6_pre_meal_target_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV6PreMealTargetMgdl, dialogMessage = R.string.boost_v6_pre_meal_target_mgdl_summary, title = R.string.boost_v6_pre_meal_target_mgdl_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV6PreMealLeadMin, dialogMessage = R.string.boost_v6_pre_meal_lead_min_summary, title = R.string.boost_v6_pre_meal_lead_min_title))
-        })
+        }
+        // Shared engine settings nested under Advanced. includeEngineEssentials = false: the
+        // 6 essentials above are NOT repeated inside the engine sub-screens (no duplicate keys).
+        openAPSBoostEngine.get().addBoostEngineCategories(preferenceManager, advanced, context, includeEngineEssentials = false)
+        category.addPreference(advanced)
     }
 }
