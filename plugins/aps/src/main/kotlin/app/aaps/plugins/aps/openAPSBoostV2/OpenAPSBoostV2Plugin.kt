@@ -128,7 +128,7 @@ open class OpenAPSBoostV2Plugin @Inject constructor(
         .shortName(R.string.boost_v2_shortname)
         .preferencesId(PluginDescription.PREFERENCE_SCREEN)
         .preferencesVisibleInSimpleMode(false)
-        .showInList { config.APS }
+        .showInList { false } // retired: superseded by Boost V6 — hidden, no longer a selectable option
         .description(R.string.description_boost_v2),
     aapsLogger, rh
 ), APS, PluginConstraints {
