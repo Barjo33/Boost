@@ -65,7 +65,7 @@
                 android:layout_height="wrap_content"
                 android:text="AUTO"
                 android:textSize="11sp"
-                android:textColor="#444444"
+                android:textColor="#9aa0ad"
                 android:paddingStart="8dp"
                 android:paddingEnd="8dp"
                 tools:ignore="HardcodedText" />
@@ -76,7 +76,7 @@
                 android:layout_height="wrap_content"
                 android:text="STATS"
                 android:textSize="11sp"
-                android:textColor="#444444"
+                android:textColor="#9aa0ad"
                 android:paddingStart="8dp"
                 android:paddingEnd="8dp"
                 tools:ignore="HardcodedText" />
@@ -87,7 +87,7 @@
                 android:layout_height="wrap_content"
                 android:text="HISTORY"
                 android:textSize="11sp"
-                android:textColor="#444444"
+                android:textColor="#9aa0ad"
                 android:paddingStart="8dp"
                 android:paddingEnd="8dp"
                 tools:ignore="HardcodedText" />
@@ -162,7 +162,7 @@
                         android:layout_height="wrap_content"
                         android:text="PUMP"
                         android:textSize="10sp"
-                        android:textColor="#444444"
+                        android:textColor="#9aa0ad"
                         android:letterSpacing="0.1"
                         tools:ignore="HardcodedText" />
 
@@ -241,7 +241,7 @@
                         android:layout_height="wrap_content"
                         android:text="READING"
                         android:textSize="10sp"
-                        android:textColor="#444444"
+                        android:textColor="#9aa0ad"
                         android:letterSpacing="0.1"
                         tools:ignore="HardcodedText" />
 
@@ -259,7 +259,7 @@
                         android:layout_height="wrap_content"
                         android:text="TARGET"
                         android:textSize="10sp"
-                        android:textColor="#444444"
+                        android:textColor="#9aa0ad"
                         android:letterSpacing="0.1"
                         android:layout_marginTop="8dp"
                         tools:ignore="HardcodedText" />
@@ -320,7 +320,7 @@
                             android:layout_height="wrap_content"
                             android:text="IOB"
                             android:textSize="10sp"
-                            android:textColor="#444444"
+                            android:textColor="#9aa0ad"
                             android:letterSpacing="0.1"
                             tools:ignore="HardcodedText" />
 
@@ -363,7 +363,7 @@
                             android:layout_height="wrap_content"
                             android:text="DYNISF"
                             android:textSize="10sp"
-                            android:textColor="#444444"
+                            android:textColor="#9aa0ad"
                             android:letterSpacing="0.1"
                             tools:ignore="HardcodedText" />
 
@@ -406,7 +406,7 @@
                             android:layout_height="wrap_content"
                             android:text="TDD"
                             android:textSize="10sp"
-                            android:textColor="#444444"
+                            android:textColor="#9aa0ad"
                             android:letterSpacing="0.1"
                             tools:ignore="HardcodedText" />
 
@@ -448,7 +448,7 @@
                             android:layout_height="wrap_content"
                             android:text="PROFILE"
                             android:textSize="10sp"
-                            android:textColor="#444444"
+                            android:textColor="#9aa0ad"
                             android:letterSpacing="0.1"
                             tools:ignore="HardcodedText" />
 
@@ -536,7 +536,7 @@
                             android:layout_height="wrap_content"
                             android:text="SCORE"
                             android:textSize="9sp"
-                            android:textColor="#444444"
+                            android:textColor="#9aa0ad"
                             android:letterSpacing="0.1"
                             android:layout_marginEnd="8dp"
                             tools:ignore="HardcodedText" />
@@ -734,7 +734,7 @@
                             android:layout_marginTop="6dp"
                             android:text="IOB"
                             android:textSize="10sp"
-                            android:textColor="#444444"
+                            android:textColor="#9aa0ad"
                             android:letterSpacing="0.05"
                             android:importantForAccessibility="no"
                             tools:ignore="HardcodedText" />
@@ -764,7 +764,7 @@
                             android:layout_marginTop="4dp"
                             android:text="Sensitivity"
                             android:textSize="10sp"
-                            android:textColor="#444444"
+                            android:textColor="#9aa0ad"
                             android:letterSpacing="0.05"
                             android:importantForAccessibility="no"
                             tools:ignore="HardcodedText" />
