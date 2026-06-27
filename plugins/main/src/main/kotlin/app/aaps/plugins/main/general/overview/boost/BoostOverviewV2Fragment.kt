@@ -177,16 +177,18 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
         val gridColor = Color.parseColor("#1a1d28")
         binding.v2BgGraph.gridLabelRenderer?.gridColor = gridColor
         binding.v2BgGraph.gridLabelRenderer?.reloadStyles()
+        binding.v2BgGraph.gridLabelRenderer?.textSize = 11f * resources.displayMetrics.scaledDensity
         binding.v2BgGraph.gridLabelRenderer?.labelVerticalWidth = axisWidth
-        binding.v2BgGraph.gridLabelRenderer?.horizontalLabelsColor = Color.parseColor("#9aa0ad")
-        binding.v2BgGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#9aa0ad")
+        binding.v2BgGraph.gridLabelRenderer?.horizontalLabelsColor = Color.parseColor("#d4d9e1")
+        binding.v2BgGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#d4d9e1")
 
         binding.v2IobGraph.gridLabelRenderer?.gridColor = gridColor
         binding.v2IobGraph.gridLabelRenderer?.reloadStyles()
+        binding.v2IobGraph.gridLabelRenderer?.textSize = 11f * resources.displayMetrics.scaledDensity
         binding.v2IobGraph.gridLabelRenderer?.isHorizontalLabelsVisible = false
         binding.v2IobGraph.gridLabelRenderer?.labelVerticalWidth = axisWidth
         binding.v2IobGraph.gridLabelRenderer?.numVerticalLabels = 3
-        binding.v2IobGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#9aa0ad")
+        binding.v2IobGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#d4d9e1")
 
         binding.v2Notifications.setHasFixedSize(false)
         binding.v2Notifications.layoutManager = LinearLayoutManager(view.context)
@@ -925,7 +927,8 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
                 sensGraph.gridLabelRenderer?.numVerticalLabels = 3
                 sensGraph.gridLabelRenderer?.labelVerticalWidth = axisWidth
                 sensGraph.gridLabelRenderer?.gridColor = Color.parseColor("#1a1d28")
-                sensGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#9aa0ad")
+                sensGraph.gridLabelRenderer?.textSize = 11f * resources.displayMetrics.scaledDensity
+                sensGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#d4d9e1")
 
                 val nowSeries = com.jjoe64.graphview.series.LineGraphSeries(arrayOf(
                     com.jjoe64.graphview.series.DataPoint(dateUtil.now().toDouble(), 0.7),

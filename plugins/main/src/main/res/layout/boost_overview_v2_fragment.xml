@@ -147,10 +147,10 @@
                         android:layout_marginTop="4dp">
 
                         <ImageView
-                            android:layout_width="14dp"
-                            android:layout_height="14dp"
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
                             app:srcCompat="@drawable/ic_cp_age_battery"
-                            app:tint="#aaaaaa"
+                            app:tint="#cfd4dc"
                             android:importantForAccessibility="no"
                             tools:ignore="ContentDescription" />
 
@@ -173,10 +173,10 @@
                         android:layout_marginTop="2dp">
 
                         <ImageView
-                            android:layout_width="14dp"
-                            android:layout_height="14dp"
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
                             app:srcCompat="@drawable/ic_cp_age_cannula"
-                            app:tint="#aaaaaa"
+                            app:tint="#cfd4dc"
                             android:importantForAccessibility="no"
                             tools:ignore="ContentDescription" />
 
@@ -199,10 +199,10 @@
                         android:layout_marginTop="2dp">
 
                         <ImageView
-                            android:layout_width="14dp"
-                            android:layout_height="14dp"
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
                             app:srcCompat="@drawable/ic_cp_age_sensor"
-                            app:tint="#aaaaaa"
+                            app:tint="#cfd4dc"
                             android:importantForAccessibility="no"
                             tools:ignore="ContentDescription" />
 
