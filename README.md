@@ -52,6 +52,15 @@ On top of the dosing core, V6 adds **learners** that personalise *sensitivity an
 safety limits): a **heart-rate / step** feed (activity load + sleep detection), a **sleep-window**
 learner, and **meal-time** learning.
 
+> 👁️ **Want to see the guts of V6 working? Use the Boost Overview V2.** Enable
+> **"Use Boost Overview V2 (dark theme)"** in the Overview plugin settings (switch tabs or restart the
+> app for it to take effect). It is the live window into V6's internals: the **meal-hypothesis state**
+> (IDLE → OBSERVING → CONFIRMED → COMMITTED → RECOVERING) with its action multiplier, meal score and
+> aggression budget; the **active brakes / safety gates**; DynISF, IOB and TDD; the activity / exercise
+> state; and a **steps + heart-rate** graph. It is the at-a-glance answer to *"why is V6 dosing the way
+> it is right now?"* — the recommended place to watch the algorithm work. The classic V1 overview keeps
+> working if you prefer it.
+
 > Where this came from: V6 is the current generation of a line that ran V1 → V2 → v3 → v4.2 → V5. The
 > earlier plugins and their settings are documented in the
 > [legacy settings reference](docs/boost-v1-settings.md). V6 still runs *on top of* the V1 engine and
