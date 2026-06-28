@@ -145,4 +145,123 @@ object DailyStepHistoryTracker {
         }
         return ShadowFactors(base, last, ratio, pct, note)
     }
+
+    // ──────────────────────────────────────────────────────────────────────────────────────────
+    // Multi-source history + scaled bridging (2026-06-28). Keeps a SEPARATE daily history per step
+    // source so that when the user's primary device changes, the old source's days BRIDGE the new
+    // source's empty window — rolling-window coverage is never lost to a device switch (no warmup
+    // reset). Cross-source absolute-count differences are reconciled by overlap calibration so the
+    // deviation ratio stays honest (a watch logging ~14k/day and a phone logging ~9k/day for the
+    // same activity must not read as a 36% drop). [StepSourceResolver] owns today's-count selection.
+    // ──────────────────────────────────────────────────────────────────────────────────────────
+
+    /** Days where two sources both recorded, required before an overlap calibration is trusted. */
+    const val MIN_OVERLAP_DAYS = 3
+
+    /** Per-source daily histories, keyed by canonical source id (see [StepSourceResolver.canonical]). */
+    data class MultiSourceHistory(val sources: MutableMap<String, History> = linkedMapOf()) {
+        fun serialize(): String {
+            val s = JSONObject()
+            for ((src, h) in sources) s.put(src, JSONArray().also { arr ->
+                for (d in h.days.values) arr.put(JSONObject().put("d", d.dayIndex).put("s", d.steps))
+            })
+            return JSONObject().put("sources", s).toString()
+        }
+
+        companion object {
+            fun deserialize(raw: String): MultiSourceHistory {
+                if (raw.isBlank()) return MultiSourceHistory()
+                return try {
+                    val root = JSONObject(raw)
+                    if (root.has("sources")) {                       // new format {"sources":{src:[{d,s}]}}
+                        val s = root.getJSONObject("sources")
+                        val m = linkedMapOf<String, History>()
+                        for (src in s.keys()) {
+                            val arr = s.getJSONArray(src)
+                            val days = linkedMapOf<Long, DailyTotal>()
+                            for (i in 0 until arr.length()) {
+                                val o = arr.getJSONObject(i)
+                                val d = o.getLong("d")
+                                days[d] = DailyTotal(d, o.getInt("s"), src)
+                            }
+                            m[src] = History(days)
+                        }
+                        MultiSourceHistory(m)
+                    } else {                                         // back-compat: old single history → regroup by src
+                        val old = History.deserialize(raw)
+                        val m = linkedMapOf<String, History>()
+                        for (d in old.days.values) {
+                            val src = StepSourceResolver.canonical(d.source.ifBlank { StepSourceResolver.PHONE })
+                            m.getOrPut(src) { History() }.days[d.dayIndex] = d.copy(source = src)
+                        }
+                        MultiSourceHistory(m)
+                    }
+                } catch (e: Exception) {
+                    MultiSourceHistory()
+                }
+            }
+        }
+    }
+
+    /**
+     * Merge completed-day [totals] into [source]'s own history within [multi] and trim to the
+     * window. Returns a new MultiSourceHistory (caller persists on change). Empty sources are pruned.
+     */
+    fun mergeSource(multi: MultiSourceHistory, source: String, totals: List<DailyTotal>, todayIndex: Long): MultiSourceHistory {
+        val src = StepSourceResolver.canonical(source)
+        val m = LinkedHashMap(multi.sources)
+        m[src] = merge(m[src] ?: History(), totals.map { it.copy(source = src) }, todayIndex)
+        m.entries.removeIf { it.value.days.isEmpty() }
+        return MultiSourceHistory(m)
+    }
+
+    /**
+     * Factor to express [donor]'s counts in [active]'s units: median over days where BOTH recorded
+     * of (active.steps / donor.steps). Null when fewer than [MIN_OVERLAP_DAYS] overlapping days
+     * exist (a scale can't be trusted) — the caller then bridges raw and flags it.
+     */
+    fun calibration(active: History, donor: History): Double? {
+        val ratios = ArrayList<Double>()
+        for ((day, a) in active.days) {
+            val d = donor.days[day] ?: continue
+            if (a.steps > 0 && d.steps > 0) ratios.add(a.steps.toDouble() / d.steps.toDouble())
+        }
+        if (ratios.size < MIN_OVERLAP_DAYS) return null
+        ratios.sort()
+        return ratios[ratios.size / 2]
+    }
+
+    data class BridgeResult(val history: History, val calibrated: Boolean, val donorsUsed: List<String>)
+
+    /**
+     * Build one rolling-window [History] in [activeSource]'s units for [todayIndex]: use the active
+     * source's value for each day it has, else borrow the highest-trust OTHER source's day scaled
+     * into active units. Guarantees coverage across a device switch. [BridgeResult.calibrated] is
+     * false if any borrowed donor lacked enough overlap to scale (those days used raw) — for NS.
+     */
+    fun bridgedWindow(multi: MultiSourceHistory, activeSource: String?, todayIndex: Long): BridgeResult {
+        val active = activeSource?.let { multi.sources[StepSourceResolver.canonical(it)] } ?: History()
+        val donors = multi.sources.entries
+            .filter { it.key != activeSource }
+            .sortedBy { StepSourceResolver.tier(it.key) }
+        val cals = HashMap<String, Double?>()
+        val out = LinkedHashMap(active.days)
+        val donorsUsed = LinkedHashSet<String>()
+        var anyUncalibrated = false
+        var day = todayIndex - WINDOW_DAYS
+        while (day < todayIndex) {
+            if (!out.containsKey(day)) {
+                for (donor in donors) {
+                    val dt = donor.value.days[day] ?: continue
+                    val cal = cals.getOrPut(donor.key) { calibration(active, donor.value) }
+                    val scaled = if (cal != null) (dt.steps * cal).toInt() else { anyUncalibrated = true; dt.steps }
+                    out[day] = DailyTotal(day, scaled, donor.key)
+                    donorsUsed.add(donor.key)
+                    break   // highest-trust donor with data for this day wins
+                }
+            }
+            day++
+        }
+        return BridgeResult(History(out), calibrated = !anyUncalibrated, donorsUsed = donorsUsed.toList())
+    }
 }
