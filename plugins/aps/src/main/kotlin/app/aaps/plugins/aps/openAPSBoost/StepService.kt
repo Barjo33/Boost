@@ -18,7 +18,10 @@ import android.util.Log
 object StepService : SensorEventListener {
 
     private const val TAG = "StepService"
-    private var previousStepCount = -1
+    // Sensor callbacks (onSensorChanged) run on the app main thread while the APS loop reads steps
+    // on an IO thread; all stepsMap access is @Synchronized on this object's monitor (same monitor
+    // getStepsToday/seedTodayFromHc already use) to avoid ConcurrentModificationException / races.
+    @Volatile private var previousStepCount = -1
     private val stepsMap = LinkedHashMap<Long, Int>()
     private const val FIVE_MINUTES_IN_MS = 300000
     private const val NUM_OF_5MIN_BLOCKS_TO_KEEP = 20
@@ -31,7 +34,7 @@ object StepService : SensorEventListener {
         return System.currentTimeMillis() / FIVE_MINUTES_IN_MS
     }
 
-    override fun onSensorChanged(sensorEvent: SensorEvent?) {
+    @Synchronized override fun onSensorChanged(sensorEvent: SensorEvent?) {
         sensorEvent ?: return
 
         val now = currentTimeIn5Min()
@@ -51,7 +54,7 @@ object StepService : SensorEventListener {
         }
     }
 
-    fun getRecentStepCount5Min(): Int {
+    @Synchronized fun getRecentStepCount5Min(): Int {
         val now = currentTimeIn5Min() - 1
         return if (stepsMap.contains(now)) stepsMap.getValue(now) else 0
     }
@@ -68,7 +71,7 @@ object StepService : SensorEventListener {
         return getStepsInLastXMin(12)
     }
 
-    private fun getStepsInLastXMin(numberOf5MinIncrements: Int): Int {
+    @Synchronized private fun getStepsInLastXMin(numberOf5MinIncrements: Int): Int {
         var stepCount = 0
         val now = currentTimeIn5Min()
         val cutoff = now - numberOf5MinIncrements

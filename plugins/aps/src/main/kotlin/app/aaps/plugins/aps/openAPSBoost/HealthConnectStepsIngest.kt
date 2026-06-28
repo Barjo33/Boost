@@ -39,7 +39,7 @@ class HealthConnectStepsIngest @Inject constructor(
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
     @Volatile private var client: HealthConnectClient? = null
-    @Volatile private var inFlight = false
+    private val inFlight = java.util.concurrent.atomic.AtomicBoolean(false)
     @Volatile private var lastSyncRunMs = 0L
     @Volatile private var permissionWarned = false
 
@@ -71,7 +71,11 @@ class HealthConnectStepsIngest @Inject constructor(
         private set
 
     val isAvailable: Boolean
-        get() = HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_AVAILABLE
+        get() = try {
+            HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_AVAILABLE
+        } catch (t: Throwable) {
+            false   // getSdkStatus can throw on some OEM/HC states; never let it bubble into the loop
+        }
 
     private fun getOrInitClient(): HealthConnectClient? {
         client?.let { return it }
@@ -89,9 +93,9 @@ class HealthConnectStepsIngest @Inject constructor(
         if (!preferences.get(BooleanKey.ApsBoostActivityShadowEnabled)) return
         val now = System.currentTimeMillis()
         if (now - lastSyncRunMs < pollIntervalMs) return
-        if (inFlight) return
-        val hc = getOrInitClient() ?: return
-        inFlight = true
+        if (!inFlight.compareAndSet(false, true)) return   // atomic guard — no check-then-act race
+        val hc = getOrInitClient()
+        if (hc == null) { inFlight.set(false); return }
         lastSyncRunMs = now
         scope.launch {
             try {
@@ -99,7 +103,7 @@ class HealthConnectStepsIngest @Inject constructor(
             } catch (t: Throwable) {
                 aapsLogger.error(LTag.APS, "HealthConnectStepsIngest: sync failed: ${t.message}")
             } finally {
-                inFlight = false
+                inFlight.set(false)
             }
         }
     }

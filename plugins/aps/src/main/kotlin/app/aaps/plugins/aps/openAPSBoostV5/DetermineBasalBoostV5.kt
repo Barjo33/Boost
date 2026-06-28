@@ -238,8 +238,10 @@ class DetermineBasalBoostV5 @Inject constructor(
  * Hard upper cap on the CONFIRMED commit-shot dose, in units. The 5/25 evening meal showed
  * V5's raw CONFIRMED dose reaches 2.5-3.15U for slow-meal climbs at typical baseInsulinReq —
  * far exceeding what V4.4.2 actually delivers in the same scenario (~1.5U cumulative across
- * multiple small SMBs), and on a climb where 1.5U already caused a hypo. 1.0U is a safety
- * ceiling that V5 cannot exceed regardless of upstream multiplier values.
+ * multiple small SMBs), and on a climb where 1.5U already caused a hypo. 1.0U is the DEFAULT
+ * CONFIRMED commit cap. NOTE: the effective cap at runtime is `Inputs.confirmedCapU`
+ * (preferences.ApsBoostV5ConfirmedCapU, defaulting to this value) — this constant is the default,
+ * not a hard floor/ceiling; a user/auto-config pref above 1.0 will raise the actual cap.
  */
 internal const val MAX_CONFIRMED_COMMIT_DOSE_U = 1.0
 

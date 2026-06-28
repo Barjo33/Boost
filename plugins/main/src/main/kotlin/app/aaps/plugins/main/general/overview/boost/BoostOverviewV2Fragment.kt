@@ -864,8 +864,11 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
             val actGraphData = graphDataProvider.get().with(binding.v2SensitivityGraph, overviewData)
             val useHrForScale = plotHr && !plotSteps
             val useStepsForScale = plotSteps
-            if (plotHr) actGraphData.addHeartRate(useHrForScale, if (useHrForScale) 1.0 else 0.8)
+            // Add the scale-OWNING series first so the other's multiplier is computed against the
+            // established maxY. (If HR is added before Steps when Steps owns the scale, HR's multiplier
+            // is computed against an uninitialized maxY and the HR trace collapses to a flat line.)
             if (plotSteps) actGraphData.addSteps(useStepsForScale, if (useStepsForScale) 1.0 else 0.8)
+            if (plotHr) actGraphData.addHeartRate(useHrForScale, if (useHrForScale) 1.0 else 0.8)
             actGraphData.addNowLine(dateUtil.now())
             actGraphData.formatAxis(overviewData.fromTime, overviewData.endTime)
             actGraphData.performUpdate()

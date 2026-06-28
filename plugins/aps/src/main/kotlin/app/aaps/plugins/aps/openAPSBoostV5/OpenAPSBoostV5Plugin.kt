@@ -50,9 +50,10 @@ import kotlin.math.max
 /**
  * Boost V5 — Observe-Confirm-Commit dosing pipeline.
  *
- * Status: PRE-ALPHA, shadow-mode only. Hidden from the plugin list (`showInList { false }`)
- * until the test plan's Layer 1–3 acceptance gates pass and the observability check is verified.
- * Do NOT enable for active dosing on a user pump.
+ * Status: PRODUCTION — this is the user-facing "Boost V6" APS plugin, selectable for active dosing
+ * (`showInList { config.APS }`). Validated through the test plan's acceptance gates and live use.
+ * (Earlier header said PRE-ALPHA/shadow-only/hidden — that was superseded when V5/V6 graduated to
+ * the selectable dosing engine; corrected 2026-06-28.)
  *
  * Architecture (see `boost_v5_redesign_proposal.md`):
  *   Phase 1 — state estimation (meal_signal_score → MealHypothesis state machine → AggressionBudget)

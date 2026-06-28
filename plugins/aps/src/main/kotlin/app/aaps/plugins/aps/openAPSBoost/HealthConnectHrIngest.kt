@@ -14,8 +14,6 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.interfaces.Preferences
-import io.reactivex.rxjava3.disposables.CompositeDisposable
-import io.reactivex.rxjava3.kotlin.plusAssign
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -57,10 +55,9 @@ class HealthConnectHrIngest @Inject constructor(
 ) {
 
     private val scope = CoroutineScope(Dispatchers.IO)
-    private val disposable = CompositeDisposable()
 
     @Volatile private var client: HealthConnectClient? = null
-    @Volatile private var inFlight = false
+    private val inFlight = java.util.concurrent.atomic.AtomicBoolean(false)
     @Volatile private var lastSyncRunMs: Long = 0L
     @Volatile private var permissionWarned = false
 
@@ -72,7 +69,11 @@ class HealthConnectHrIngest @Inject constructor(
     private val ingestedSampleMs = java.util.concurrent.ConcurrentHashMap.newKeySet<Long>()
 
     val isAvailable: Boolean
-        get() = HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_AVAILABLE
+        get() = try {
+            HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_AVAILABLE
+        } catch (t: Throwable) {
+            false   // getSdkStatus can throw on some OEM/HC states; never let it bubble into the loop
+        }
 
     private fun getOrInitClient(): HealthConnectClient? {
         client?.let { return it }
@@ -96,9 +97,9 @@ class HealthConnectHrIngest @Inject constructor(
         val intervalMs = preferences.get(IntKey.ApsBoostHealthConnectPollMin).coerceAtLeast(1) * 60_000L
         val now = System.currentTimeMillis()
         if (now - lastSyncRunMs < intervalMs) return
-        if (inFlight) return
-        val hc = getOrInitClient() ?: return
-        inFlight = true
+        if (!inFlight.compareAndSet(false, true)) return   // atomic guard — no check-then-act race
+        val hc = getOrInitClient()
+        if (hc == null) { inFlight.set(false); return }
         lastSyncRunMs = now
         scope.launch {
             try {
@@ -106,7 +107,7 @@ class HealthConnectHrIngest @Inject constructor(
             } catch (t: Throwable) {
                 aapsLogger.error(LTag.APS, "HealthConnectHrIngest: sync failed: ${t.message}")
             } finally {
-                inFlight = false
+                inFlight.set(false)
             }
         }
     }
@@ -180,7 +181,9 @@ class HealthConnectHrIngest @Inject constructor(
                     device = device,
                     isValid = true
                 )
-                disposable += persistenceLayer.insertOrUpdateHeartRate(hr).subscribe(
+                // Fire-and-forget one-shot insert; not retained (was leaking into a never-cleared
+                // CompositeDisposable). insertOrUpdate is idempotent and self-disposes on completion.
+                persistenceLayer.insertOrUpdateHeartRate(hr).subscribe(
                     { inserted++ },
                     { e -> aapsLogger.warn(LTag.APS, "HealthConnectHrIngest: persist failed: ${e.message}") }
                 )
