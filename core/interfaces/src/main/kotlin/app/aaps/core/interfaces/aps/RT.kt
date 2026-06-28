@@ -104,6 +104,9 @@ data class RT(
     var hrBpmAvg5m: Double? = null,                  // duration-weighted average over last 5 min
     var hrBpmAvg15m: Double? = null,                 // duration-weighted average over last 15 min
     var hrReadingsCount15m: Int? = null,             // number of HR records seen in 15-min window
+    // HR source visibility (2026-06-28): which device feeds HR + per-source freshness (silent-death detection).
+    var hrSource_resolved: String? = null,           // live HR source: garmin | worn:<model> | hc | null if feed died
+    var hrSource_states: String? = null,             // per-source "src(fresh,count,ageMin)", best-trust first
     var sleepState: String? = null,                  // AWAKE | PRE_SLEEP | SLEEPING
     var sleepStateEnteredAtMs: Long? = null,         // when current sleep state was entered (UTC ms)
     var sleepEntryReason: String? = null,            // "hr" | "drought" while SLEEPING; null otherwise. Validates which qualifier promoted the entry.

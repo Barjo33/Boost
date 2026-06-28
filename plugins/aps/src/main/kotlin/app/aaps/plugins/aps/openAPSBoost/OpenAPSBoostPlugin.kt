@@ -1397,6 +1397,13 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 it.hrReadingsCount15m = hrReadingsForSleep.count { hr ->
                     hr.isValid && hr.timestamp > now - 15 * 60_000L
                 }
+                // HR source visibility (2026-06-28): which device feeds HR + silent-death detection.
+                // Consumers stay source-agnostic; this is telemetry only.
+                val hrRes = HrSourceResolver.resolve(
+                    hrReadingsForSleep.filter { it.isValid }.map { HrSourceResolver.Reading(it.device, it.timestamp) }, now
+                )
+                it.hrSource_resolved = hrRes.active
+                it.hrSource_states = hrRes.note
 
                 it.reason.append("sleep=${sleepResult.newState.state}")
                 if (agg.sleepStartMinAvg != null) {
