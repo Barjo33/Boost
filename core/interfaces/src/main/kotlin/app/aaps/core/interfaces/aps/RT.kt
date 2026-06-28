@@ -140,6 +140,10 @@ data class RT(
     var boostActivityLoad_intradayRatio: Double? = null, // stepsToday ÷ expected-by-now
     var boostActivityLoad_intradayDeltaIsfPct: Double? = null, // raise-only would-ΔISF from intraday pace
     var boostActivityLoad_stepsSource: String? = null,  // "wear" (worn AAPS Wear watch) | "phone" (pedometer)
+    // Multi-source step abstraction (2026-06-28): auto-resolved source (no UI) + bridging diagnostics.
+    var boostActivitySource_resolved: String? = null,   // active source owning today's count: wear|garmin|hc:x|phone
+    var boostActivitySource_states: String? = null,     // per-source freshness+coverage, best-trust first: "src(f,Nd)"
+    var boostActivitySource_bridge: String? = null,     // donors bridging the baseline window (+"(raw)" if uncalibrated)
     // Autosens / TDD-DynISF coordination telemetry (2026-06-16). Logs which sensitivity mechanism
     // is driving basal/target/CR scaling, plus the would-be alternative — so the
     // ApsBoostAutosensWhenNoTdd fix can be validated on real data before it's enabled.

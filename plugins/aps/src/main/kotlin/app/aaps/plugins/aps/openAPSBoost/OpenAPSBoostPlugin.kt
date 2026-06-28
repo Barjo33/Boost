@@ -1413,49 +1413,88 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 try {
                     val offsetMs = java.time.ZoneId.systemDefault().rules.getOffset(java.time.Instant.now()).totalSeconds * 1000L
                     val todayIdx = DailyStepHistoryTracker.dayIndex(now, offsetMs)
-                    val merged = DailyStepHistoryTracker.merge(dailyStepHistoryCached, healthConnectStepsIngest.latestDailyTotals, todayIdx)
-                    if (merged.days != dailyStepHistoryCached.days) {
-                        dailyStepHistoryCached = merged
-                        preferences.put(StringKey.ApsBoostDailyStepHistory, merged.serialize())
+                    val dayStartMs = todayIdx * 86_400_000L - offsetMs
+                    var multi = multiStepHistoryCached
+
+                    // ── Assemble per-source completed-day history from whatever the user has ──
+                    // Health Connect: EVERY dataOrigin (Garmin, Google Fit, …) — instant backfill, and
+                    // one source dying no longer starves the baseline (the 2026-06-27 failure).
+                    for ((rawSrc, totals) in healthConnectStepsIngest.allSourceDailyTotals)
+                        multi = DailyStepHistoryTracker.mergeSource(multi, rawSrc, totals, todayIdx)
+                    // Wear: derive completed-day totals from the SC table (throttled — daily totals are
+                    // stable within an hour, and a 28-day SC read is heavy at the 5-min cycle cadence).
+                    if (now - lastWearDailyMs >= 60 * 60_000L) {
+                        lastWearDailyMs = now
+                        val windowStartMs = (todayIdx - DailyStepHistoryTracker.WINDOW_DAYS) * 86_400_000L - offsetMs
+                        val wearHist = try { persistenceLayer.getStepsCountFromTimeToTime(windowStartMs, now) } catch (t: Throwable) { emptyList() }
+                        val wearDaily = WearStepSource.dailyTotals(wearHist, todayIdx, offsetMs)
+                        if (wearDaily.isNotEmpty()) multi = DailyStepHistoryTracker.mergeSource(multi, StepSourceResolver.WEAR, wearDaily, todayIdx)
                     }
-                    val sf = DailyStepHistoryTracker.shadowFactors(dailyStepHistoryCached, todayIdx)
+
+                    // ── Today-so-far per candidate source ──
+                    // Reconcile the phone counter with HC's today total (hold the HIGHER, never anchor
+                    // down), only when HC's value is for the CURRENT local day (no cross-midnight bleed).
+                    if (healthConnectStepsIngest.todayStepsDay == todayIdx)
+                        StepService.seedTodayFromHc(healthConnectStepsIngest.todayStepsSoFar, offsetMs)
+                    val todaySc = try { persistenceLayer.getStepsCountFromTimeToTime(dayStartMs, now) } catch (t: Throwable) { emptyList() }
+                    val wearToday = WearStepSource.stepsToday(todaySc, dayStartMs, now)
+                    val phoneToday = StepService.getStepsToday(offsetMs)
+
+                    // The phone pedometer has no persistent daily feed; keep a rolling completed-day
+                    // ledger so it can serve as an active source with CALIBRATED bridging (else a phone
+                    // takeover after a watch dies would splice donor days raw and risk false inactivity).
+                    if (phoneDayCached != todayIdx) {
+                        if (phoneDayCached >= 0 && phoneMaxCached > 0)
+                            multi = DailyStepHistoryTracker.mergeSource(multi, StepSourceResolver.PHONE,
+                                listOf(DailyStepHistoryTracker.DailyTotal(phoneDayCached, phoneMaxCached, StepSourceResolver.PHONE)), todayIdx)
+                        phoneDayCached = todayIdx; phoneMaxCached = 0
+                    }
+                    if (phoneToday > phoneMaxCached) phoneMaxCached = phoneToday
+
+                    if (multi.sources != multiStepHistoryCached.sources) {
+                        multiStepHistoryCached = multi
+                        preferences.put(StringKey.ApsBoostDailyStepHistory, multi.serialize())
+                    }
+
+                    // ── Auto-resolve today's active source (no UI) ──
+                    val states = mutableListOf<StepSourceResolver.SourceState>()
+                    states += StepSourceResolver.SourceState(StepSourceResolver.WEAR, WearStepSource.isFresh(todaySc, now), multi.sources[StepSourceResolver.WEAR]?.days?.size ?: 0, wearToday)
+                    states += StepSourceResolver.SourceState(StepSourceResolver.PHONE, phoneToday > 0, multi.sources[StepSourceResolver.PHONE]?.days?.size ?: 0, phoneToday)
+                    for ((rawSrc, t) in healthConnectStepsIngest.todayStepsBySource) {
+                        val c = StepSourceResolver.canonical(rawSrc)
+                        if (c == StepSourceResolver.WEAR || c == StepSourceResolver.PHONE) continue
+                        states += StepSourceResolver.SourceState(c, false, multi.sources[c]?.days?.size ?: 0, t)   // HC is hourly/laggy → not "fresh"
+                    }
+                    val res = StepSourceResolver.resolve(states)
+
+                    // ── Baseline from the bridged rolling window (in the active source's units) ──
+                    val bridged = DailyStepHistoryTracker.bridgedWindow(multi, res.active, todayIdx)
+                    val sf = DailyStepHistoryTracker.shadowFactors(bridged.history, todayIdx)
                     it.boostActivityLoad_baselineSteps = sf.baselineSteps
                     it.boostActivityLoad_lastDaySteps = sf.lastDaySteps
                     it.boostActivityLoad_ratio = sf.ratio?.let { r -> Round.roundTo(r, 0.01) }
                     it.boostActivityLoad_wouldDeltaIsfPct = Round.roundTo(sf.wouldDeltaIsfPct, 0.1)
-                    it.boostActivityLoad_source = healthConnectStepsIngest.chosenSource
+                    it.boostActivityLoad_source = res.active
+                    it.boostActivitySource_resolved = res.active
+                    it.boostActivitySource_states = res.note
+                    it.boostActivitySource_bridge = if (bridged.donorsUsed.isEmpty()) "none"
+                        else bridged.donorsUsed.joinToString("+") + if (bridged.calibrated) "" else "(raw)"
                     if (sf.baselineSteps != null && sf.ratio != null) {
                         val sign = if (sf.wouldDeltaIsfPct >= 0) "+" else ""
-                        it.reason.append("activityLoad: base ${sf.baselineSteps} last ${sf.lastDaySteps} (${Round.roundTo(sf.ratio!!, 0.01)}x) wouldΔISF $sign${Round.roundTo(sf.wouldDeltaIsfPct, 0.1)}% [${sf.note}]; ")
+                        it.reason.append("activityLoad: ${res.active ?: "none"} base ${sf.baselineSteps} last ${sf.lastDaySteps} (${Round.roundTo(sf.ratio!!, 0.01)}x) wouldΔISF $sign${Round.roundTo(sf.wouldDeltaIsfPct, 0.1)}% [${sf.note}] bridge[${it.boostActivitySource_bridge}]; ")
                     } else {
-                        // No baseline yet — surface chosen source + every source's coverage
-                        // (days-with-steps/total) so a continuous feed being ignored is visible on NS.
-                        it.reason.append("activityLoad: no baseline (chosen=${healthConnectStepsIngest.chosenSource?.substringAfterLast('.') ?: "none"} cov=${healthConnectStepsIngest.availableSources} days=${dailyStepHistoryCached.days.size}); ")
+                        it.reason.append("activityLoad: no baseline (src[${res.note}]); ")
                     }
 
-                    // ── Intraday activity-load SHADOW (2026-06-19): today's cumulative steps vs typical
-                    // pace by hour, from the phone pedometer (the authoritative step source; realtime,
-                    // free, reset-resilient). Reconcile with HC's today total — seedTodayFromHc holds the
-                    // HIGHER of the two, never anchors down. Only when HC's value is for the CURRENT
-                    // local day, so across midnight HC's stale yesterday total can't bleed in. ──
-                    if (healthConnectStepsIngest.todayStepsDay == todayIdx)
-                        StepService.seedTodayFromHc(healthConnectStepsIngest.todayStepsSoFar, offsetMs)
-                    // Source preference: a WORN AAPS Wear watch is the best step source (on-body,
-                    // continuous, independent of Garmin/HC). Use it for today's cumulative when its
-                    // feed is fresh; otherwise fall back to the phone pedometer. Both shadow.
-                    val dayStartMs = todayIdx * 86_400_000L - offsetMs
-                    val wearSc = try { persistenceLayer.getStepsCountFromTimeToTime(dayStartMs, now) } catch (t: Throwable) { emptyList() }
-                    val wearFresh = WearStepSource.isFresh(wearSc, now)
-                    val stepsToday = if (wearFresh) WearStepSource.stepsToday(wearSc, dayStartMs, now)
-                                     else StepService.getStepsToday(offsetMs)
-                    it.boostActivityLoad_stepsSource = if (wearFresh) "wear" else "phone"
+                    // ── Intraday "running hot?" from the active source's today total vs typical pace ──
                     val intraHour = java.time.LocalTime.now().hour
-                    val intra = DailyStepHistoryTracker.intradayFactor(stepsToday, sf.baselineSteps, intraHour)
-                    it.boostActivityLoad_stepsToday = stepsToday
+                    val intra = DailyStepHistoryTracker.intradayFactor(res.stepsToday, sf.baselineSteps, intraHour)
+                    it.boostActivityLoad_stepsToday = res.stepsToday
+                    it.boostActivityLoad_stepsSource = res.active
                     it.boostActivityLoad_intradayRatio = intra.ratio?.let { r -> Round.roundTo(r, 0.01) }
                     it.boostActivityLoad_intradayDeltaIsfPct = Round.roundTo(intra.wouldDeltaIsfPct, 0.1)
                     if (intra.ratio != null) {
-                        it.reason.append("activityIntraday: today $stepsToday vs exp ${intra.expectedByNow} (${Round.roundTo(intra.ratio!!, 0.01)}x) wouldΔISF +${Round.roundTo(intra.wouldDeltaIsfPct, 0.1)}%; ")
+                        it.reason.append("activityIntraday: today ${res.stepsToday} vs exp ${intra.expectedByNow} (${Round.roundTo(intra.ratio!!, 0.01)}x) wouldΔISF +${Round.roundTo(intra.wouldDeltaIsfPct, 0.1)}%; ")
                     }
                 } catch (t: Throwable) {
                     aapsLogger.error(LTag.APS, "Activity-load shadow failed", t)
@@ -1557,9 +1596,13 @@ open class OpenAPSBoostPlugin @Inject constructor(
     // construction; updated at end of invoke() when a fresh CONFIRMED fires, persisted on change.
     @Volatile private var mealTimeHistoryCached: MealTimeLearner.History =
         MealTimeLearner.History.deserialize(preferences.get(StringKey.ApsBoostMealTimeHistory))
-    // Activity-load SHADOW (2026-06-16) — rolling 28-day single-source daily-step history.
-    @Volatile private var dailyStepHistoryCached: DailyStepHistoryTracker.History =
-        DailyStepHistoryTracker.History.deserialize(preferences.get(StringKey.ApsBoostDailyStepHistory))
+    // Activity-load SHADOW — rolling 28-day PER-SOURCE daily-step history (multi-source abstraction
+    // 2026-06-28; deserialize auto-migrates the old single-source blob). Persisted under the same key.
+    @Volatile private var multiStepHistoryCached: DailyStepHistoryTracker.MultiSourceHistory =
+        DailyStepHistoryTracker.MultiSourceHistory.deserialize(preferences.get(StringKey.ApsBoostDailyStepHistory))
+    @Volatile private var lastWearDailyMs = 0L          // throttle the 28-day Wear SC read to hourly
+    @Volatile private var phoneDayCached = -1L          // phone completed-day ledger (no persistent phone feed)
+    @Volatile private var phoneMaxCached = 0
     // Cached learned daytime baseline (used by HrActivityCalculator in current cycle from prior
     // cycle's aggregate computation — 5-min lag is acceptable, baseline changes slowly).
     @Volatile private var hrLearnedDaytimeBpmCached: Int? = null

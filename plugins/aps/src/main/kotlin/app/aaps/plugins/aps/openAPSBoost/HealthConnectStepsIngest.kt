@@ -49,6 +49,13 @@ class HealthConnectStepsIngest @Inject constructor(
     /** Single-source per-completed-day totals from the most recent sync (empty until first sync). */
     @Volatile var latestDailyTotals: List<DailyTotal> = emptyList()
         private set
+    /** EVERY dataOrigin's per-day totals (raw package-name keys), for the multi-source step abstraction
+     *  — so Garmin AND Google Fit etc. are all retained and one source dying can't starve the baseline. */
+    @Volatile var allSourceDailyTotals: Map<String, List<DailyTotal>> = emptyMap()
+        private set
+    /** Each dataOrigin's step total for the CURRENT (partial) local day. */
+    @Volatile var todayStepsBySource: Map<String, Int> = emptyMap()
+        private set
     @Volatile var chosenSource: String? = null
         private set
     /** Per-source coverage seen in the last window, "shortname:daysWithSteps/totalSteps", for NS visibility. */
@@ -139,6 +146,13 @@ class HealthConnectStepsIngest @Inject constructor(
             .sortedByDescending { e -> e.value.count { it.value > 0 } }
             .map { e -> "${e.key.substringAfterLast('.')}:${e.value.count { it.value > 0 }}/${e.value.values.sum()}" }
 
+        // Expose EVERY source (not just the dominant one) for the multi-source step abstraction.
+        val todayIdx = DailyStepHistoryTracker.dayIndex(nowMs, offsetMs)
+        allSourceDailyTotals = perSourceDay.mapValues { (src, days) ->
+            days.map { (day, steps) -> DailyTotal(day, steps.toInt(), src) }.sortedBy { it.dayIndex }
+        }
+        todayStepsBySource = perSourceDay.mapValues { (_, days) -> days[todayIdx]?.toInt() ?: 0 }
+
         val chosen = chooseSourceByCoverage(perSourceDay)
         if (chosen == null) {
             latestDailyTotals = emptyList()
@@ -150,7 +164,6 @@ class HealthConnectStepsIngest @Inject constructor(
             .map { (day, steps) -> DailyTotal(day, steps.toInt(), chosen) }
             .sortedBy { it.dayIndex }
         chosenSource = chosen
-        val todayIdx = DailyStepHistoryTracker.dayIndex(nowMs, offsetMs)
         todayStepsSoFar = perSourceDay[chosen]?.get(todayIdx)?.toInt() ?: 0
         todayStepsDay = todayIdx
         aapsLogger.info(LTag.APS, "HealthConnectStepsIngest: coverage=$availableSources chose=$chosen days=${latestDailyTotals.size}")

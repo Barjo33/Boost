@@ -1,6 +1,7 @@
 package app.aaps.plugins.aps.openAPSBoost
 
 import app.aaps.core.data.model.SC
+import app.aaps.plugins.aps.openAPSBoost.DailyStepHistoryTracker.DailyTotal
 import kotlin.math.max
 
 /**
@@ -40,5 +41,22 @@ object WearStepSource {
             perSlot[slot] = max(perSlot.getOrDefault(slot, 0), sc.steps5min)
         }
         return perSlot.values.sum()
+    }
+
+    /**
+     * Per-COMPLETED-local-day step totals from the SC table, for the multi-source baseline history
+     * (tagged source "wear"). Same per-5-min-slot-max dedup as [stepsToday], applied within each
+     * local day; today (dayIndex ≥ [todayIndex]) is excluded as it's still partial.
+     */
+    fun dailyTotals(scList: List<SC>, todayIndex: Long, offsetMs: Long): List<DailyTotal> {
+        val perDaySlot = HashMap<Long, HashMap<Long, Int>>()
+        for (sc in scList) {
+            val day = DailyStepHistoryTracker.dayIndex(sc.timestamp, offsetMs)
+            if (day >= todayIndex) continue
+            val slot = sc.timestamp / FIVE_MIN_MS
+            perDaySlot.getOrPut(day) { HashMap() }.let { m -> m[slot] = max(m.getOrDefault(slot, 0), sc.steps5min) }
+        }
+        return perDaySlot.map { (day, slots) -> DailyTotal(day, slots.values.sum(), StepSourceResolver.WEAR) }
+            .sortedBy { it.dayIndex }
     }
 }
