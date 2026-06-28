@@ -17,6 +17,7 @@ import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
+import app.aaps.core.graph.data.PointsWithLabelGraphSeries
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.automation.Automation
 import app.aaps.core.interfaces.configuration.Config
@@ -189,6 +190,15 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
         binding.v2IobGraph.gridLabelRenderer?.labelVerticalWidth = axisWidth
         binding.v2IobGraph.gridLabelRenderer?.numVerticalLabels = 3
         binding.v2IobGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#aaaaaa")
+
+        // Activity graph (steps + heart rate) — same chrome as the IOB graph
+        binding.v2SensitivityGraph.gridLabelRenderer?.gridColor = gridColor
+        binding.v2SensitivityGraph.gridLabelRenderer?.reloadStyles()
+        binding.v2SensitivityGraph.gridLabelRenderer?.textSize = 11f * resources.displayMetrics.scaledDensity
+        binding.v2SensitivityGraph.gridLabelRenderer?.isHorizontalLabelsVisible = false
+        binding.v2SensitivityGraph.gridLabelRenderer?.labelVerticalWidth = axisWidth
+        binding.v2SensitivityGraph.gridLabelRenderer?.numVerticalLabels = 3
+        binding.v2SensitivityGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#aaaaaa")
 
         binding.v2Notifications.setHasFixedSize(false)
         binding.v2Notifications.layoutManager = LinearLayoutManager(view.context)
@@ -838,107 +848,33 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
         iobGraphData.performUpdate()
         iobGraphData.applyV2Theme()
 
-        // Sensitivity graph
-        val profile = profileFunction.getProfile()
-        val bucketedData = iobCobCalculator.ads.getBucketedDataTableCopy()
-        if (bucketedData != null && bucketedData.size > 20 && profile != null) {
+        // Activity graph (steps + heart rate) — replaces the old sensitivity preview.
+        // Shown only when HR and/or Steps are enabled in the chart menu AND there is data for the
+        // enabled type(s); otherwise the whole card is hidden. (View IDs are still the legacy
+        // "sensitivity" ones — repurposed, not renamed.)
+        val hrStepsSettings = menuChartSettings.getOrNull(1)
+        val showHr = hrStepsSettings?.get(OverviewMenus.CharType.HR.ordinal) == true
+        val showSteps = hrStepsSettings?.get(OverviewMenus.CharType.STEPS.ordinal) == true
+        val hrHasData = (overviewData.heartRateGraphSeries as PointsWithLabelGraphSeries<*>).highestValueY > 0
+        val stepsHasData = (overviewData.stepsCountGraphSeries as PointsWithLabelGraphSeries<*>).highestValueY > 0
+        val plotHr = showHr && hrHasData
+        val plotSteps = showSteps && stepsHasData
+        if (plotHr || plotSteps) {
             binding.v2SensitivityGraphContainer.visibility = View.VISIBLE
-            val sensGraph = binding.v2SensitivityGraph
-
-            data class DevPoint(val time: Long, val deviation: Double, val absBgi: Double, val hasCob: Boolean)
-            val devPoints = mutableListOf<DevPoint>()
-            val effectiveIsf = lastBoostStatus.variableSens.takeIf { it > 0 }
-                ?: profile.getIsfMgdl("SensGraph")
-
-            for (i in 1 until bucketedData.size) {
-                val bg = bucketedData[i].recalculated
-                val prevBg = bucketedData[i - 1].recalculated
-                val time = bucketedData[i].timestamp
-                if (bg <= 39 || prevBg <= 39) continue
-
-                val actualDelta = bg - prevBg
-                val iobData = iobCobCalculator.calculateFromTreatmentsAndTemps(time, profile)
-                val bgi = -iobData.activity * effectiveIsf * 5.0
-                val deviation = actualDelta - bgi
-                val cobInfo = iobCobCalculator.getCobInfo("SensGraph")
-                val hasCob = cobInfo.displayCob != null && cobInfo.displayCob!! > 0.5
-                devPoints.add(DevPoint(time, deviation, kotlin.math.abs(bgi), hasCob))
+            val actGraphData = graphDataProvider.get().with(binding.v2SensitivityGraph, overviewData)
+            val useHrForScale = plotHr && !plotSteps
+            val useStepsForScale = plotSteps
+            if (plotHr) actGraphData.addHeartRate(useHrForScale, if (useHrForScale) 1.0 else 0.8)
+            if (plotSteps) actGraphData.addSteps(useStepsForScale, if (useStepsForScale) 1.0 else 0.8)
+            actGraphData.addNowLine(dateUtil.now())
+            actGraphData.formatAxis(overviewData.fromTime, overviewData.endTime)
+            actGraphData.performUpdate()
+            actGraphData.applyV2Theme()
+            binding.v2SensitivityGraphLabel.text = when {
+                plotHr && plotSteps -> "Heart rate \u00B7 Steps"
+                plotHr              -> "Heart rate"
+                else                -> "Steps"
             }
-
-            val windowMs = 3600_000L
-            val dataPoints = mutableListOf<com.jjoe64.graphview.series.DataPoint>()
-            val refPoints = mutableListOf<com.jjoe64.graphview.series.DataPoint>()
-            for (pt in devPoints) {
-                if (pt.time < overviewData.fromTime || pt.time > overviewData.endTime) continue
-                var sumDev = 0.0; var sumAbsBgi = 0.0; var nClean = 0; var nTotal = 0
-                for (wp in devPoints) {
-                    if (wp.time > pt.time) break
-                    if (wp.time < pt.time - windowMs) continue
-                    nTotal++
-                    sumAbsBgi += wp.absBgi
-                    if (!wp.hasCob) { sumDev += wp.deviation; nClean++ }
-                }
-                val ratio = if (nClean >= 3 && nTotal > 0) {
-                    val meanAbsBgi = sumAbsBgi / nTotal
-                    if (meanAbsBgi > 0.5) (1.0 + (sumDev / nClean) / meanAbsBgi).coerceIn(0.5, 1.5) else 1.0
-                } else 1.0
-                dataPoints.add(com.jjoe64.graphview.series.DataPoint(pt.time.toDouble(), ratio))
-                refPoints.add(com.jjoe64.graphview.series.DataPoint(pt.time.toDouble(), 1.0))
-            }
-
-            sensGraph.removeAllSeries()
-            if (dataPoints.size > 2) {
-                val refSeries = com.jjoe64.graphview.series.LineGraphSeries(refPoints.toTypedArray())
-                refSeries.color = Color.GRAY
-                refSeries.thickness = 2
-                sensGraph.addSeries(refSeries)
-
-                val capHighPoints = refPoints.map { com.jjoe64.graphview.series.DataPoint(it.x, 1.15) }.toTypedArray()
-                val capLowPoints = refPoints.map { com.jjoe64.graphview.series.DataPoint(it.x, 0.85) }.toTypedArray()
-                val capHighSeries = com.jjoe64.graphview.series.LineGraphSeries(capHighPoints)
-                capHighSeries.color = Color.argb(80, 255, 0, 0)
-                capHighSeries.thickness = 1
-                sensGraph.addSeries(capHighSeries)
-                val capLowSeries = com.jjoe64.graphview.series.LineGraphSeries(capLowPoints)
-                capLowSeries.color = Color.argb(80, 255, 0, 0)
-                capLowSeries.thickness = 1
-                sensGraph.addSeries(capLowSeries)
-
-                val sensSeries = com.jjoe64.graphview.series.LineGraphSeries(dataPoints.toTypedArray())
-                sensSeries.color = Color.parseColor("#e8eaf0")
-                sensSeries.thickness = 4
-                sensGraph.addSeries(sensSeries)
-
-                sensGraph.viewport.isXAxisBoundsManual = true
-                sensGraph.viewport.setMinX(overviewData.fromTime.toDouble())
-                sensGraph.viewport.setMaxX(overviewData.endTime.toDouble())
-                sensGraph.viewport.isYAxisBoundsManual = true
-                sensGraph.viewport.setMinY(0.7)
-                sensGraph.viewport.setMaxY(1.3)
-                sensGraph.gridLabelRenderer?.isHorizontalLabelsVisible = false
-                sensGraph.gridLabelRenderer?.numVerticalLabels = 3
-                sensGraph.gridLabelRenderer?.labelVerticalWidth = axisWidth
-                sensGraph.gridLabelRenderer?.gridColor = Color.parseColor("#1a1d28")
-                sensGraph.gridLabelRenderer?.textSize = 11f * resources.displayMetrics.scaledDensity
-                sensGraph.gridLabelRenderer?.verticalLabelsColor = Color.parseColor("#aaaaaa")
-
-                val nowSeries = com.jjoe64.graphview.series.LineGraphSeries(arrayOf(
-                    com.jjoe64.graphview.series.DataPoint(dateUtil.now().toDouble(), 0.7),
-                    com.jjoe64.graphview.series.DataPoint(dateUtil.now().toDouble(), 1.3)
-                ))
-                nowSeries.color = Color.parseColor("#e8eaf0")
-                nowSeries.thickness = 1
-                sensGraph.addSeries(nowSeries)
-            }
-
-            val currentDevRatio = lastBoostStatus.deviationSensRatio
-            val labelText = if (currentDevRatio != null && lastBoostStatus.deviationSensSource != "none") {
-                "Sensitivity \u00D7${String.format(Locale.getDefault(), "%.2f", currentDevRatio)} (${lastBoostStatus.deviationSensSource})"
-            } else {
-                val latestRatio = dataPoints.lastOrNull()?.y ?: 1.0
-                "Sensitivity \u00D7${String.format(Locale.getDefault(), "%.2f", latestRatio)} (preview)"
-            }
-            binding.v2SensitivityGraphLabel.text = labelText
         } else {
             binding.v2SensitivityGraphContainer.visibility = View.GONE
         }
