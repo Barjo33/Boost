@@ -17,6 +17,7 @@ import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
+import app.aaps.core.graph.data.DataPointWithLabelInterface
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.automation.Automation
@@ -25,6 +26,7 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.overview.LastBgData
 import app.aaps.core.interfaces.overview.OverviewData
@@ -848,37 +850,40 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
         iobGraphData.performUpdate()
         iobGraphData.applyV2Theme()
 
-        // Activity graph (steps + heart rate) — replaces the old sensitivity preview.
-        // Shown only when HR and/or Steps are enabled in the chart menu AND there is data for the
-        // enabled type(s); otherwise the whole card is hidden. (View IDs are still the legacy
-        // "sensitivity" ones — repurposed, not renamed.)
-        val hrStepsSettings = menuChartSettings.getOrNull(1)
-        val showHr = hrStepsSettings?.get(OverviewMenus.CharType.HR.ordinal) == true
-        val showSteps = hrStepsSettings?.get(OverviewMenus.CharType.STEPS.ordinal) == true
-        val hrHasData = (overviewData.heartRateGraphSeries as PointsWithLabelGraphSeries<*>).highestValueY > 0
-        val stepsHasData = (overviewData.stepsCountGraphSeries as PointsWithLabelGraphSeries<*>).highestValueY > 0
-        val plotHr = showHr && hrHasData
-        val plotSteps = showSteps && stepsHasData
-        if (plotHr || plotSteps) {
-            binding.v2SensitivityGraphContainer.visibility = View.VISIBLE
-            val actGraphData = graphDataProvider.get().with(binding.v2SensitivityGraph, overviewData)
-            val useHrForScale = plotHr && !plotSteps
-            val useStepsForScale = plotSteps
-            // Add the scale-OWNING series first so the other's multiplier is computed against the
-            // established maxY. (If HR is added before Steps when Steps owns the scale, HR's multiplier
-            // is computed against an uninitialized maxY and the HR trace collapses to a flat line.)
-            if (plotSteps) actGraphData.addSteps(useStepsForScale, if (useStepsForScale) 1.0 else 0.8)
-            if (plotHr) actGraphData.addHeartRate(useHrForScale, if (useHrForScale) 1.0 else 0.8)
-            actGraphData.addNowLine(dateUtil.now())
-            actGraphData.formatAxis(overviewData.fromTime, overviewData.endTime)
-            actGraphData.performUpdate()
-            actGraphData.applyV2Theme()
-            binding.v2SensitivityGraphLabel.text = when {
-                plotHr && plotSteps -> "Heart rate \u00B7 Steps"
-                plotHr              -> "Heart rate"
-                else                -> "Steps"
+        // Activity graph (steps + heart rate) — replaces the old sensitivity preview. DATA-DRIVEN:
+        // show whichever of steps/HR actually has data in the visible window; hide the whole card
+        // only when neither does. The HR/steps series are populated unconditionally by
+        // PrepareTreatmentsDataWorker, so this does NOT depend on the chart-menu HR/STEPS toggles
+        // (those default OFF, which previously hid the graph entirely). Legacy "sensitivity" view
+        // IDs are repurposed, not renamed. Wrapped so a graph hiccup can never break the overview.
+        try {
+            val hrSeries = overviewData.heartRateGraphSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>
+            val stepsSeries = overviewData.stepsCountGraphSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>
+            val plotHr = !hrSeries.isEmpty
+            val plotSteps = !stepsSeries.isEmpty
+            if (plotHr || plotSteps) {
+                binding.v2SensitivityGraphContainer.visibility = View.VISIBLE
+                val actGraphData = graphDataProvider.get().with(binding.v2SensitivityGraph, overviewData)
+                val useHrForScale = plotHr && !plotSteps
+                val useStepsForScale = plotSteps
+                // Add the scale-OWNING series first so the other's multiplier is computed against the
+                // established maxY (else HR added first vs an uninitialized maxY -> flat-line trace).
+                if (plotSteps) actGraphData.addSteps(useStepsForScale, if (useStepsForScale) 1.0 else 0.8)
+                if (plotHr) actGraphData.addHeartRate(useHrForScale, if (useHrForScale) 1.0 else 0.8)
+                actGraphData.addNowLine(dateUtil.now())
+                actGraphData.formatAxis(overviewData.fromTime, overviewData.endTime)
+                actGraphData.performUpdate()
+                actGraphData.applyV2Theme()
+                binding.v2SensitivityGraphLabel.text = when {
+                    plotHr && plotSteps -> "Heart rate · Steps"
+                    plotHr              -> "Heart rate"
+                    else                -> "Steps"
+                }
+            } else {
+                binding.v2SensitivityGraphContainer.visibility = View.GONE
             }
-        } else {
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.UI, "V2 activity (steps/HR) graph failed", e)
             binding.v2SensitivityGraphContainer.visibility = View.GONE
         }
 
