@@ -1474,8 +1474,12 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     }
                     val res = StepSourceResolver.resolve(states)
 
-                    // ── Baseline from the bridged rolling window (in the active source's units) ──
-                    val bridged = DailyStepHistoryTracker.bridgedWindow(multi, res.active, todayIdx)
+                    // ── Baseline from the PHONE-ANCHORED rolling window. The phone is the one source
+                    //    that runs continuously across watch SWAPS (one watch ceases as the next
+                    //    starts → they never overlap), so it is the calibration frame; worn sources
+                    //    are scaled into phone units. (Replaces watch-to-watch bridging, which could
+                    //    never calibrate a swap.) ──
+                    val bridged = DailyStepHistoryTracker.phoneAnchoredWindow(multi, todayIdx)
                     val sf = DailyStepHistoryTracker.shadowFactors(bridged.history, todayIdx)
                     it.boostActivityLoad_baselineSteps = sf.baselineSteps
                     it.boostActivityLoad_lastDaySteps = sf.lastDaySteps
@@ -1484,8 +1488,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     it.boostActivityLoad_source = res.active
                     it.boostActivitySource_resolved = res.active
                     it.boostActivitySource_states = res.note
-                    it.boostActivitySource_bridge = if (bridged.donorsUsed.isEmpty()) "none"
-                        else bridged.donorsUsed.joinToString("+") + if (bridged.calibrated) "" else "(raw)"
+                    it.boostActivitySource_bridge = if (bridged.donorsUsed.isEmpty()) "phone"
+                        else "phone<-" + bridged.donorsUsed.joinToString("+") + if (bridged.calibrated) "" else "(raw)"
                     if (sf.baselineSteps != null && sf.ratio != null) {
                         val sign = if (sf.wouldDeltaIsfPct >= 0) "+" else ""
                         it.reason.append("activityLoad: ${res.active ?: "none"} base ${sf.baselineSteps} last ${sf.lastDaySteps} (${Round.roundTo(sf.ratio!!, 0.01)}x) wouldΔISF $sign${Round.roundTo(sf.wouldDeltaIsfPct, 0.1)}% [${sf.note}] bridge[${it.boostActivitySource_bridge}]; ")
@@ -1493,9 +1497,11 @@ open class OpenAPSBoostPlugin @Inject constructor(
                         it.reason.append("activityLoad: no baseline (src[${res.note}]); ")
                     }
 
-                    // ── Intraday "running hot?" from the active source's today total vs typical pace ──
+                    // ── Intraday "running hot?" — today's count converted to PHONE units so it matches
+                    //    the phone-anchored baseline (worn-source today × phone/worn calibration). ──
                     val intraHour = java.time.LocalTime.now().hour
-                    val intra = DailyStepHistoryTracker.intradayFactor(res.stepsToday, sf.baselineSteps, intraHour)
+                    val stepsTodayPhone = DailyStepHistoryTracker.toPhoneUnits(res.stepsToday, res.active, multi)
+                    val intra = DailyStepHistoryTracker.intradayFactor(stepsTodayPhone, sf.baselineSteps, intraHour)
                     it.boostActivityLoad_stepsToday = res.stepsToday
                     it.boostActivityLoad_stepsSource = res.active
                     it.boostActivityLoad_intradayRatio = intra.ratio?.let { r -> Round.roundTo(r, 0.01) }

@@ -264,4 +264,68 @@ object DailyStepHistoryTracker {
         }
         return BridgeResult(History(out), calibrated = !anyUncalibrated, donorsUsed = donorsUsed.toList())
     }
+
+    /**
+     * PHONE-ANCHORED rolling window (2026-06-29) — the correct frame when watches are SWAPPED, not
+     * stacked. The old [bridgedWindow] calibrated the old source directly against the new one, but a
+     * watch swap means the two never share a day (one ceases as the other starts) → zero overlap →
+     * no scale → raw forever. The PHONE runs continuously across every watch era, so it is the one
+     * source that overlaps them all: it is the calibration frame.
+     *
+     * Per day in the window:
+     *  1. if a worn source (wear > garmin > hc:*) recorded the day AND can be scaled into phone
+     *     units (≥[MIN_OVERLAP_DAYS] of phone↔that-source overlap), use the scaled worn value
+     *     (worn-when-carried beats phone-when-pocketed for accuracy);
+     *  2. else use the phone's own value for the day (the phone has every day it was carried);
+     *  3. else (phone lacks the day and the worn source can't be scaled yet — the phone's warmup
+     *     window) fall back to the worn value raw, flagged uncalibrated. Self-heals once the phone
+     *     accrues [MIN_OVERLAP_DAYS] overlapping days with each worn source.
+     *
+     * No watch-to-watch calibration is ever needed, so a future swap can never re-open the gap.
+     */
+    fun phoneAnchoredWindow(multi: MultiSourceHistory, todayIndex: Long): BridgeResult {
+        val phone = multi.sources[StepSourceResolver.PHONE] ?: History()
+        val donors = multi.sources.entries
+            .filter { it.key != StepSourceResolver.PHONE }
+            .sortedBy { StepSourceResolver.tier(it.key) }
+        val cals = HashMap<String, Double?>()                       // phone/donor scale, memoised
+        val out = LinkedHashMap<Long, DailyTotal>()
+        val donorsUsed = LinkedHashSet<String>()
+        var anyUncalibrated = false
+        var day = todayIndex - WINDOW_DAYS
+        while (day < todayIndex) {
+            val phoneDay = phone.days[day]
+            // highest-trust worn source that recorded this day (whether or not it scales)
+            val worn = donors.firstOrNull { it.value.days[day] != null }
+            when {
+                worn != null -> {
+                    val raw = worn.value.days[day]!!.steps
+                    val cal = cals.getOrPut(worn.key) { calibration(phone, worn.value) }   // median(phone/worn)
+                    when {
+                        cal != null      -> { out[day] = DailyTotal(day, (raw * cal).toInt(), worn.key); donorsUsed.add(worn.key) }
+                        phoneDay != null -> out[day] = phoneDay                              // can't scale → phone's own day
+                        else             -> { out[day] = DailyTotal(day, raw, worn.key); donorsUsed.add(worn.key); anyUncalibrated = true }
+                    }
+                }
+                phoneDay != null -> out[day] = phoneDay
+            }
+            day++
+        }
+        return BridgeResult(History(out), calibrated = !anyUncalibrated, donorsUsed = donorsUsed.toList())
+    }
+
+    /**
+     * Express [steps] reported by [activeSource] in PHONE-equivalent units, so today's live count
+     * matches the phone-anchored baseline. Phone/unknown/no-overlap → returned unchanged; a worn
+     * source with enough phone overlap → scaled by median(phone/worn).
+     */
+    fun toPhoneUnits(steps: Int, activeSource: String?, multi: MultiSourceHistory): Int {
+        if (activeSource == null) return steps
+        val src = StepSourceResolver.canonical(activeSource)
+        if (src == StepSourceResolver.PHONE) return steps
+        val phone = multi.sources[StepSourceResolver.PHONE] ?: return steps
+        val srcHist = multi.sources[src] ?: return steps
+        val cal = calibration(phone, srcHist) ?: return steps
+        return (steps * cal).toInt()
+    }
 }
