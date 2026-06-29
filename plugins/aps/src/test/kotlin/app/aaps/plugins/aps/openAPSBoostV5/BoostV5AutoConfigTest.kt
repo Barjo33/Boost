@@ -1,5 +1,6 @@
 package app.aaps.plugins.aps.openAPSBoostV5
 
+import app.aaps.core.keys.DoubleKey
 import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.Test
 
@@ -90,5 +91,43 @@ class BoostV5AutoConfigTest {
         assertThat(s.rationale).isNotEmpty()
         assertThat(s.rationale.any { it.contains("HypoCaution") }).isTrue()
         assertThat(s.rationale.any { it.contains("Aggression") }).isTrue()
+    }
+
+    // ── Application of the suggestion (BoostV5AutoConfigApply): the preset-skip invariant ──
+    // These exercise the SAME helper OpenAPSBoostV5Plugin.maybeAutoConfigure now uses, so they lock
+    // the behaviour Tim asked to confirm: presetting one V6 knob must not block the others.
+
+    @Test fun `managed knobs cover exactly the auto-configured doubles`() {
+        val keys = BoostV5AutoConfigApply.managedDoubleKnobs(BoostV5AutoConfig.compute(profile())!!).map { it.first }
+        assertThat(keys).containsExactly(
+            DoubleKey.ApsBoostV5Aggression, DoubleKey.ApsBoostV5HypoCaution,
+            DoubleKey.ApsBoostV5ConfirmedCapU, DoubleKey.ApsBoostV5CommittedCapU,
+            DoubleKey.ApsBoostCumulativeSmbCap60Min, DoubleKey.ApsBoostMaxIob, DoubleKey.ApsBoostBolus
+        )
+    }
+
+    @Test fun `with nothing preset, every knob is configured`() {
+        val knobs = BoostV5AutoConfigApply.managedDoubleKnobs(BoostV5AutoConfig.compute(profile())!!)
+        val store = linkedMapOf<DoubleKey, Double>()
+        val applied = BoostV5AutoConfigApply.applyAutoConfig(knobs, isSet = { store.containsKey(it) }, put = { k, v -> store[k] = v })
+        assertThat(applied.map { it.first }).containsExactlyElementsIn(knobs.map { it.first })
+        assertThat(store.keys).containsExactlyElementsIn(knobs.map { it.first })
+    }
+
+    @Test fun `presetting one knob keeps it and still configures all the others`() {
+        val knobs = BoostV5AutoConfigApply.managedDoubleKnobs(BoostV5AutoConfig.compute(profile())!!)
+        val preset = DoubleKey.ApsBoostCumulativeSmbCap60Min   // someone preset the SMB cap
+        val presetValue = 2.5
+        val store = linkedMapOf(preset to presetValue)         // already present in prefs
+        val applied = BoostV5AutoConfigApply.applyAutoConfig(
+            knobs, isSet = { store.containsKey(it) }, put = { k, v -> store[k] = v }
+        )
+        val others = knobs.map { it.first }.filter { it != preset }
+        // preset knob NOT applied; every other knob IS
+        assertThat(applied.map { it.first }).containsExactlyElementsIn(others)
+        assertThat(applied.map { it.first }).doesNotContain(preset)
+        // preset value untouched; all others now written with the suggested value
+        assertThat(store[preset]).isEqualTo(presetValue)
+        knobs.filter { it.first != preset }.forEach { (k, v) -> assertThat(store[k]).isEqualTo(v) }
     }
 }

@@ -187,15 +187,14 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             return
         }
 
-        // Apply only knobs the user hasn't explicitly set.
+        // Apply only knobs the user (or a preset) hasn't already set. Per-knob & independent — a
+        // preset value is KEPT and never blocks the others (see BoostV5AutoConfigApply, unit-tested).
         val applied = mutableListOf<String>()
-        putDoubleIfUnset(DoubleKey.ApsBoostV5Aggression, suggestion.aggression, applied)
-        putDoubleIfUnset(DoubleKey.ApsBoostV5HypoCaution, suggestion.hypoCaution, applied)
-        putDoubleIfUnset(DoubleKey.ApsBoostV5ConfirmedCapU, suggestion.confirmedCapU, applied)
-        putDoubleIfUnset(DoubleKey.ApsBoostV5CommittedCapU, suggestion.committedCapU, applied)
-        putDoubleIfUnset(DoubleKey.ApsBoostCumulativeSmbCap60Min, suggestion.cumulativeSmbCap60MinU, applied)
-        putDoubleIfUnset(DoubleKey.ApsBoostMaxIob, suggestion.maxIobU, applied)
-        putDoubleIfUnset(DoubleKey.ApsBoostBolus, suggestion.bolusCapU, applied)
+        BoostV5AutoConfigApply.applyAutoConfig(
+            BoostV5AutoConfigApply.managedDoubleKnobs(suggestion),
+            isSet = { preferences.getIfExists(it) != null },
+            put = { key, value -> preferences.put(key, value) }
+        ).forEach { (key, value) -> applied += "${key.key}=$value" }
         if (preferences.getIfExists(BooleanKey.ApsBoostV5FastCarbConfirm) == null) {
             preferences.put(BooleanKey.ApsBoostV5FastCarbConfirm, suggestion.fastCarbConfirm)
             applied += "fastCarbConfirm=${suggestion.fastCarbConfirm}"
@@ -213,13 +212,6 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
                 "Boost V6 set ${applied.size} setting(s) from your last 14 days (your other settings were kept):\n$pretty",
                 Notification.INFO
             )
-        }
-    }
-
-    private fun putDoubleIfUnset(key: DoubleKey, value: Double, applied: MutableList<String>) {
-        if (preferences.getIfExists(key) == null) {
-            preferences.put(key, value)
-            applied += "${key.key}=$value"
         }
     }
 
