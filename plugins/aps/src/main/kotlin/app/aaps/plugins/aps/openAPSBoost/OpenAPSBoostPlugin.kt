@@ -1726,7 +1726,6 @@ open class OpenAPSBoostPlugin @Inject constructor(
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostBolus, dialogMessage = R.string.boost_bolus_summary, title = R.string.boost_bolus_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostPercentScale, dialogMessage = R.string.boost_percent_scale_summary, title = R.string.boost_percent_scale_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostScale, dialogMessage = R.string.boost_scale_summary, title = R.string.boost_scale_title))
-            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostCumulativeSmbCap60Min, dialogMessage = R.string.boost_cumulative_smb_cap_summary, title = R.string.boost_cumulative_smb_cap_title))
             addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.ApsBoostStartTime, dialogMessage = R.string.boost_start_summary, title = R.string.boost_start_title))
             addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.ApsBoostEndTime, dialogMessage = R.string.boost_end_summary, title = R.string.boost_end_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostEnablePercentScale, summary = R.string.boost_enable_percent_scale_summary, title = R.string.boost_enable_percent_scale_title))
@@ -1758,9 +1757,10 @@ open class OpenAPSBoostPlugin @Inject constructor(
             // ── 2. Shared Boost engine controls (live under V5 too) ─────
             // maxIOB clamps V5's dose; circadian ISF + allow-with-high-TT shape sens/insulinReq
             // which V5 inherits as baseInsulinReq. The V1 SMB-SIZING controls (bolus cap, scale,
-            // percent-scale, insulinReq%, cumulative-SMB cap, boost time window) are NOT here —
-            // V5 replaces V1's SMB, so they're inert under V5; they live in V1's screen only
-            // (see addBoostV1SmbSizingScreen).
+            // percent-scale, insulinReq%, boost time window) are NOT here — V5 replaces V1's SMB, so
+            // they're inert under V5; they live in V1's screen only. EXCEPTION: the cumulative-60min
+            // SMB cap ALSO bounds V5/V6 (re-checked at the V6 override), so it lives in the shared
+            // Safety category below — see §6.
             if (includeEngineEssentials) addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostMaxIob, dialogMessage = R.string.boost_max_iob_summary, title = R.string.boost_max_iob_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostEnableCircadianIsf, summary = R.string.boost_enable_circadian_isf_summary, title = R.string.boost_enable_circadian_isf_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostAllowWithHighTt, summary = R.string.boost_allow_high_tt_summary, title = R.string.boost_allow_high_tt_title))
@@ -1871,6 +1871,11 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsMaxMinutesOfBasalToLimitSmb, title = R.string.smb_max_minutes_summary))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsUamMaxMinutesOfBasalToLimitSmb, dialogMessage = R.string.uam_smb_max_minutes, title = R.string.uam_smb_max_minutes_summary))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsCarbsRequestThreshold, dialogMessage = R.string.carbs_req_threshold_summary, title = R.string.carbs_req_threshold))
+                // Cumulative 60-min SMB volume cap — a hard anti-stacking gate that ALSO bounds V5/V6
+                // (re-checked at the V6 override in OpenAPSBoostPlugin), so it lives in the shared
+                // engine Safety category — NOT just V1's SMB-sizing screen. 0 disables; auto-config
+                // sets it per user (up to ~confirmedCap, so the key's max must cover the cohort).
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostCumulativeSmbCap60Min, dialogMessage = R.string.boost_cumulative_smb_cap_summary, title = R.string.boost_cumulative_smb_cap_title))
                 // allow-all-BG-sources + bypass-version-check toggles removed 2026-06-27 —
                 // both are now forced always-on in code (no longer user-facing levers).
                 // V5/V6 controls intentionally NOT here — they live in the selectable "Boost V5"
