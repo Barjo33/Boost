@@ -13,6 +13,28 @@ settings reference for the earlier plugins lives on a separate page:
 method that lets a live dosing algorithm be changed safely has its own page too:
 **[backtesting — safe algorithm updates & shadow validation](backtesting/README.md)**.
 
+### 🧮 Interactive tools (open in a browser)
+
+Two self-contained HTML tools — no install, no data leaves your machine — let you *see* how Boost
+doses and how V1 and V6 differ, side by side:
+
+- **[▶ Boost Simulator](https://tim2000s.github.io/Boost-in-AAPS_3.4/boost_simulator.html)**
+  ([source](boost_simulator.html)) —
+  a live what-if for the dosing maths. Set BG, trend, IOB, TDD and the settings (or pull a snapshot
+  from Nightscout) and watch the ISF and SMB recompute. It runs **both engines at once**: the V1/V2
+  **8-tier** ladder and the **V6 meal state-machine**, shown in a *V1-tiers-vs-V6* panel and as a
+  dual track on the **BG-projection** tab — so you can see exactly where V6 holds back in OBSERVING
+  and catches up in CONFIRMED. Faithful JS ports of the real engine (`MealSignalScore`,
+  `MealHypothesis`, `AggressionBudget`, `SafetyGates`).
+- **[▶ Boost Tuning Guide](https://tim2000s.github.io/Boost-in-AAPS_3.4/boost_tuning_guide.html)**
+  ([source](boost_tuning_guide.html)) —
+  a visual reference for what every setting does to aggressiveness: each knob on a
+  conservative→aggressive spectrum, real-world tuning scenarios, and a dedicated **Boost V6** section
+  explaining the state-machine model and how V1's ~24 knobs collapse to V6's **3**.
+
+> These tools validate **decisions** (what dose, which state, why) — not glucose outcomes. They model
+> the algorithm, not a body. For the data-driven validation method see the backtesting page above.
+
 ---
 
 ## Contents
