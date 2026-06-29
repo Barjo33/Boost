@@ -64,7 +64,9 @@ enum class DoubleKey(
     ApsBoostActivityPct("boost_activity_pct", 80.0, 30.0, 150.0, defaultedBySM = true),
     ApsBoostPostExerciseRecoveryHours("boost_post_exercise_recovery_hours", 2.0, 0.5, 8.0, defaultedBySM = true),
     ApsBoostPostExerciseRecoveryScale("boost_post_exercise_recovery_scale", 0.5, 0.0, 1.0, defaultedBySM = true),
-    ApsBoostCumulativeSmbCap60Min("boost_cumulative_smb_cap_60min", 1.5, 0.0, 10.0, defaultedBySM = true),
+    // Default is permissive (10 = the max, effectively off) on purpose: auto-config LOWERS it to the
+    // per-user value on first V6 activation; until then a conservative default would needlessly throttle.
+    ApsBoostCumulativeSmbCap60Min("boost_cumulative_smb_cap_60min", 10.0, 0.0, 10.0, defaultedBySM = true),
 
     // Boost V5 — three (and only three) user-facing knobs per the minimal-settings tenet
     ApsBoostV5Aggression("boost_v5_aggression", 1.0, 0.7, 1.3, defaultedBySM = true),
