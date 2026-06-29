@@ -645,6 +645,64 @@ canvas {
     </div>
   </div>
 
+  <!-- Boost V6 Engine -->
+  <div class="section">
+    <div class="section-header" onclick="toggleSection(this)">
+      <span>🤖 Boost V6 Engine</span>
+      <span class="chevron">▾</span>
+    </div>
+    <div class="section-body">
+      <p style="font-size:0.7rem; color:#64748b; line-height:1.5; margin-bottom:10px;">
+        V6 keeps V1's ISF and replaces the 8-tier SMB with a meal state-machine:
+        <b style="color:#cbd5e1">dose = budget × multiplier(state)</b>. Just 3 user knobs.
+      </p>
+      <div class="ctrl">
+        <div class="ctrl-label"><span class="ctrl-name">Aggression</span><span class="ctrl-val" id="v-v6Aggression">1.0</span></div>
+        <input type="range" id="s-v6Aggression" min="0.7" max="1.3" step="0.05" value="1.0" oninput="update()">
+        <div class="ctrl-hints"><span>0.7 (gentle)</span><span>1.3 — scales CONFIRMED only</span></div>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label"><span class="ctrl-name">Hypo Caution</span><span class="ctrl-val" id="v-v6HypoCaution">1.0</span></div>
+        <input type="range" id="s-v6HypoCaution" min="1.0" max="2.0" step="0.05" value="1.0" oninput="update()">
+        <div class="ctrl-hints"><span>1.0</span><span>2.0 — more backoff on hypo-risk</span></div>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label"><span class="ctrl-name">Sensitivity</span><span class="ctrl-val" id="v-v6Sensitivity">1.0</span></div>
+        <input type="range" id="s-v6Sensitivity" min="0.8" max="1.2" step="0.05" value="1.0" oninput="update()">
+        <div class="ctrl-hints"><span>0.8 (runs hot)</span><span>1.2 (resistant)</span></div>
+      </div>
+      <div class="ctrl" style="margin-top:6px">
+        <div class="ctrl-label"><span class="ctrl-name">ML Meal Likelihood</span><span class="ctrl-val" id="v-mlMealLikely">0%</span></div>
+        <input type="range" id="s-mlMealLikely" min="0" max="100" step="1" value="0" oninput="update()">
+        <div class="ctrl-hints"><span>0 (no meal)</span><span>100% (model: meal)</span></div>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label"><span class="ctrl-name">ML Hypo Risk</span><span class="ctrl-val" id="v-mlHypoRisk">0%</span></div>
+        <input type="range" id="s-mlHypoRisk" min="0" max="100" step="1" value="0" oninput="update()">
+        <div class="ctrl-hints"><span>0</span><span>100% — damps the budget</span></div>
+      </div>
+      <div class="toggle-row" style="margin-top:4px">
+        <span class="toggle-label">No ML (model null → renormalize)</span>
+        <label class="toggle"><input type="checkbox" id="t-noMl" onchange="update()"><div class="toggle-slider"></div></label>
+      </div>
+      <div class="toggle-row" style="margin-top:4px">
+        <span class="toggle-label">In post-exercise window (×0.5)</span>
+        <label class="toggle"><input type="checkbox" id="t-postExercise" onchange="update()"><div class="toggle-slider"></div></label>
+      </div>
+      <div class="ctrl" style="margin-top:8px">
+        <div class="ctrl-label" style="margin-bottom:6px"><span class="ctrl-name">Prior meal state (snapshot)</span></div>
+        <select id="s-v6PriorState" onchange="update()" style="width:100%; padding:7px 9px; background:#0f1117; color:#e2e8f0; border:1px solid #334155; border-radius:7px; font-size:0.82rem;">
+          <option value="IDLE">IDLE — baseline (oref pass-through)</option>
+          <option value="OBSERVING">OBSERVING — watching a rise</option>
+          <option value="CONFIRMED">CONFIRMED — meal confirmed (catch-up)</option>
+          <option value="COMMITTED">COMMITTED — sustained dosing</option>
+          <option value="RECOVERING">RECOVERING — backing off</option>
+        </select>
+        <div class="ctrl-hints"><span>where V6 was last cycle →</span><span>see the transition</span></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Activity & Profile -->
   <div class="section">
     <div class="section-header" onclick="toggleSection(this)">
@@ -764,6 +822,8 @@ canvas {
         <button class="scenario-btn" onclick="applyScenario('exercise')">Exercise (active + high TT)</button>
         <button class="scenario-btn" onclick="applyScenario('sedentary')">Sedentary / inactive</button>
         <button class="scenario-btn" onclick="applyScenario('nightSleep')">Night Mode near target</button>
+        <button class="scenario-btn" onclick="applyScenario('v6FastCarb')">V6 fast-carb (CONFIRMED)</button>
+        <button class="scenario-btn" onclick="applyScenario('v6SlowMeal')">V6 slow meal (OBSERVING)</button>
       </div>
     </div>
   </div>
@@ -888,6 +948,39 @@ canvas {
       </div>
     </div>
 
+    <!-- V1 vs V6 side-by-side -->
+    <div class="card">
+      <div class="card-title">
+        V1 tiers vs V6 engine — same insulinReq, different SMB
+        <span class="badge" style="background:rgba(56,189,248,0.15); color:#38bdf8;">SIDE-BY-SIDE</span>
+      </div>
+      <p style="font-size:0.72rem; color:#64748b; margin-bottom:12px; line-height:1.5;">
+        Both start from the <b style="color:#94a3b8">same insulinReq</b> (<span id="out-cmp-basereq">—</span> U). V1 routes it through the 8-tier ladder; V6 runs the meal state-machine and doses <b style="color:#94a3b8">budget × multiplier</b>.
+      </p>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <!-- V1 column -->
+        <div style="border:1px solid #334155; border-radius:10px; padding:12px 14px; background:rgba(96,165,250,0.05);">
+          <div style="font-size:0.65rem; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:#60a5fa; margin-bottom:6px;">Boost V1 (tiers)</div>
+          <div style="font-size:0.78rem; color:#cbd5e1; min-height:2.4em;" id="out-cmp-v1-tier">—</div>
+          <div style="display:flex; align-items:baseline; gap:4px; margin-top:8px;">
+            <span style="font-size:1.9rem; font-weight:800; color:#60a5fa;" id="out-cmp-v1-dose">—</span>
+            <span style="font-size:0.78rem; color:#64748b;">U SMB</span>
+          </div>
+        </div>
+        <!-- V6 column -->
+        <div style="border:1px solid #334155; border-radius:10px; padding:12px 14px; background:rgba(167,139,250,0.05);">
+          <div style="font-size:0.65rem; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:#a78bfa; margin-bottom:6px;">Boost V6 (state machine)</div>
+          <div style="font-size:0.78rem; color:#cbd5e1; min-height:2.4em;" id="out-cmp-v6-state">—</div>
+          <div style="display:flex; align-items:baseline; gap:4px; margin-top:8px;">
+            <span style="font-size:1.9rem; font-weight:800; color:#a78bfa;" id="out-cmp-v6-dose">—</span>
+            <span style="font-size:0.78rem; color:#64748b;">U SMB</span>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:12px; text-align:center; font-size:0.82rem; font-weight:600;" id="out-cmp-delta">—</div>
+      <div style="margin-top:12px; padding:10px 14px; background:#0f1117; border:1px solid #2d3748; border-radius:8px; font-size:0.74rem; color:#94a3b8; line-height:1.7;" id="out-v6-breakdown">—</div>
+    </div>
+
     <!-- Aggressiveness gauge -->
     <div class="card">
       <div class="card-title">Overall Aggressiveness</div>
@@ -970,10 +1063,11 @@ canvas {
         <span id="proj-data-source" style="font-size:0.72rem; color:#64748b; font-weight:400;"></span>
       </div>
       <p style="font-size:0.75rem; color:#64748b; margin-bottom:12px; line-height:1.5;">
-        <span style="color:#94a3b8; font-weight:600;">—— Grey</span>: trend only (no new insulin) &nbsp;·&nbsp;
-        <span style="color:#6ee7b7; font-weight:600;">—— Green</span>: with Boost SMBs &nbsp;·&nbsp;
-        <span style="color:#a78bfa; font-weight:600;">▲</span>: SMB fired &nbsp;·&nbsp;
-        Dashed = projected, solid = historical
+        <span style="color:#94a3b8; font-weight:600;">—— Grey</span>: trend only &nbsp;·&nbsp;
+        <span style="color:#10b981; font-weight:600;">—— Green</span>: V1 tiers &nbsp;·&nbsp;
+        <span style="color:#fbbf24; font-weight:600;">—— Amber</span>: V6 engine &nbsp;·&nbsp;
+        <span style="color:#a78bfa; font-weight:600;">▲</span> V1 SMB &nbsp;·&nbsp;
+        <span style="color:#fbbf24; font-weight:600;">▼</span> V6 SMB
       </p>
       <canvas id="projChart" style="width:100%; height:320px;"></canvas>
     </div>
@@ -1042,6 +1136,208 @@ function calcIsfAtBg(bg, sensNT, normalTarget, divisor, velocity, bgCap) {
 }
 
 // ════════════════════════════════════════════════════════════
+// Boost V6 engine (faithful JS port of openAPSBoostV5)
+// ────────────────────────────────────────────────────────────
+// V6 is a pure SMB-OVERRIDE on top of V1. It does NOT recompute
+// ISF/sensitivity — it consumes V1's insulinReq (baseInsulinReq,
+// which already carries DynISF + TDD + autosens) and replaces the
+// 8-tier SMB with: finalDose = aggression_budget × action_multiplier(state)
+// → velocity-scale → state-cap → ordered safety gates.
+// Ports: DetermineBasalBoostV5 / MealSignalScore / MealHypothesis /
+//        AggressionBudget / MealActionMultiplier / SafetyGates.
+// ════════════════════════════════════════════════════════════
+const V6 = {
+  // ── MealSignalScore.kt weights (sum 1.07) ──
+  W_DELTA: 0.30, W_DELTA_ACCL: 0.16, W_ML: 0.20, W_NOT_LOW: 0.12,
+  W_MEAL_TOD: 0.10, W_NOT_EX: 0.04, W_SUSTAINED: 0.15,
+  ML_RENORM_FACTOR: 1.0 / (1.0 - 0.20),  // ≈1.25 when ML weight dropped
+  // ── MealHypothesis.kt thresholds ──
+  ENTER_OBSERVING: 0.44, CONFIRM_SCORE: 0.55, CONFIRM_OFFSET: 30.0,
+  CONFIRM_MIN_AGE: 2, FALLBACK_IDLE_SCORE: 0.36, FALLBACK_IDLE_AGE: 2,
+  RECOVER_DECEL: -5.0, RECOVER_REENGAGE_ACCL: 10.0,
+  // fast-carb fast-path (2026-06-16)
+  FC_DELTA: 8.0, FC_ACCL: 15.0, FC_SCORE: 0.60,
+  // ── MealActionMultiplier.kt ──
+  ACTION: { IDLE: 1.0, OBSERVING: 0.3, CONFIRMED: 1.8, COMMITTED: 1.0, RECOVERING: 0.4 },
+  // ── AggressionBudget.kt ──
+  BUDGET_FLOOR: 0.30, ML_HYPO_THRESHOLD: 0.30, ML_HYPO_FLOOR: 0.50, POST_EX_SCALE: 0.50,
+  // ── DetermineBasalBoostV5.kt dose calibration ──
+  VEL_RISE_HI: 50.0, VEL_RISE_LO: 25.0, VEL_FLOOR: 0.40,
+  CAP_CONFIRMED: 1.0, CAP_COMMITTED: 0.25,
+  // ── SafetyGates.kt ──
+  IOB_T0: 0.50, IOB_T1: 0.70, IOB_T2: 0.85,
+  IOB_S1: 0.85, IOB_S2: 0.60, IOB_S3: 0.40,
+  DECEL_FULL: -15.0, DECEL_FLOOR: 0.30, DECEL_VEL_FALLBACK: 8.0,
+  MIN_GUARD: 80.0, SPIKE_CAP_MULT: 2.5,
+};
+
+function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+
+// Phase 1.a — meal_signal_score (MealSignalScore.kt)
+function v6MealScore(m) {
+  const deltaTerm    = clamp01(m.delta / 20.0);
+  const deltaAcclTerm= clamp01(m.deltaAccl / 30.0);
+  const notLowTerm   = m.recentLow ? 0.4 : 1.0;
+  const todTerm      = v6MealTimeOfDay(m.hour);
+  const notExTerm    = m.exercising ? 0.0 : 1.0;
+  const sustainedTerm= clamp01((m.cumRise30 - 20.0) / 40.0);
+  const mlNull = (m.mlMealLikely == null);
+  // 5-feature partial sum (everything except ML)
+  const partial = V6.W_DELTA*deltaTerm + V6.W_DELTA_ACCL*deltaAcclTerm
+    + V6.W_NOT_LOW*notLowTerm + V6.W_MEAL_TOD*todTerm
+    + V6.W_NOT_EX*notExTerm + V6.W_SUSTAINED*sustainedTerm;
+  let raw;
+  if (mlNull) {
+    raw = V6.ML_RENORM_FACTOR * partial;          // drop ML, rescale the rest
+  } else {
+    raw = partial + V6.W_ML * m.mlMealLikely;
+  }
+  return clamp01(raw);
+}
+
+// Gaussian meal-time-of-day bumps at 08:00, 13:00, 19:00
+function v6MealTimeOfDay(hour) {
+  const peaks = [8, 13, 19], sigma = 1.5;
+  let best = 0;
+  peaks.forEach(p => {
+    const g = Math.exp(-Math.pow(hour - p, 2) / (2 * sigma * sigma));
+    if (g > best) best = g;
+  });
+  return best;
+}
+
+// Phase 1.b — state machine step (MealHypothesis.kt). st carries hysteresis.
+function v6MealStep(st, m) {
+  const s = { ...st };
+  const score = m.score;
+  const fastPath = m.delta >= V6.FC_DELTA && m.deltaAccl >= V6.FC_ACCL
+    && score >= V6.FC_SCORE && !m.asleep && !m.exercising;
+  switch (st.state) {
+    case 'IDLE':
+      if (fastPath)                 { s.state='CONFIRMED'; s.age=0; s.maxScore=score; s.maxOffset=m.eventualBgOffset; s.committed=true; }
+      else if (score >= V6.ENTER_OBSERVING) { s.state='OBSERVING'; s.age=0; s.maxScore=score; s.maxOffset=m.eventualBgOffset; s.committed=false; }
+      break;
+    case 'OBSERVING':
+      s.age = st.age + 1;
+      s.maxScore  = Math.max(st.maxScore, score);
+      s.maxOffset = Math.max(st.maxOffset, m.eventualBgOffset);
+      if (fastPath) { s.state='CONFIRMED'; s.age=0; s.committed=true; }
+      else if (!s.committed && s.age >= V6.CONFIRM_MIN_AGE && s.maxScore >= V6.CONFIRM_SCORE && s.maxOffset >= V6.CONFIRM_OFFSET) {
+        s.state='CONFIRMED'; s.age=0; s.committed=true;
+      } else if (score < V6.FALLBACK_IDLE_SCORE && s.age >= V6.FALLBACK_IDLE_AGE) {
+        s.state='IDLE'; s.age=0; s.maxScore=0; s.maxOffset=0; s.committed=false;
+      }
+      break;
+    case 'CONFIRMED':
+      s.state='COMMITTED'; s.age=0;        // single-cycle commit (Fix 6)
+      break;
+    case 'COMMITTED':
+      s.age = st.age + 1;
+      if (m.deltaAccl < V6.RECOVER_DECEL && m.delta < m.shortAvgDelta) { s.state='RECOVERING'; s.age=0; }
+      break;
+    case 'RECOVERING':
+      s.age = st.age + 1;
+      if (s.age >= 1 && m.deltaAccl > V6.RECOVER_REENGAGE_ACCL && m.delta > 3 && m.eventualBgOffset > 20) { s.state='COMMITTED'; s.age=0; }
+      else if (m.delta < 0 || score < 0.18) { s.state='IDLE'; s.age=0; s.maxScore=0; s.maxOffset=0; s.committed=false; }
+      break;
+  }
+  return s;
+}
+
+// Phase 1.c — aggression budget (AggressionBudget.kt)
+function v6MlHypoScale(mlHypoRisk, hypoCautionKnob) {
+  if (mlHypoRisk == null || mlHypoRisk <= V6.ML_HYPO_THRESHOLD) return 1.0;
+  const span = 1.0 - V6.ML_HYPO_THRESHOLD;          // 0.70
+  const knob = Math.max(1.0, hypoCautionKnob);      // [1,2]
+  const reduction = Math.min(1.0, Math.max(0.0, (mlHypoRisk - V6.ML_HYPO_THRESHOLD) / span * knob));
+  const floor = V6.ML_HYPO_FLOOR / knob;            // 0.50 @1.0 → 0.25 @2.0
+  return Math.max(floor, 1.0 - reduction);
+}
+function v6Budget(baseInsulinReq, mlHypoRisk, inPostEx, knobs) {
+  const mlScale  = v6MlHypoScale(mlHypoRisk, knobs.hypoCaution);
+  const postEx   = inPostEx ? V6.POST_EX_SCALE : 1.0;
+  const sens     = Math.max(0.8, Math.min(1.2, knobs.sensitivity));
+  const modified = baseInsulinReq * mlScale * postEx * sens;
+  return { budget: Math.max(V6.BUDGET_FLOOR * baseInsulinReq, modified), mlScale, postEx, sens };
+}
+
+// Phase 2 — action multiplier (aggression knob scales only CONFIRMED)
+function v6ActionMult(state, aggKnob) {
+  const base = V6.ACTION[state];
+  return state === 'CONFIRMED' ? base * aggKnob : base;
+}
+
+// Phase 2.5 — velocity-scaled dose factor
+function v6VelocityFactor(cumRise30) {
+  if (cumRise30 >= V6.VEL_RISE_HI) return 1.0;
+  if (cumRise30 <= V6.VEL_RISE_LO) return V6.VEL_FLOOR;
+  const frac = (cumRise30 - V6.VEL_RISE_LO) / (V6.VEL_RISE_HI - V6.VEL_RISE_LO);
+  return V6.VEL_FLOOR + (1.0 - V6.VEL_FLOOR) * frac;
+}
+function v6StateCap(state, dose) {
+  if (state === 'CONFIRMED') return Math.min(dose, V6.CAP_CONFIRMED);
+  if (state === 'COMMITTED') return Math.min(dose, V6.CAP_COMMITTED);
+  return dose;
+}
+
+// Phase 3 — ordered safety gates (SafetyGates.kt)
+function v6Gates(dose, m) {
+  const gates = [];
+  // ── HARD gates (short-circuit to 0) ──
+  if (m.asleep)                    return { dose: 0, hard: 'SLEEPING (sleep-gate → base SMB)', gates };
+  if (!m.microBolusAllowed)        return { dose: 0, hard: 'SMBs not allowed', gates };
+  if (m.iob >= m.maxIob)           return { dose: 0, hard: `IOB ${m.iob.toFixed(1)} ≥ maxIOB ${m.maxIob.toFixed(1)}`, gates };
+  if (m.minGuardBg < V6.MIN_GUARD) return { dose: 0, hard: `minGuard ${Math.round(m.minGuardBg)} < ${V6.MIN_GUARD}`, gates };
+  // ── SOFT gates (ordered, multiplicative) — iobHeadroom FIRST ──
+  let d = dose;
+  const frac = m.maxIob > 0 ? m.iob / m.maxIob : 0;
+  const iobBrake = frac < V6.IOB_T0 ? 1.0 : frac < V6.IOB_T1 ? V6.IOB_S1 : frac < V6.IOB_T2 ? V6.IOB_S2 : V6.IOB_S3;
+  if (iobBrake < 1.0) { gates.push(`IOB-headroom ×${iobBrake.toFixed(2)}`); d *= iobBrake; }
+  // deceleration brake (V1-anchored ease-off)
+  let decel = 1.0;
+  if (!(m.delta > V6.DECEL_VEL_FALLBACK || m.deltaAccl >= 0)) {
+    const a = Math.max(V6.DECEL_FULL, m.deltaAccl);
+    decel = V6.DECEL_FLOOR + (a - V6.DECEL_FULL) / (0 - V6.DECEL_FULL) * (1 - V6.DECEL_FLOOR);
+    decel = Math.max(V6.DECEL_FLOOR, Math.min(1.0, decel));
+    gates.push(`decel-brake ×${decel.toFixed(2)}`); d *= decel;
+  }
+  // sensor-quality
+  if (m.flatBGs) { gates.push('sensor-quality ×0.70'); d *= 0.7; }
+  // ── FINAL clamp: pump rounding → spike cap → floor ──
+  d = Math.floor(d / 0.05 + 1e-9) * 0.05;
+  const spikeCap = V6.SPIKE_CAP_MULT * m.baseInsulinReq;
+  let spikeCapped = false;
+  if (d > spikeCap) { d = Math.floor(spikeCap / 0.05) * 0.05; spikeCapped = true; gates.push(`spike-cap ${spikeCap.toFixed(2)}U`); }
+  d = Math.max(0, d);
+  return { dose: d, hard: null, gates, iobBrake, decel, spikeCapped };
+}
+
+// Top-level V6 decision. baseInsulinReq = V1's insulinReq (same starting point as the tiers).
+// prevState = MealHypothesisState; returns the new state so the projection can chain cycles.
+function v6Decide(baseInsulinReq, m, prevState, knobs) {
+  const score = v6MealScore(m);
+  const stepIn = { ...m, score };
+  const newState = v6MealStep(prevState, stepIn);
+  const st = newState.state;
+  const bud = v6Budget(baseInsulinReq, m.mlHypoRisk, m.inPostEx, knobs);
+  const actionMult = v6ActionMult(st, knobs.aggression);
+  const rawDose = bud.budget * actionMult;
+  const velFactor = v6VelocityFactor(m.cumRise30);
+  const velScaled = rawDose * velFactor;
+  const capped = v6StateCap(st, velScaled);
+  const gated = v6Gates(capped, m);
+  return {
+    state: st, prevState: prevState.state, score,
+    budget: bud.budget, mlScale: bud.mlScale, postEx: bud.postEx, sens: bud.sens,
+    actionMult, rawDose, velFactor, velScaled, capped,
+    finalDose: gated.dose, hard: gated.hard, gates: gated.gates, spikeCapped: gated.spikeCapped,
+    eventualBgOffset: m.eventualBgOffset, newStateObj: newState,
+  };
+}
+
+function v6FreshState() { return { state: 'IDLE', age: 0, maxScore: 0, maxOffset: 0, committed: false }; }
+
+// ════════════════════════════════════════════════════════════
 // Inputs
 // ════════════════════════════════════════════════════════════
 function getInputs() {
@@ -1098,7 +1394,48 @@ function getInputs() {
     tempTargetBg:  gf('s-tempTargetBg'),
     highTtSens:    gb('t-highTtSens'),
     lowTtSens:     gb('t-lowTtSens'),
+    // Boost V6 engine
+    v6Aggression:  gf('s-v6Aggression'),
+    v6HypoCaution: gf('s-v6HypoCaution'),
+    v6Sensitivity: gf('s-v6Sensitivity'),
+    mlMealLikely:  gf('s-mlMealLikely') / 100,
+    mlHypoRisk:    gf('s-mlHypoRisk') / 100,
+    noMl:          gb('t-noMl'),
+    v6PriorState:  gs('s-v6PriorState'),
+    postExercise:  gb('t-postExercise'),
   };
+}
+
+// Build the per-cycle V6 measurement bundle from sim inputs + a calcAll result.
+function v6Measurement(inp, r, opts) {
+  opts = opts || {};
+  const bg          = opts.bg          != null ? opts.bg          : inp.bg;
+  const eventualBG  = opts.eventualBG  != null ? opts.eventualBG  : r.eventualBG;
+  const cumRise30   = opts.cumRise30   != null ? opts.cumRise30   : Math.max(0, inp.longAvgDelta * 6);
+  const baseInsReq  = opts.baseInsulinReq != null ? opts.baseInsulinReq : r.insulinReqV1;
+  return {
+    delta: opts.delta != null ? opts.delta : inp.delta,
+    shortAvgDelta: opts.shortAvgDelta != null ? opts.shortAvgDelta : inp.shortAvgDelta,
+    deltaAccl: opts.deltaAccl != null ? opts.deltaAccl : r.delta_accl,
+    eventualBgOffset: opts.eventualBgOffset != null ? opts.eventualBgOffset : Math.max(0, eventualBG - inp.target),
+    cumRise30,
+    mlMealLikely: inp.noMl ? null : inp.mlMealLikely,
+    mlHypoRisk: inp.mlHypoRisk,
+    recentLow: inp.recentLow,
+    hour: inp.circadian ? inp.circHour : new Date().getHours(),
+    exercising: inp.activityState === 'active',
+    inPostEx: inp.postExercise,
+    asleep: inp.nightMode && inp.nightActive,
+    microBolusAllowed: !r.boostDisabledScale,
+    iob: opts.iob != null ? opts.iob : inp.iob,
+    maxIob: inp.maxIob,
+    minGuardBg: Math.min(bg, eventualBG),
+    flatBGs: false,
+    baseInsulinReq: baseInsReq,
+  };
+}
+function v6Knobs(inp) {
+  return { aggression: inp.v6Aggression, hypoCaution: inp.v6HypoCaution, sensitivity: inp.v6Sensitivity };
 }
 
 function fmt(v, dp=1) {
@@ -1647,8 +1984,70 @@ function update() {
   ];
   document.getElementById('out-smb-sensitivity').innerHTML = lines.join('<br>');
 
+  // ── Boost V6 engine panel ─────────────────────────────────
+  document.getElementById('v-v6Aggression').textContent  = inp.v6Aggression.toFixed(2);
+  document.getElementById('v-v6HypoCaution').textContent  = inp.v6HypoCaution.toFixed(2);
+  document.getElementById('v-v6Sensitivity').textContent  = inp.v6Sensitivity.toFixed(2);
+  document.getElementById('v-mlMealLikely').textContent   = Math.round(inp.mlMealLikely * 100) + '%';
+  document.getElementById('v-mlHypoRisk').textContent     = Math.round(inp.mlHypoRisk * 100) + '%';
+  renderV6Panel(inp, r);
+
   // Charts
   drawCharts(inp, r);
+}
+
+// Render the V1-tiers vs V6-engine side-by-side comparison (Tab 1).
+const V6_STATE_META = {
+  IDLE:       { label: 'IDLE',       why: 'baseline — oref pass-through (1.0×)',        color: '#64748b' },
+  OBSERVING:  { label: 'OBSERVING',  why: 'test dose while a rise is watched (0.3×)',   color: '#f59e0b' },
+  CONFIRMED:  { label: 'CONFIRMED',  why: 'meal confirmed — catch-up dose (1.8×)',      color: '#10b981' },
+  COMMITTED:  { label: 'COMMITTED',  why: 'sustained dosing at baseline (1.0×, cap 0.25U)', color: '#a78bfa' },
+  RECOVERING: { label: 'RECOVERING', why: 'backing off as IOB bites (0.4×)',            color: '#38bdf8' },
+};
+function renderV6Panel(inp, r) {
+  const prior = v6FreshState();
+  prior.state = inp.v6PriorState;
+  // Seed hysteresis so a snapshot from OBSERVING can legitimately transition.
+  if (inp.v6PriorState === 'OBSERVING') { prior.age = V6.CONFIRM_MIN_AGE; }
+  if (inp.v6PriorState === 'CONFIRMED' || inp.v6PriorState === 'COMMITTED') { prior.committed = true; }
+  const m = v6Measurement(inp, r);
+  const v6 = v6Decide(r.insulinReqV1, m, prior, v6Knobs(inp));
+
+  document.getElementById('out-cmp-basereq').textContent = fmt(r.insulinReqV1, 3);
+
+  // V1 column
+  const tierShort = { 'T1_COB_PRIMARY':'Tier 1 · COB primary','T2_COB_SECONDARY':'Tier 2 · COB secondary',
+    'T3_UAM_BOOST':'Tier 3 · UAM boost','T4_UAM_HIGH_BOOST':'Tier 4 · UAM high boost',
+    'T5_PERCENT_SCALE':'Tier 5 · percent scale','T6_ACCELERATION':'Tier 6 · acceleration',
+    'T7_ENHANCED_OREF1':'Tier 7 · enhanced oref1','T8_REGULAR_OREF1':'Tier 8 · regular oref1','BLOCKED':'SMBs blocked' };
+  const v1Dose = r.tier === 'BLOCKED' ? 0 : r.microBolus;
+  document.getElementById('out-cmp-v1-tier').textContent = tierShort[r.tier] || r.tier;
+  document.getElementById('out-cmp-v1-dose').textContent = fmt(v1Dose, 2);
+
+  // V6 column
+  const sm = V6_STATE_META[v6.state] || { label: v6.state, why: '', color: '#94a3b8' };
+  const arrow = v6.prevState !== v6.state ? ` (from ${v6.prevState})` : '';
+  const v6StateEl = document.getElementById('out-cmp-v6-state');
+  v6StateEl.innerHTML = `<b style="color:${sm.color}">${sm.label}</b>${arrow}<br><span style="color:#64748b">${v6.hard ? '⚠ ' + v6.hard : sm.why}</span>`;
+  const v6DoseEl = document.getElementById('out-cmp-v6-dose');
+  v6DoseEl.textContent = fmt(v6.finalDose, 2);
+  v6DoseEl.style.color = sm.color;
+
+  // Delta line
+  const d = v6.finalDose - v1Dose;
+  const dEl = document.getElementById('out-cmp-delta');
+  if (Math.abs(d) < 0.025) { dEl.style.color = '#64748b'; dEl.textContent = `V6 and V1 dose within 0.05 U here (${fmt(v6.finalDose,2)} U)`; }
+  else if (d > 0) { dEl.style.color = '#6ee7b7'; dEl.textContent = `V6 doses +${fmt(d,2)} U more than V1 here (${v6.state})`; }
+  else { dEl.style.color = '#fbbf24'; dEl.textContent = `V6 doses ${fmt(d,2)} U vs V1 here — ${v6.state==='OBSERVING'?'holding back to confirm the meal':v6.state}`; }
+
+  // Breakdown
+  let bd = `score = ${fmt(v6.score,3)}  (enter OBS ≥${V6.ENTER_OBSERVING}, confirm peak ≥${V6.CONFIRM_SCORE})${inp.noMl?'  [ML null → renormalized ×1.25]':''}\n`;
+  bd += `budget = max(${V6.BUDGET_FLOOR}×base, base ${fmt(r.insulinReqV1,3)} × mlHypo ${fmt(v6.mlScale,2)} × postEx ${fmt(v6.postEx,2)} × sens ${fmt(v6.sens,2)}) = ${fmt(v6.budget,3)} U\n`;
+  bd += `dose = budget ${fmt(v6.budget,3)} × multiplier(${v6.state}) ${fmt(v6.actionMult,2)} = ${fmt(v6.rawDose,3)} U\n`;
+  bd += `× velocity ${fmt(v6.velFactor,2)} (cumRise30 ${fmt(m.cumRise30,0)}) = ${fmt(v6.velScaled,3)} U → state-cap ${fmt(v6.capped,3)} U\n`;
+  if (v6.hard) bd += `HARD GATE: ${v6.hard} → 0 U`;
+  else bd += `gates: ${v6.gates.length ? v6.gates.join(', ') : 'none'} → final ${fmt(v6.finalDose,2)} U${v6.spikeCapped ? ' (spike-capped)' : ''}`;
+  document.getElementById('out-v6-breakdown').textContent = bd;
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1994,6 +2393,8 @@ const DEFAULTS = {
   nightMode:false, nightActive:false, nightOffset:27,
   cob:0, lastCarbAge:60, cr:10, recentLow:false, nightModeCob:false,
   tempTarget:false, tempTargetBg:140, highTtSens:false, lowTtSens:false,
+  v6Aggression:1.0, v6HypoCaution:1.0, v6Sensitivity:1.0,
+  mlMealLikely:0, mlHypoRisk:0, noMl:false, v6PriorState:'IDLE', postExercise:false,
 };
 const scenarios = {
   default:      { ...DEFAULTS },
@@ -2007,6 +2408,10 @@ const scenarios = {
   exercise:     { ...DEFAULTS, activityState:'active', activityPct:80, tempTarget:true, tempTargetBg:160, highTtSens:true },
   sedentary:    { ...DEFAULTS, activityState:'inactive', inactivityPct:130 },
   nightSleep:   { ...DEFAULTS, bg:105, delta:0, shortAvgDelta:0, longAvgDelta:0, iob:0.2, nightMode:true, nightActive:true, nightOffset:27 },
+  // V6 fast-carb: sharp accelerating rise + high ML → fast-path straight to CONFIRMED (1.8× catch-up)
+  v6FastCarb:   { ...DEFAULTS, bg:150, delta:10, shortAvgDelta:5, longAvgDelta:3.5, iob:0.3, mlMealLikely:80, mlHypoRisk:0, v6PriorState:'OBSERVING' },
+  // V6 slow meal: gentle rise — V6 sits in OBSERVING (0.3× test dose) where V1 tiers would already fire
+  v6SlowMeal:   { ...DEFAULTS, bg:135, delta:3, shortAvgDelta:2.5, longAvgDelta:2, iob:0.4, mlMealLikely:45, mlHypoRisk:0, v6PriorState:'IDLE' },
 };
 
 function applyScenario(key) {
@@ -2102,12 +2507,19 @@ function drawProjectionChart(inp, r) {
   const STEPS = 13; // 0..60 min ahead
   const noBoostBGs = [inp.bg];
   const withBoostBGs = [inp.bg];
-  const smbEvents = []; // {t, units, bg}
+  const withV6BGs = [inp.bg];
+  const smbEvents = []; // {t, units, bg} — V1 tiers
+  const v6Events = [];  // {t, units, bg, state} — V6 engine
 
   // Seed with current IOB as a "bolus delivered DIA/2 minutes ago" proxy
   // so it decays correctly going forward
   const pendingNone  = inp.iob > 0 ? [{ deliveredAt: -peak, units: inp.iob }] : [];
   const pendingBoost = inp.iob > 0 ? [{ deliveredAt: -peak, units: inp.iob }] : [];
+  const pendingV6    = inp.iob > 0 ? [{ deliveredAt: -peak, units: inp.iob }] : [];
+  // V6 chains its meal state-machine cycle-by-cycle (this is what a snapshot can't show).
+  let v6st = v6FreshState(); v6st.state = inp.v6PriorState;
+  const v6Knb = v6Knobs(inp);
+  let prevTrendRate = inp.longAvgDelta;  // mg/dL per 5-min, for deltaAccl
 
   for (let i = 1; i < STEPS; i++) {
     const t = i * STEP;  // minutes from now
@@ -2138,10 +2550,34 @@ function drawProjectionChart(inp, r) {
       }
     }
     withBoostBGs.push(bgWith);
+
+    // ── V6 engine projection (parallel state-machine) ──
+    const iobEffV6 = bgEffect(t - STEP, t) * iobRemaining(pendingV6, t - STEP);
+    let bgV6 = Math.max(40, withV6BGs[i-1] + trend - iobEffV6);
+    const iobV6Now = iobRemaining(pendingV6, t);
+    // per-cycle dynamics from the projected trend
+    const cycleDelta = trend;  // mg/dL this 5-min step
+    const cycleAccl = (cycleDelta - prevTrendRate) / Math.max(Math.abs(prevTrendRate), 2.0) * 100;
+    const v6Base = Math.max(0, (bgV6 - inp.target) / r.isfV1);
+    const v6CumRise = Math.max(0, bgV6 - withV6BGs[Math.max(0, i - 6)]);
+    const v6EventualOffset = Math.max(0, (bgV6 + trend * 6) - inp.target);
+    const mV6 = v6Measurement(inp, r, {
+      bg: bgV6, eventualBG: bgV6 + trend * 6, baseInsulinReq: v6Base, iob: iobV6Now,
+      cumRise30: v6CumRise, delta: cycleDelta, shortAvgDelta: prevTrendRate,
+      deltaAccl: cycleAccl, eventualBgOffset: v6EventualOffset,
+    });
+    const v6dec = v6Decide(v6Base, mV6, v6st, v6Knb);
+    v6st = v6dec.newStateObj;
+    if (v6dec.finalDose >= 0.05) {
+      pendingV6.push({ deliveredAt: t, units: v6dec.finalDose });
+      v6Events.push({ t, units: v6dec.finalDose, bg: bgV6, state: v6dec.state });
+    }
+    prevTrendRate = cycleDelta;
+    withV6BGs.push(bgV6);
   }
 
   // ── Axis ranges ────────────────────────────────────────────
-  const allBGs = [...hist.map(h => h.bg), ...noBoostBGs, ...withBoostBGs];
+  const allBGs = [...hist.map(h => h.bg), ...noBoostBGs, ...withBoostBGs, ...withV6BGs];
   const yMin = Math.min(...allBGs, inp.target - 20, 65) - 10;
   const yMax = Math.max(...allBGs, inp.target + 30) + 15;
   const xMin = hist.length ? hist[0].t : -25;
@@ -2232,7 +2668,16 @@ function drawProjectionChart(inp, r) {
   }
   ctx.closePath(); ctx.fill();
 
-  // ── SMB event markers ─────────────────────────────────────
+  // ── With-V6 projection (amber solid) ──────────────────────
+  ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  withV6BGs.forEach((bg, i) => {
+    const t = i * STEP;
+    i === 0 ? ctx.moveTo(xS(t), yS(bg)) : ctx.lineTo(xS(t), yS(bg));
+  });
+  ctx.stroke();
+
+  // ── V1 SMB event markers (purple ▲, above the line) ───────
   smbEvents.forEach(ev => {
     const x = xS(ev.t), y = yS(ev.bg);
     // Triangle pointing up
@@ -2249,6 +2694,19 @@ function drawProjectionChart(inp, r) {
     // Label
     ctx.fillStyle = '#c4b5fd'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
     ctx.fillText(ev.units.toFixed(2) + 'U', x, y - 17);
+  });
+
+  // ── V6 SMB event markers (amber ▼, below the line) ────────
+  v6Events.forEach(ev => {
+    const x = xS(ev.t), y = yS(ev.bg);
+    ctx.beginPath();
+    ctx.moveTo(x, y + 14);
+    ctx.lineTo(x - 6, y + 4);
+    ctx.lineTo(x + 6, y + 4);
+    ctx.closePath();
+    ctx.fillStyle = '#fbbf24'; ctx.fill();
+    ctx.fillStyle = '#fcd34d'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(ev.units.toFixed(2) + 'U', x, y + 24);
   });
 
   // ── Axis labels ────────────────────────────────────────────
@@ -2274,20 +2732,25 @@ function drawProjectionChart(inp, r) {
   ctx.fillStyle = 'rgba(16,185,129,0.7)'; ctx.font = '10px system-ui'; ctx.textAlign = 'left';
   ctx.fillText(`Target ${inp.target}`, pad.l + 4, yS(inp.target) - 4);
 
-  // ── Populate SMB log ──────────────────────────────────────
+  // ── Populate SMB log (both engines) ───────────────────────
   const logEl = document.getElementById('proj-smb-log');
-  if (smbEvents.length === 0) {
-    logEl.textContent = r.tier === 'BLOCKED' || r.microBolus === 0
-      ? 'No SMBs projected — ' + (r.boostDisabledScale ? 'Boost disabled (scale≥3)' : r.ioBlock ? 'IOB at maxIOB' : r.nightSuppressed ? 'Night mode active' : 'BG at or below target')
-      : 'No further SMBs projected in the next 60 min given current trend and IOB.';
+  const v1Total = smbEvents.reduce((s, e) => s + e.units, 0);
+  const v6Total = v6Events.reduce((s, e) => s + e.units, 0);
+  const v1Final = withBoostBGs[withBoostBGs.length - 1];
+  const v6Final = withV6BGs[withV6BGs.length - 1];
+  const bgCol = bg => bg < 70 ? '#f87171' : bg < inp.target + 30 ? '#6ee7b7' : '#f59e0b';
+  if (smbEvents.length === 0 && v6Events.length === 0) {
+    logEl.innerHTML = 'No SMBs projected by either engine over the next 60 min given current trend and IOB.';
   } else {
-    const totalU = smbEvents.reduce((s, e) => s + e.units, 0);
-    const finalBG = withBoostBGs[withBoostBGs.length - 1];
-    logEl.innerHTML = smbEvents.map(ev =>
-      `+${ev.t}min: <b style="color:#a78bfa">${ev.units.toFixed(2)} U</b> (BG ≈ ${Math.round(ev.bg)} mg/dL, ${r.tier})`
-    ).join('<br>') +
-    `<br><span style="color:#64748b">Total projected: ${totalU.toFixed(2)} U over 60 min &nbsp;·&nbsp; ` +
-    `Projected BG at +60 min: <b style="color:${finalBG < 70 ? '#f87171' : finalBG < inp.target + 30 ? '#6ee7b7' : '#f59e0b'}">${Math.round(finalBG)} mg/dL</b></span>`;
+    const v1Lines = smbEvents.length
+      ? smbEvents.map(ev => `&nbsp;&nbsp;+${ev.t}m: <b style="color:#a78bfa">${ev.units.toFixed(2)} U</b> (BG ≈ ${Math.round(ev.bg)}, ${r.tier})`).join('<br>')
+      : '&nbsp;&nbsp;<span style="color:#64748b">none</span>';
+    const v6Lines = v6Events.length
+      ? v6Events.map(ev => `&nbsp;&nbsp;+${ev.t}m: <b style="color:#fbbf24">${ev.units.toFixed(2)} U</b> (BG ≈ ${Math.round(ev.bg)}, ${ev.state})`).join('<br>')
+      : '&nbsp;&nbsp;<span style="color:#64748b">none</span>';
+    logEl.innerHTML =
+      `<b style="color:#a78bfa">V1 tiers</b> — total ${v1Total.toFixed(2)} U, BG@+60 <b style="color:${bgCol(v1Final)}">${Math.round(v1Final)}</b><br>${v1Lines}<br>` +
+      `<b style="color:#fbbf24">V6 engine</b> — total ${v6Total.toFixed(2)} U, BG@+60 <b style="color:${bgCol(v6Final)}">${Math.round(v6Final)}</b><br>${v6Lines}`;
   }
 }
 

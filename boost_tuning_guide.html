@@ -45,6 +45,7 @@
   }
   .version-badge .v1 { color: #60a5fa; }
   .version-badge .v2 { color: #a78bfa; }
+  .version-badge .v6 { color: #fbbf24; }
 
   /* ── Spectrum legend ─────────────────────────────────────── */
   .legend {
@@ -357,6 +358,31 @@
   }
   .v2-diff b { color: #a78bfa; }
 
+  .v6-diff {
+    background: #1c1503;
+    border: 1px solid #a16207;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.77rem;
+    color: #fde68a;
+    margin-top: 12px;
+  }
+  .v6-diff b { color: #fbbf24; }
+
+  /* V6 state-machine flow */
+  .v6-flow {
+    display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px;
+    margin: 14px 0 4px;
+  }
+  .v6-state {
+    flex: 1; min-width: 120px;
+    border-radius: 8px; padding: 10px 12px;
+    background: #0f1117; border: 1px solid #334155;
+  }
+  .v6-state .nm { font-weight: 700; font-size: 0.82rem; }
+  .v6-state .ml { font-family: ui-monospace, monospace; font-size: 0.95rem; font-weight: 700; }
+  .v6-state .ds { font-size: 0.7rem; color: #64748b; margin-top: 3px; line-height: 1.35; }
+
   /* ── Footer ──────────────────────────────────────────────── */
   .footer {
     text-align: center;
@@ -541,7 +567,9 @@
     <span class="v1">BOOST v1</span>
     &nbsp;·&nbsp;
     <span class="v2">BOOST V2</span>
-    &nbsp;— settings shared unless noted
+    &nbsp;·&nbsp;
+    <span class="v6">BOOST V6</span>
+    &nbsp;— V1/V2 settings shared; V6 has its own 3-knob section below
   </div>
 </div>
 
@@ -1106,6 +1134,137 @@
 
   <div class="v2-diff">
     <b>Boost V2 differences to keep in mind:</b> V2 uses TDD² in its ISF formula — it is <b>more sensitive to TDD changes</b> than V1 and reacts more strongly to short-term variations. BG Velocity is always 100% in V2 and cannot be reduced. Start with conservative delivery settings (lower Scale, lower Max IOB) when switching to V2.
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  BOOST V6 ENGINE                                           -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="card full-width">
+  <div class="card-header">
+    <div class="card-icon icon-yellow">🤖</div>
+    <div>
+      <div class="card-title">Boost V6 — the meal state-machine engine</div>
+      <div class="card-subtitle">A different model: same ISF as V1, but the 8-tier SMB ladder is replaced by a meal-state machine — and 24 knobs collapse to 3</div>
+    </div>
+  </div>
+
+  <p style="font-size: 0.82rem; color: #cbd5e1; line-height: 1.6; margin-bottom: 4px;">
+    V6 does <b>not</b> change how ISF is calculated — it reuses V1's insulinReq (DynISF, TDD, autosens all unchanged).
+    What changes is the <b>SMB decision</b>. Instead of picking one of eight tiers, V6 tracks where a meal is in its
+    lifecycle and doses:
+  </p>
+  <div class="formula-box">
+    <div class="formula-label v6">BOOST V6 SMB</div>
+    <div class="formula-text">SMB = aggression_budget × action_multiplier(meal_state) → velocity-scale → state-cap → safety gates</div>
+    <div class="formula-note">aggression_budget = max(30% × insulinReq, insulinReq × hypo-damper × post-exercise × sensitivity)</div>
+  </div>
+
+  <div class="v6-flow">
+    <div class="v6-state"><div class="nm" style="color:#64748b">IDLE</div><div class="ml" style="color:#64748b">×1.0</div><div class="ds">baseline — oref pass-through, no meal detected</div></div>
+    <div class="v6-state"><div class="nm" style="color:#f59e0b">OBSERVING</div><div class="ml" style="color:#f59e0b">×0.3</div><div class="ds">small test dose while a rise is watched (score ≥ 0.44)</div></div>
+    <div class="v6-state"><div class="nm" style="color:#10b981">CONFIRMED</div><div class="ml" style="color:#10b981">×1.8</div><div class="ds">meal confirmed — catch-up dose (capped 1.0 U)</div></div>
+    <div class="v6-state"><div class="nm" style="color:#a78bfa">COMMITTED</div><div class="ml" style="color:#a78bfa">×1.0</div><div class="ds">sustained dosing at baseline (capped 0.25 U)</div></div>
+    <div class="v6-state"><div class="nm" style="color:#38bdf8">RECOVERING</div><div class="ml" style="color:#38bdf8">×0.4</div><div class="ds">backing off as BG decelerates and IOB bites</div></div>
+  </div>
+  <p style="font-size: 0.72rem; color: #64748b; line-height: 1.5; margin: 4px 0 8px;">
+    The aggression knob scales <b>only</b> the CONFIRMED multiplier — concentrating user tuning on the single riskiest decision. The state is driven by a continuous <b>meal-signal score</b> (BG delta + acceleration + ML meal-likelihood + time-of-day + sustained rise, minus a recent-low penalty).
+  </p>
+
+  <!-- The 3 V6 knobs -->
+  <div class="grid full-width" style="margin-top: 4px;">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon icon-yellow">🎚️</div>
+        <div>
+          <div class="card-title">V6 user knobs</div>
+          <div class="card-subtitle">The only three settings most V6 users ever touch</div>
+        </div>
+      </div>
+
+      <!-- Aggression -->
+      <div class="setting">
+        <div class="setting-top">
+          <span class="setting-name">Aggression</span>
+          <span class="setting-key">ApsBoostV5Aggression</span>
+        </div>
+        <div class="setting-desc">Scales the CONFIRMED catch-up dose only (1.8× base). Lower = gentler meal response; higher = firmer.</div>
+        <div class="spectrum-wrap">
+          <div class="spectrum-bar"></div>
+          <div class="default-marker" style="left: 50%">
+            <div class="default-pip"></div>
+            <div class="default-label">1.0</div>
+          </div>
+          <div class="spectrum-labels"><span>0.7 (gentle)</span><span>1.3 (firm)</span></div>
+        </div>
+      </div>
+
+      <!-- Hypo Caution -->
+      <div class="setting">
+        <div class="setting-top">
+          <span class="setting-name">Hypo Caution</span>
+          <span class="setting-key">ApsBoostV5HypoCaution</span>
+        </div>
+        <div class="setting-desc">How hard V6 trims the budget when the ML hypo-risk model is elevated. Higher = more backoff (and a lower floor: 0.50 → 0.25 across 1.0 → 2.0).</div>
+        <div class="spectrum-wrap">
+          <div class="spectrum-bar"></div>
+          <div class="default-marker" style="left: 0%">
+            <div class="default-pip"></div>
+            <div class="default-label">1.0</div>
+          </div>
+          <div class="spectrum-labels"><span>1.0 (less caution)</span><span>2.0 (most caution)</span></div>
+        </div>
+      </div>
+
+      <!-- Sensitivity -->
+      <div class="setting">
+        <div class="setting-top">
+          <span class="setting-name">Sensitivity</span>
+          <span class="setting-key">ApsBoostV5Sensitivity</span>
+        </div>
+        <div class="setting-desc">Per-user calibration on the whole budget. &lt;1.0 trims V6 for users it runs hot on; &gt;1.0 lets it run firmer for resistant users.</div>
+        <div class="spectrum-wrap">
+          <div class="spectrum-bar"></div>
+          <div class="default-marker" style="left: 50%">
+            <div class="default-pip"></div>
+            <div class="default-label">1.0</div>
+          </div>
+          <div class="spectrum-labels"><span>0.8 (runs hot)</span><span>1.2 (resistant)</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shared + advanced -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon icon-slate">⚙️</div>
+        <div>
+          <div class="card-title">Shared & advanced</div>
+          <div class="card-subtitle">Inherited safety limits + rarely-touched V6 internals</div>
+        </div>
+      </div>
+      <div class="setting">
+        <div class="setting-top"><span class="setting-name">Shared with V1</span><span class="setting-key">safety limits</span></div>
+        <div class="setting-desc"><b>Max IOB</b>, <b>Night Mode</b> (+ BG offset), and <b>SMB / UAM enable</b> work exactly as on V1 and still gate V6. V6 is suppressed while asleep — it falls back to V1's night-mode-aware SMB.</div>
+      </div>
+      <div class="setting">
+        <div class="setting-top"><span class="setting-name">Dose caps</span><span class="setting-key">ConfirmedCapU / CommittedCapU</span></div>
+        <div class="setting-desc">Hard ceilings on the per-cycle CONFIRMED (1.0 U) and COMMITTED (0.25 U) doses. Auto-configured; rarely changed.</div>
+      </div>
+      <div class="setting">
+        <div class="setting-top"><span class="setting-name">Fast-carb confirm</span><span class="setting-key">FastCarbConfirm</span></div>
+        <div class="setting-desc">Lets a sharp, accelerating, high-ML-likelihood rise jump straight to CONFIRMED in one cycle instead of waiting two.</div>
+      </div>
+      <div class="setting">
+        <div class="setting-top"><span class="setting-name">Pre-meal target</span><span class="setting-key">V6PreMealTarget</span></div>
+        <div class="setting-desc">Anticipatory target-lowering ahead of a learned meal time. Off by default.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="v6-diff">
+    <b>V1 → V6 in one line:</b> V1 exposes ~24 knobs and routes insulinReq through an 8-tier ladder; V6 exposes <b>3</b> and routes the same insulinReq through a meal state-machine. The headline trade-off: V6 deliberately <b>holds back in OBSERVING</b> (a 0.3× test dose) where V1 tiers may already fire — then <b>catches up hard in CONFIRMED</b> once the meal is real. See this side-by-side in the <b>simulator</b> (V1 tiers vs V6 panel, and the dual track on the BG Projection tab).
   </div>
 </div>
 
