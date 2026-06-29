@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.records.metadata.Device
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import app.aaps.core.interfaces.logging.AAPSLogger
@@ -55,6 +56,13 @@ class HealthConnectStepsIngest @Inject constructor(
         private set
     /** Each dataOrigin's step total for the CURRENT (partial) local day. */
     @Volatile var todayStepsBySource: Map<String, Int> = emptyMap()
+        private set
+    /** Per-completed-day totals from records the device auto-recorded as a PHONE (device.type ==
+     *  TYPE_PHONE), regardless of which app wrote them. This is the phone pedometer's OWN history —
+     *  used to backfill the phone anchor of the phone-anchored baseline so it is full-window
+     *  immediately instead of accruing one day per midnight. Empty if the phone doesn't write
+     *  sensor steps to HC (then the forward StepService ledger is the only phone history). */
+    @Volatile var phoneDailyTotals: List<DailyTotal> = emptyList()
         private set
     @Volatile var chosenSource: String? = null
         private set
@@ -128,6 +136,7 @@ class HealthConnectStepsIngest @Inject constructor(
         // first), which would truncate a full 28-day history from a continuous source. Loop on
         // pageToken so we see every source's complete coverage.
         val perSourceDay = HashMap<String, HashMap<Long, Long>>()
+        val phoneDay = HashMap<Long, Long>()   // device.type == PHONE — the phone pedometer's own history
         var pageToken: String? = null
         do {
             val resp = hc.readRecords(
@@ -141,9 +150,14 @@ class HealthConnectStepsIngest @Inject constructor(
                 val src = r.metadata.dataOrigin.packageName.ifBlank { "unknown" }
                 val day = DailyStepHistoryTracker.dayIndex(r.startTime.toEpochMilli(), offsetMs)
                 perSourceDay.getOrPut(src) { HashMap() }.merge(day, r.count) { a, b -> a + b }
+                if (r.metadata.device?.type == Device.TYPE_PHONE)
+                    phoneDay.merge(day, r.count) { a, b -> a + b }
             }
             pageToken = resp.pageToken
         } while (pageToken != null)
+        // Phone-sensor history for the anchor (completed days are filtered downstream by the merge).
+        phoneDailyTotals = phoneDay.map { (day, steps) -> DailyTotal(day, steps.toInt(), StepSourceResolver.PHONE) }
+            .sortedBy { it.dayIndex }
 
         // Diagnostics: every source's coverage (days-with-steps / total), best-covered first.
         availableSources = perSourceDay.entries

@@ -1428,6 +1428,10 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     // one source dying no longer starves the baseline (the 2026-06-27 failure).
                     for ((rawSrc, totals) in healthConnectStepsIngest.allSourceDailyTotals)
                         multi = DailyStepHistoryTracker.mergeSource(multi, rawSrc, totals, todayIdx)
+                    // Backfill the PHONE anchor from HC's phone-sensor (device.type==PHONE) history so the
+                    // phone-anchored baseline is full-window at once, not accrued one day per midnight.
+                    val hcPhone = healthConnectStepsIngest.phoneDailyTotals
+                    if (hcPhone.isNotEmpty()) multi = DailyStepHistoryTracker.mergeSource(multi, StepSourceResolver.PHONE, hcPhone, todayIdx)
                     // Wear: derive completed-day totals from the SC table (throttled — daily totals are
                     // stable within an hour, and a 28-day SC read is heavy at the 5-min cycle cadence).
                     if (now - lastWearDailyMs >= 60 * 60_000L) {
