@@ -144,6 +144,16 @@ class DetermineBasalBoostV5 @Inject constructor(
             mlMealLikelyNullStreak = nextNullStreak,
         )
 
+        // 2026-07-01 (Option A) — relative dose-adequacy gate for OBSERVING → CONFIRMED. The single
+        // per-session CONFIRMED commit-shot is wasted if it fires while the meal's insulin need is
+        // still trivial (noisy pre-meal upswing): the token is spent on a ~0.05U shot and the Fix-6
+        // committedInSession lock then starves the real meal at the COMMITTED cap for the rest of the
+        // rise (10be 2026-07-01: eventualBG → 372 held at 0.4–0.5U/cycle). Require baseInsulinReq to be
+        // material relative to the user's own maxIob so the floor self-scales. Guards only the normal
+        // path; the fast-carb fast-path (its own sharp-rise gates) is left unchanged.
+        val confirmDoseAdequate = inputs.maxIob <= 0.0 ||
+            inputs.baseInsulinReq >= CONFIRM_MIN_INSULINREQ_FRAC_OF_MAXIOB * inputs.maxIob
+
         // Phase 1.b — state machine step
         val newHypothesisState = step(
             current = resetState,
@@ -156,6 +166,7 @@ class DetermineBasalBoostV5 @Inject constructor(
             asleep = inputs.asleep,
             exerciseActive = inputs.exerciseActive,
             fastConfirmEnabled = inputs.fastCarbConfirmEnabled,
+            confirmDoseAdequate = confirmDoseAdequate,
         )
 
         // Phase 1.c — AggressionBudget

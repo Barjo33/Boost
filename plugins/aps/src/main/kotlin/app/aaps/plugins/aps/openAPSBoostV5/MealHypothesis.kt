@@ -103,6 +103,14 @@ internal const val ENTER_OBSERVING_SCORE = 0.44                 // calibrated: 0
 internal const val CONFIRM_SCORE = 0.55                         // 2026-05-15: 0.66 → 0.55 (was at p99 of observed scores; lowered with peak-score tracking)
 internal const val CONFIRM_EVENTUAL_BG_OFFSET_MGDL = 30.0       // 2026-05-22: 50.0 → 30.0 (Fix 5 — paired with peak-offset tracking)
 internal const val CONFIRM_MIN_OBSERVING_AGE = 2                // hysteresis: must observe ≥2 cycles before confirming
+// 2026-07-01 (Option A) — relative dose-adequacy floor for OBSERVING → CONFIRMED. The single
+// per-session CONFIRMED commit-shot must be worth spending the token on: gate confirm until the
+// meal's baseInsulinReq is material relative to the user's own maxIob. Without this, confirm can
+// fire on the trivial pre-meal upswing (insulinReq ~0.15U → ~0.05U commit-shot), and the Fix-6
+// committedInSession lock then starves the real meal at the COMMITTED cap for the rest of the rise
+// (10be 2026-07-01: eventualBG climbed to 372 while V6 held 0.4–0.5U/cycle). Relative to maxIob so
+// it self-scales across users. First estimate — recalibrate against replay/shadow data.
+internal const val CONFIRM_MIN_INSULINREQ_FRAC_OF_MAXIOB = 0.10
 internal const val FALL_BACK_TO_IDLE_SCORE = 0.36               // calibrated: 0.30 → 0.36
 internal const val FALL_BACK_TO_IDLE_AGE = 2                    // hysteresis: ≥2 cycles below threshold to fall back
 internal const val CONFIRMED_TO_COMMITTED_AGE = 0               // 2026-05-26 Fix 6: 1 → 0 (true single-cycle commit; previously CONFIRMED stayed for 2 invokes due to age semantics, allowing 2× CONFIRMED-mult doses)
@@ -148,6 +156,12 @@ internal const val TIME_JUMP_RESET_MINUTES = 30.0
  * @param deltaDeclining whether delta has been monotonically declining over the last ≥2 cycles
  *   (computed by the caller from delta history). COMMITTED → RECOVERING requires both
  *   `delta_accl < -5` AND this declining-2-cycles condition.
+ * @param confirmDoseAdequate whether the meal's insulin requirement is material enough this cycle
+ *   to justify spending the single per-session CONFIRMED token (caller computes it as
+ *   `baseInsulinReq >= CONFIRM_MIN_INSULINREQ_FRAC_OF_MAXIOB * maxIob`). Gates the normal
+ *   OBSERVING → CONFIRMED path only; the fast-carb fast-path is left unchanged. Defaults to true
+ *   so existing callers/tests are unaffected. Added 2026-07-01 (Option A) — see the
+ *   CONFIRM_MIN_INSULINREQ_FRAC_OF_MAXIOB comment.
  */
 fun step(
     current: MealHypothesisState,
@@ -160,6 +174,7 @@ fun step(
     asleep: Boolean = false,
     exerciseActive: Boolean = false,
     fastConfirmEnabled: Boolean = false,
+    confirmDoseAdequate: Boolean = true,
 ): MealHypothesisState {
     val state = current.state
     val age = current.ageCycles
@@ -204,6 +219,7 @@ fun step(
             val confirmEligible = age >= CONFIRM_MIN_OBSERVING_AGE &&
                 newMaxScore >= CONFIRM_SCORE &&
                 newMaxOffset >= CONFIRM_EVENTUAL_BG_OFFSET_MGDL &&
+                confirmDoseAdequate &&    // 2026-07-01 (Option A): don't spend the token on a trivial commit-shot
                 !committedInSession
             when {
                 // Fast-carb fast-path: confirm in a single OBSERVING cycle, bypassing the age +
