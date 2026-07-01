@@ -475,7 +475,11 @@ open class OpenAPSBoostPlugin @Inject constructor(
         val maxBg: Double,
         val targetBg: Double,
         val activityState: String = "none",
-        val debugReason: String = ""
+        val debugReason: String = "",
+        // True when the step-based sleep-in gate is suppressing boost this cycle (in the sleep-in
+        // window with 60-min steps below threshold). Cached by the caller so isNightModeActiveImpl()
+        // can apply the user's night-mode SMB rules during a lie-in. (2026-07-01)
+        val sleepInActive: Boolean = false
     )
 
     private fun calculateBoostActivity(
@@ -525,7 +529,11 @@ open class OpenAPSBoostPlugin @Inject constructor(
 
         // Sleep-in detection
         val inSleepInWindow = now in boostStart until (boostStart + sleepInMillis)
-        if (boostActive && inSleepInWindow && recentSteps60Min < sleepInSteps) {
+        // The lie-in condition, independent of any earlier boost-disable (e.g. high temp target):
+        // in the sleep-in window with 60-min steps below threshold. Surfaced so night mode can apply
+        // the user's configured SMB rules during the lie-in. (2026-07-01)
+        val sleepInActive = inSleepInWindow && recentSteps60Min < sleepInSteps
+        if (boostActive && sleepInActive) {
             boostActive = false
             disableReason = "Sleep-in (60m steps $recentSteps60Min < threshold $sleepInSteps, within ${sleepInHours}h of start)"
             aapsLogger.debug(LTag.APS, "Boost disabled due to lie-in")
@@ -701,7 +709,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
             maxBg = activityMaxBg,
             targetBg = activityTargetBg,
             activityState = activityState,
-            debugReason = debug.toString()
+            debugReason = debug.toString(),
+            sleepInActive = sleepInActive
         )
     }
 
@@ -850,6 +859,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
 
         // 1. Activity detection & boost time window
         val activityResult = calculateBoostActivity(now, isTempTarget, targetBg, minBg, maxBg, profilePercent)
+        // Publish the step-based sleep-in state for next cycle's night-mode evaluation. (2026-07-01)
+        sleepInActiveCached = activityResult.sleepInActive
 
         // 1b. Post-exercise recovery transition detection
         // HR-aware: all exercise states (aerobic, resistance) trigger recovery, not just "ACTIVE".
@@ -1260,7 +1271,15 @@ open class OpenAPSBoostPlugin @Inject constructor(
             // returns — so re-check the SAME cap here (same prior-volume semantics as V1) or V5 could
             // deliver on a cycle V1 suspended for cumulative volume. (Review 2026-06-26, MEDIUM.)
             val cumulativeCapReached = cumulativeSmbCap60Min > 0.0 && recentSmbVolume60Min >= cumulativeSmbCap60Min
-            if (v5Active && microBolusAllowed && v5decision != null && !v5Asleep && !cumulativeCapReached) {
+            // Boost-inactive gate (2026-07-01): the V6/V5 override may replace the SMB ONLY when Boost
+            // is active this cycle. When boostActive is false — outside the boost window, high temp
+            // target, or the step-based sleep-in has fired — fall back to V1's base oref1 SMB (which
+            // respects night mode and its own hypo/minGuard gates) instead of the amplified V5 dose.
+            // Without this, a genuinely-asleep, zero-step, in-sleep-in-window cycle could still receive
+            // a full V5 meal-amplified bolus, because v5Asleep reflects ONLY the HR sleep-state machine
+            // and never the step-based sleep-in gate. (Incident 2026-07-01: 1.55U SMB delivered while
+            // asleep with steps=0, boostActive=false, sleep-in firing — base oref1 wanted only 0.2U.)
+            if (v5Active && microBolusAllowed && v5decision != null && !v5Asleep && !cumulativeCapReached && activityResult.boostActive) {
                 val v1WouldDose = it.units ?: 0.0
                 it.units = v5decision.finalDose
                 it.reason.append("V6-ACTIVE drove SMB ${Round.roundTo(v5decision.finalDose, 0.001)}U (base would=${Round.roundTo(v1WouldDose, 0.001)}U, state=${v5decision.mealHypothesis}); ")
@@ -1271,6 +1290,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 aapsLogger.info(LTag.APS, "V6-ACTIVE cumulative SMB cap reached (${recentSmbVolume60Min}/${cumulativeSmbCap60Min}U) — SMB suspended")
             } else if (v5Active && v5Asleep && v5decision != null) {
                 it.reason.append("V6 suppressed (SLEEPING) — base SMB ${Round.roundTo(it.units ?: 0.0, 0.001)}U; ")
+            } else if (v5Active && v5decision != null && !activityResult.boostActive) {
+                it.reason.append("V6 override skipped (Boost inactive) — base SMB ${Round.roundTo(it.units ?: 0.0, 0.001)}U; ")
+                aapsLogger.info(LTag.APS, "V6-ACTIVE override skipped — Boost inactive; base oref1 SMB ${it.units ?: 0.0}U retained")
             }
 
             // V6: surface the anticipatory pre-meal target decision computed earlier this cycle.
@@ -1592,6 +1614,14 @@ open class OpenAPSBoostPlugin @Inject constructor(
     private var lastNightModeRun: Long = 0
     private var lastNightModeResult: Boolean = false
 
+    // Step-based sleep-in state from the most recent calculateBoostActivity() (2026-07-01).
+    // Read by isNightModeActiveImpl() so a lie-in applies the user's night-mode SMB rules. The SMB
+    // constraint is evaluated earlier in invoke() than calculateBoostActivity() runs, so this holds
+    // the PREVIOUS cycle's value — a one-cycle (~5 min) lag that is safe here: it errs toward keeping
+    // night mode on for one extra cycle when waking, and the boostActive override gate already blocks
+    // the amplified V5 dose on the entering cycle regardless.
+    @Volatile private var sleepInActiveCached: Boolean = false
+
     // ---- Sleep state (2026-06-02) ----
     // Updated at end of invoke() once HR + steps + mlMealLikely are known. Read by
     // isNightModeActiveImpl() when ApsBoostNightModeAutoBySleep is enabled.
@@ -1644,7 +1674,15 @@ open class OpenAPSBoostPlugin @Inject constructor(
         val autoBySleep = preferences.get(BooleanKey.ApsBoostNightModeAutoBySleep)
         val sleepActive = autoBySleep && sleepStateCached.state != SleepStateDetector.SleepState.AWAKE
 
-        if (!active && !sleepActive) return false
+        // 2026-07-01: a step-based sleep-in (lie-in) also enables night mode, so the user's configured
+        // night-mode SMB rules apply during a morning lie-in — not just inside the night time-window or
+        // under HR sleep detection. Gated only by ApsBoostNightModeEnabled (checked at top) and night
+        // mode's own BG-vs-target check below, so a genuine high can still be corrected. This closes the
+        // gap where the HR sleep-state machine reported AWAKE at the boost-window start while the user
+        // was still asleep, leaving SMB fully enabled during the lie-in. (Incident 2026-07-01.)
+        val sleepInActive = sleepInActiveCached
+
+        if (!active && !sleepActive && !sleepInActive) return false
 
         // Disable night mode when COB > 0
         if (preferences.get(BooleanKey.ApsBoostNightModeDisableWithCob)) {
