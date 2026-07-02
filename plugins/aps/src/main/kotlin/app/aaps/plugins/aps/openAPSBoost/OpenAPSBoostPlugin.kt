@@ -217,9 +217,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
     // engine's V5 override is gated by runEngine(v5Active=…) — set true only when the V5 plugin
     // drives the engine. The key is kept in BooleanKey for back-compat but no longer read here.
 
-    // Boost time window
-    private val boostStartTime; get() = preferences.get(StringKey.ApsBoostStartTime)
-    private val boostEndTime; get() = preferences.get(StringKey.ApsBoostEndTime)
+    // Boost time window retired 2026-07-02 — boostActive now derives from the night-mode period
+    // (isInNightSleepPeriod). ApsBoostStartTime/EndTime are no longer read.
     private val sleepInHours; get() = preferences.get(DoubleKey.ApsBoostSleepInHours)
 
     // Step counting thresholds
@@ -475,7 +474,10 @@ open class OpenAPSBoostPlugin @Inject constructor(
         val maxBg: Double,
         val targetBg: Double,
         val activityState: String = "none",
-        val debugReason: String = ""
+        val debugReason: String = "",
+        // True when the step-based sleep-in (lie-in) gate is suppressing Boost this cycle. Cached by
+        // the caller so isNightModeActiveImpl() applies night-mode SMB rules during a lie-in. (2026-07-02)
+        val sleepInActive: Boolean = false
     )
 
     private fun calculateBoostActivity(
@@ -490,24 +492,20 @@ open class OpenAPSBoostPlugin @Inject constructor(
         val midnight = now - MidnightUtils.milliSecFromMidnight(now)
         val sleepInMillis = (3600000.0 * sleepInHours).toLong()
 
-        var boostStart = midnight + parseTimeToMillis(boostStartTime)
-        var boostEnd = midnight + parseTimeToMillis(boostEndTime)
+        // Boost is active whenever the user is NOT in their night/sleep period. The night/sleep period
+        // is the HR/step-aware night-mode state — enabled && (night time window OR sleep detection) —
+        // EXCLUDING night mode's BG gate: a nocturnal high (incl. a sensor spike) must NOT re-enable
+        // Boost, or a full V6 meal-amplified SMB could fire while asleep (the 2026-07-01 incident).
+        // Replaces the old fixed Boost time window; the Boost window now tracks night mode, so
+        // "Boost active" == "not night". `ApsBoostStartTime`/`ApsBoostEndTime` are retired. (2026-07-02)
+        val nightEndMs = midnight + parseTimeToMillis(preferences.get(StringKey.ApsBoostNightModeEnd))
+
+        var boostActive = !isInNightSleepPeriod()
+        var disableReason = ""
+        if (!boostActive) disableReason = "Night/sleep period (night mode active by time or HR/steps)"
 
         val nowTime = java.time.Instant.ofEpochMilli(now).atZone(java.time.ZoneId.systemDefault()).toLocalTime()
-        debug.append("Boost window: $boostStartTime–$boostEndTime | Now: ${nowTime.format(DateTimeFormatter.ofPattern("HH:mm"))}")
-
-        if (boostStart > boostEnd) {
-            if (now > boostEnd) boostEnd += 86400000L
-            else boostStart -= 86400000L
-            debug.append(" (overnight wrap)")
-        }
-
-        var boostActive = now in boostStart until boostEnd
-        var disableReason = ""
-
-        if (!boostActive) {
-            disableReason = "Outside boost time window"
-        }
+        debug.append("Boost gate: night/sleep=${!boostActive} | Now: ${nowTime.format(DateTimeFormatter.ofPattern("HH:mm"))}")
 
         // Disable boost if high temp target and not allowed
         if (boostActive && tempTargetSet && !allowBoostWithHighTt && targetBg > dynIsfNormalTarget) {
@@ -523,14 +521,16 @@ open class OpenAPSBoostPlugin @Inject constructor(
 
         debug.append("\nSteps: 5m=$recentSteps5Min 15m=$recentSteps15Min 30m=$recentSteps30Min 60m=$recentSteps60Min")
 
-        // Sleep-in detection
-        val inSleepInWindow = now in boostStart until (boostStart + sleepInMillis)
-        if (boostActive && inSleepInWindow && recentSteps60Min < sleepInSteps) {
+        // Steps-based sleep-in (lie-in) — the FALSE-AWAKE backstop. In the first `sleepInHours` after
+        // night end, 60-min steps below threshold ⇒ still lying in even if the HR sleep-state machine
+        // wrongly reported AWAKE. Independent of the night-mode enabled flag so it protects regardless,
+        // and surfaced (cached by the caller) so night mode applies its SMB rules during the lie-in.
+        // (2026-07-02)
+        val sleepInActive = (now in nightEndMs until (nightEndMs + sleepInMillis)) && recentSteps60Min < sleepInSteps
+        if (boostActive && sleepInActive) {
             boostActive = false
-            disableReason = "Sleep-in (60m steps $recentSteps60Min < threshold $sleepInSteps, within ${sleepInHours}h of start)"
+            disableReason = "Sleep-in (60m steps $recentSteps60Min < threshold $sleepInSteps, within ${sleepInHours}h of night end)"
             aapsLogger.debug(LTag.APS, "Boost disabled due to lie-in")
-        } else if (inSleepInWindow && boostActive) {
-            debug.append("\nSleep-in window active but overridden (steps $recentSteps60Min >= $sleepInSteps)")
         }
 
         var activityMinBg = minBg
@@ -701,7 +701,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
             maxBg = activityMaxBg,
             targetBg = activityTargetBg,
             activityState = activityState,
-            debugReason = debug.toString()
+            debugReason = debug.toString(),
+            sleepInActive = sleepInActive
         )
     }
 
@@ -850,6 +851,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
 
         // 1. Activity detection & boost time window
         val activityResult = calculateBoostActivity(now, isTempTarget, targetBg, minBg, maxBg, profilePercent)
+        // Publish the step-based sleep-in state for next cycle's night-mode evaluation. (2026-07-02)
+        sleepInActiveCached = activityResult.sleepInActive
 
         // 1b. Post-exercise recovery transition detection
         // HR-aware: all exercise states (aerobic, resistance) trigger recovery, not just "ACTIVE".
@@ -1260,7 +1263,13 @@ open class OpenAPSBoostPlugin @Inject constructor(
             // returns — so re-check the SAME cap here (same prior-volume semantics as V1) or V5 could
             // deliver on a cycle V1 suspended for cumulative volume. (Review 2026-06-26, MEDIUM.)
             val cumulativeCapReached = cumulativeSmbCap60Min > 0.0 && recentSmbVolume60Min >= cumulativeSmbCap60Min
-            if (v5Active && microBolusAllowed && v5decision != null && !v5Asleep && !cumulativeCapReached) {
+            // Boost-inactive gate (2026-07-02): the V6/V5 override may replace the SMB ONLY when Boost
+            // is active this cycle. When boostActive is false — night/sleep period, high temp target, or
+            // the step-based sleep-in has fired — fall back to V1's base oref1 SMB (which respects night
+            // mode + its own hypo/minGuard gates) instead of the amplified V5 dose. Without this, a
+            // genuinely-asleep, zero-step cycle could still receive a full V5 meal-amplified bolus,
+            // because v5Asleep reflects ONLY the HR sleep-state machine, never the boost-window gate.
+            if (v5Active && microBolusAllowed && v5decision != null && !v5Asleep && !cumulativeCapReached && activityResult.boostActive) {
                 val v1WouldDose = it.units ?: 0.0
                 it.units = v5decision.finalDose
                 it.reason.append("V6-ACTIVE drove SMB ${Round.roundTo(v5decision.finalDose, 0.001)}U (base would=${Round.roundTo(v1WouldDose, 0.001)}U, state=${v5decision.mealHypothesis}); ")
@@ -1271,6 +1280,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 aapsLogger.info(LTag.APS, "V6-ACTIVE cumulative SMB cap reached (${recentSmbVolume60Min}/${cumulativeSmbCap60Min}U) — SMB suspended")
             } else if (v5Active && v5Asleep && v5decision != null) {
                 it.reason.append("V6 suppressed (SLEEPING) — base SMB ${Round.roundTo(it.units ?: 0.0, 0.001)}U; ")
+            } else if (v5Active && v5decision != null && !activityResult.boostActive) {
+                it.reason.append("V6 override skipped (Boost inactive) — base SMB ${Round.roundTo(it.units ?: 0.0, 0.001)}U; ")
+                aapsLogger.info(LTag.APS, "V6-ACTIVE override skipped — Boost inactive; base oref1 SMB ${it.units ?: 0.0}U retained")
             }
 
             // V6: surface the anticipatory pre-meal target decision computed earlier this cycle.
@@ -1624,6 +1636,35 @@ open class OpenAPSBoostPlugin @Inject constructor(
     // cycle's aggregate computation — 5-min lag is acceptable, baseline changes slowly).
     @Volatile private var hrLearnedDaytimeBpmCached: Int? = null
 
+    // Step-based sleep-in (lie-in) state from the most recent calculateBoostActivity() (2026-07-02).
+    // Read by isNightModeActiveImpl() so a lie-in applies the user's night-mode SMB rules. The SMB
+    // constraint is evaluated earlier in invoke() than calculateBoostActivity() runs, so this holds
+    // the PREVIOUS cycle's value — a one-cycle (~5 min) lag that is safe: it errs toward keeping night
+    // mode on one extra cycle when waking, and the boostActive override gate already blocks the
+    // amplified V5 dose on the entering cycle regardless.
+    @Volatile private var sleepInActiveCached: Boolean = false
+
+    /**
+     * Pre-BG-gate "user is in their night/sleep period" — the night time window OR HR/step sleep
+     * detection, gated by the night-mode master toggle. This is the sleep-aware signal that gates the
+     * Boost window (boostActive = !this). It deliberately EXCLUDES the BG / COB / low-TT gates that
+     * [isNightModeActiveImpl] layers on for the SMB-suppression decision: those must NOT influence the
+     * Boost window, or a nocturnal high would flip Boost back on and re-fire a V6 dose while asleep.
+     * (2026-07-02)
+     */
+    private fun isInNightSleepPeriod(): Boolean {
+        if (!preferences.get(BooleanKey.ApsBoostNightModeEnabled)) return false
+        val now = System.currentTimeMillis()
+        val midnight = now - MidnightUtils.milliSecFromMidnight(now)
+        val start = midnight + parseTimeToMillis(preferences.get(StringKey.ApsBoostNightModeStart))
+        val end = midnight + parseTimeToMillis(preferences.get(StringKey.ApsBoostNightModeEnd))
+        val active = if (end > start) now in start until end
+        else (now in (start - 86400000) until end || now in start until (end + 86400000))
+        val autoBySleep = preferences.get(BooleanKey.ApsBoostNightModeAutoBySleep)
+        val sleepActive = autoBySleep && sleepStateCached.state != SleepStateDetector.SleepState.AWAKE
+        return active || sleepActive
+    }
+
     private fun isNightModeActive(): Boolean {
         val currentTimeMillis = System.currentTimeMillis()
         val timeAligned = currentTimeMillis - (currentTimeMillis % 1000)
@@ -1638,23 +1679,12 @@ open class OpenAPSBoostPlugin @Inject constructor(
 
         val bgCurrent = glucoseStatusCalculatorSMB.getGlucoseStatusData(true)?.glucose ?: return false
 
-        val now = System.currentTimeMillis()
-        val midnight = now - MidnightUtils.milliSecFromMidnight(now)
-        val startStr = preferences.get(StringKey.ApsBoostNightModeStart)
-        val endStr = preferences.get(StringKey.ApsBoostNightModeEnd)
-        val start = midnight + parseTimeToMillis(startStr)
-        val end = midnight + parseTimeToMillis(endStr)
-        val active = if (end > start) now in start until end
-        else (now in (start - 86400000) until end || now in start until (end + 86400000))
-
-        // 2026-06-02 HYBRID: when ApsBoostNightModeAutoBySleep is on, sleep state can both
-        // EXTEND the active window (still SLEEPING past nightEnd) and ENABLE it early
-        // (PRE_SLEEP within the lead window, or SLEEPING during the outer window). When
-        // off, behaviour is the legacy time-window check.
-        val autoBySleep = preferences.get(BooleanKey.ApsBoostNightModeAutoBySleep)
-        val sleepActive = autoBySleep && sleepStateCached.state != SleepStateDetector.SleepState.AWAKE
-
-        if (!active && !sleepActive) return false
+        // Night by time window OR HR/step sleep detection (isInNightSleepPeriod, which also honours
+        // ApsBoostNightModeAutoBySleep — extending past nightEnd while still SLEEPING and enabling early
+        // on PRE_SLEEP), OR the step-based lie-in surfaced from calculateBoostActivity so night-mode SMB
+        // rules also apply during a morning lie-in. (sleepInActiveCached lags one cycle; see its
+        // declaration.) (2026-07-02)
+        if (!isInNightSleepPeriod() && !sleepInActiveCached) return false
 
         // Disable night mode when COB > 0
         if (preferences.get(BooleanKey.ApsBoostNightModeDisableWithCob)) {
@@ -1736,8 +1766,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostBolus, dialogMessage = R.string.boost_bolus_summary, title = R.string.boost_bolus_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostPercentScale, dialogMessage = R.string.boost_percent_scale_summary, title = R.string.boost_percent_scale_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostScale, dialogMessage = R.string.boost_scale_summary, title = R.string.boost_scale_title))
-            addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.ApsBoostStartTime, dialogMessage = R.string.boost_start_summary, title = R.string.boost_start_title))
-            addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.ApsBoostEndTime, dialogMessage = R.string.boost_end_summary, title = R.string.boost_end_title))
+            // Boost start/end time retired 2026-07-02 — the Boost window now tracks the night-mode
+            // period (see calculateBoostActivity / isInNightSleepPeriod). Keys kept for back-compat.
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostEnablePercentScale, summary = R.string.boost_enable_percent_scale_summary, title = R.string.boost_enable_percent_scale_title))
         })
         addBoostEngineCategories(preferenceManager, category, context)
