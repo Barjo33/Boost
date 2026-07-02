@@ -15,7 +15,7 @@ method that lets a live dosing algorithm be changed safely has its own page too:
 
 ### 🧮 Interactive tools (open in a browser)
 
-Two self-contained HTML tools — no install, no data leaves your machine — let you *see* how Boost
+Three self-contained HTML tools — no install, no data leaves your machine — let you *see* how Boost
 doses and how V1 and V6 differ, side by side:
 
 - **[▶ Boost Simulator](https://tim2000s.github.io/Boost-in-AAPS_3.4/boost_simulator.html)**
@@ -31,6 +31,15 @@ doses and how V1 and V6 differ, side by side:
   a visual reference for what every setting does to aggressiveness: each knob on a
   conservative→aggressive spectrum, real-world tuning scenarios, and a dedicated **Boost V6** section
   explaining the state-machine model and how V1's ~24 knobs collapse to V6's **3**.
+
+- **[▶ Boost Analyser](https://tim2000s.github.io/Boost-in-AAPS_3.4/boost_analyser.html)**
+  ([source](boost_analyser.html)) —
+  **V1 vs V6 on *your own* data.** Enter your Nightscout URL + a read token and it reads the shadow
+  telemetry every Boost build logs each cycle (what your engine delivered *and* what the other engine
+  decided on identical inputs) — a real, paired comparison, not a simulation. Shows your actual
+  TIR/TING, per-cycle dose deltas, night-vs-day splits, auto-detected **meal episodes** with the V6
+  state ribbon and both dose traces, confirm latency, and which safety gates fired. Runs entirely in
+  your browser: the token goes only to your Nightscout.
 
 > These tools validate **decisions** (what dose, which state, why) — not glucose outcomes. They model
 > the algorithm, not a body. For the data-driven validation method see the backtesting page above.
