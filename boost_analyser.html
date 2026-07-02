@@ -109,10 +109,29 @@
       pattern the V6 night gate (July 2026) now suppresses on current builds.</div>
     </div>
 
-    <h2>Meal episodes <span class="muted" id="epCount"></span></h2>
-    <p class="muted">Auto-detected rises of ≥50 mg/dL within 90 minutes. Each card shows your BG, both engines'
-    per-cycle doses, and V6's meal-hypothesis state ribbon.</p>
-    <div id="episodes"></div>
+    <h2>Meal response — aggregated <span class="muted" id="epCount"></span></h2>
+    <p class="muted">All auto-detected rises (≥50 mg/dL within 90 min), aligned at onset — an AGP for your meals:
+    BG median with interquartile band, each engine's <em>median dose per 5-min slot</em>, and the modal V6 state
+    underneath.</p>
+    <div class="card">
+      <canvas id="mealAgpCanvas" width="1000" height="330"></canvas>
+      <div class="legend"><span><span class="dot" style="background:#4ade80"></span>BG median (band = p25–p75)</span>
+        <span><span class="dot" style="background:#94a3b8"></span>V1 median dose</span>
+        <span><span class="dot" style="background:#00d4ff"></span>V6 median dose</span>
+        <span>ribbon: modal V6 state per slot</span></div>
+    </div>
+    <div class="card"><table id="epTable"></table></div>
+
+    <h2>Where the engines differ across your day <span class="muted">(counterfactual AGP)</span></h2>
+    <p class="muted">Your actual BG by time of day (median + interquartile band) with the projected
+    other-engine median overlaid — built from the same absorbed-Δdose × logged-ISF projection as the panels below.
+    Shaded gaps mark where the medians differ by ≥10 mg/dL: <span style="color:var(--accent)">cyan</span> = the other
+    engine would likely have run <em>lower</em>, <span style="color:var(--amber)">amber</span> = higher.</p>
+    <div class="card">
+      <canvas id="dailyAgpCanvas" width="1000" height="300"></canvas>
+      <div class="legend"><span><span class="dot" style="background:#4ade80"></span>actual median (band p25–p75)</span>
+        <span><span class="dot" style="background:#00d4ff"></span>other engine, projected median</span></div>
+    </div>
 
     <h2>Likely-avoided lows <span class="muted">(first-order estimate)</span></h2>
     <div class="banner" style="background:#1b2233;border-color:#31518a"><b style="color:#7fb2ff">How this is estimated — read before trusting it.</b>
@@ -177,7 +196,10 @@ function parseCycles(dsList) {
       score: numOrNull(sug.boostV5_score),
       budget: numOrNull(sug.boostV5_budget),
       fd: numOrNull(sug.boostV5_finalDose),
-      active: sug.boostV5_active === true,
+      // Per-cycle mode: the boostV5_active flag is recent — older V6-ACTIVE records lack it, so a
+      // global majority-vote misclassifies long lookbacks. Fall back to the reason-text markers
+      // that V6-active builds have always written.
+      active: sug.boostV5_active === true || /V6-ACTIVE drove|V6 suppressed \(|V6 override skipped/.test(String(sug.reason || "")),
       gates: sug.boostV5_gateReduction || null,
       boostActive: sug.boostActive,
       isf: numOrNull(sug.variable_sens),
@@ -316,13 +338,16 @@ function analyse(cycles, entries, episodes) {
   });
   const days = cycles.length ? (cycles[cycles.length - 1].ts - cycles[0].ts) / 86400000 : 0;
   const activeMode = (cycles.filter(c=>c.active).length) > cycles.length/2;
-  const nearMiss = nearMissAnalysis(cycles, entries, activeMode);
+  const nearMiss = nearMissAnalysis(cycles, entries);
   const modelStub = { episodes: eps, nearMiss, night: mk(night), gly };
   const hints = leverHints(modelStub, cycles, activeMode);
+  const cfSeries = counterfactualSeries(entries, cycles);
   return {
     nearMiss,
-    cfPeaks: counterfactualPeaks(cycles, entries, activeMode),
+    cfPeaks: counterfactualPeaks(cycles, entries),
     hints,
+    dailyAgp: { act: agpBins(cfSeries, x => x.bg), cf: agpBins(cfSeries, x => x.cf) },
+    mealAgpData: mealAgp(eps, entries),
     _activeMode: activeMode,
     gly, cycles: cycles.length, withV6, paired: paired.length, unpaired,
     activeShare: cycles.length ? activeCount / cycles.length : 0,
@@ -367,24 +392,29 @@ function findNadirs(entries) {
 
 // For each nadir: net counterfactual-minus-actual insulin in the prior 3h, absorption-weighted
 // to the nadir, × median logged ISF → projected nadir shift. active=true → counterfactual is V1.
-function nearMissAnalysis(cycles, entries, activeMode) {
+function nearMissAnalysis(cycles, entries) {
   const nadirs = findNadirs(entries);
   const events = [];
   for (const nd of nadirs) {
     const win = cycles.filter(c => c.ts >= nd.t - 180*60000 && c.ts < nd.t);
-    let extra = 0, pairsN = 0;
+    let extra = 0, v6MinusV1 = 0, pairsN = 0, actN = 0;
     const isfs = [];
     for (const c of win) {
       const p = pairDoses(c);
       if (!p) continue;
       pairsN++;
-      const other = activeMode ? p.v1 : p.v6;      // counterfactual engine
-      const actual = activeMode ? p.v6 : p.v1;     // what actually ran
-      extra += (other - actual) * absorbedFrac((nd.t - c.ts) / 60000);
+      if (c.active) actN++;
+      // PER-CYCLE mode: counterfactual = the engine that wasn't running THIS cycle
+      const other = c.active ? p.v1 : p.v6;
+      const actual = c.active ? p.v6 : p.v1;
+      const w = absorbedFrac((nd.t - c.ts) / 60000);
+      extra += (other - actual) * w;
+      v6MinusV1 += (p.v6 - p.v1) * w;
       if (c.isf) isfs.push(c.isf);
     }
     if (pairsN < 6) continue;                       // need real coverage
     if (Math.abs(extra) < 0.4) continue;            // material dose difference only
+    const activeMode = actN > pairsN / 2;           // dominant mode in THIS window (for naming)
     const isf = isfs.length ? isfs.sort((a,b)=>a-b)[Math.floor(isfs.length/2)] : null;
     if (!isf) continue;
     const shiftHi = extra * isf;                    // mg/dL, no engine-feedback
@@ -405,7 +435,7 @@ function nearMissAnalysis(cycles, entries, activeMode) {
       else if (nd.bg < 70) verdict = `actual low — ${cf} pressure was lower (${projRange})`;
     }
     if (!verdict) continue;
-    events.push({ t: nd.t, nadir: nd.bg, extra, isf, projLo, projHi, projRange, verdict, avoided: extra > 0 && nd.bg >= 70 });
+    events.push({ t: nd.t, nadir: nd.bg, extra, v6ExtraU: v6MinusV1, isf, projLo, projHi, projRange, verdict, avoided: extra > 0 && nd.bg >= 70 });
   }
   return events;
 }
@@ -428,19 +458,21 @@ function findPeaks(entries) {
   return peaks;
 }
 
-function counterfactualPeaks(cycles, entries, activeMode) {
+function counterfactualPeaks(cycles, entries) {
   const out = [];
   for (const pk of findPeaks(entries)) {
     const win = cycles.filter(c => c.ts >= pk.t - 180*60000 && c.ts < pk.t);
-    let extra = 0, pairsN = 0; const isfs = [];
+    let extra = 0, pairsN = 0, actN = 0; const isfs = [];
     for (const c of win) {
       const p = pairDoses(c);
       if (!p) continue;
       pairsN++;
-      const other = activeMode ? p.v1 : p.v6, actual = activeMode ? p.v6 : p.v1;
+      if (c.active) actN++;
+      const other = c.active ? p.v1 : p.v6, actual = c.active ? p.v6 : p.v1;
       extra += (other - actual) * absorbedFrac((pk.t - c.ts) / 60000);
       if (c.isf) isfs.push(c.isf);
     }
+    const activeMode = actN > pairsN / 2;
     if (pairsN < 6 || Math.abs(extra) < 0.4) continue;
     const isf = isfs.length ? isfs.sort((a,b)=>a-b)[Math.floor(isfs.length/2)] : null;
     if (!isf) continue;
@@ -489,11 +521,9 @@ function leverHints(model, cycles, activeMode) {
       hints.push({ lever: "Committed cap (U)", dir: "consider a modest raise",
         why: `${pinned.length} COMMITTED holding cycles were pinned at the cap (${cc.ccap}U) while BG was above 180.` });
   }
-  // 4. events where V6's dosing was the low-side pressure → gentler V6
-  //    nearMiss.extra > 0 ⇔ the COUNTERFACTUAL engine dosed more. So V6 is the presser when:
-  //    shadow mode (running V1, counterfactual V6): extra > 0;  active mode (running V6): extra < 0.
-  const v6Pressure = (model.nearMiss || []).filter(e => activeMode ? e.extra < 0 : e.extra > 0)
-                                           .filter(e => e.nadir < 80);
+  // 4. events where V6's dosing was the low-side pressure → gentler V6 (v6ExtraU is the
+  //    absorbed V6-minus-V1 insulin before the nadir, computed per-cycle — mode-independent)
+  const v6Pressure = (model.nearMiss || []).filter(e => e.v6ExtraU > 0.2 && e.nadir < 80);
   if (v6Pressure.length >= 1)
     hints.push({ lever: "Aggression ↓ or Hypo Caution ↑", dir: "gentler",
       why: `${v6Pressure.length} low/near-low event(s) where V6's extra dosing was the low-side pressure — see the lows panel for the occasions.` });
@@ -516,6 +546,75 @@ function leverHints(model, cycles, activeMode) {
 }
 function median(a){ const s=a.slice().sort((x,y)=>x-y); return s.length? s[Math.floor(s.length/2)] : 0; }
 function fmt2(x){ return (Math.round(x*100)/100).toFixed(2); }
+
+// ---- Counterfactual daily series: per BG reading, project the other engine's BG ----
+function counterfactualSeries(entries, cycles) {
+  const pre = [];
+  for (const c of cycles) {
+    const p = pairDoses(c);
+    if (!p || !c.isf) continue;
+    const other = c.active ? p.v1 : p.v6, actual = c.active ? p.v6 : p.v1;
+    pre.push({ ts: c.ts, dIsf: (other - actual) * c.isf });
+  }
+  pre.sort((a, b) => a.ts - b.ts);
+  const es = entries.filter(e => typeof e.sgv === "number" && e.sgv > 20).sort((a, b) => a.date - b.date);
+  let lo = 0; const out = [];
+  for (const e of es) {
+    while (lo < pre.length && pre[lo].ts < e.date - 180 * 60000) lo++;
+    let shift = 0;
+    for (let i = lo; i < pre.length && pre[i].ts < e.date; i++)
+      shift += pre[i].dIsf * absorbedFrac((e.date - pre[i].ts) / 60000);
+    out.push({ t: e.date, bg: e.sgv, cf: e.sgv - shift });
+  }
+  return out;
+}
+
+function quantile(a, p) {
+  if (!a.length) return null;
+  const s = a.slice().sort((x, y) => x - y);
+  return s[Math.min(s.length - 1, Math.floor(p * s.length))];
+}
+
+// 30-min time-of-day bins (LOCAL time) of any series value
+function agpBins(series, get, binMin = 30) {
+  const nb = Math.round(1440 / binMin);
+  const bins = Array.from({ length: nb }, () => []);
+  for (const s of series) {
+    const d = new Date(s.t);
+    bins[Math.floor((d.getHours() * 60 + d.getMinutes()) / binMin)].push(get(s));
+  }
+  return bins.map(a => ({ p25: quantile(a, 0.25), p50: quantile(a, 0.5), p75: quantile(a, 0.75), n: a.length }));
+}
+
+// Meal AGP: all episodes aligned at onset (t=0), −30..+180 min in 5-min slots
+function mealAgp(episodes, entries) {
+  const LO = -30, HI = 180, BIN = 5, nb = (HI - LO) / BIN + 1;
+  const bg = Array.from({ length: nb }, () => []);
+  const v1 = Array.from({ length: nb }, () => []), v6 = Array.from({ length: nb }, () => []);
+  const st = Array.from({ length: nb }, () => ({}));
+  const es = entries.filter(e => typeof e.sgv === "number" && e.sgv > 20);
+  for (const ep of episodes) {
+    for (const e of es) {
+      const off = (e.date - ep.onsetT) / 60000;
+      if (off < LO || off > HI) continue;
+      bg[Math.round((off - LO) / BIN)].push(e.sgv);
+    }
+    for (const c of (ep.cycles || [])) {
+      const off = (c.ts - ep.onsetT) / 60000;
+      if (off < LO || off > HI) continue;
+      const b = Math.round((off - LO) / BIN);
+      const p = pairDoses(c);
+      if (p) { v1[b].push(p.v1); v6[b].push(p.v6); }
+      if (c.state) st[b][c.state] = (st[b][c.state] || 0) + 1;
+    }
+  }
+  return {
+    LO, HI, BIN,
+    bg: bg.map(a => ({ p25: quantile(a, 0.25), p50: quantile(a, 0.5), p75: quantile(a, 0.75) })),
+    v1: v1.map(a => quantile(a, 0.5)), v6: v6.map(a => quantile(a, 0.5)),
+    modal: st.map(o => { let best = null, bn = 0; for (const k in o) if (o[k] > bn) { bn = o[k]; best = k; } return best; })
+  };
+}
 
 /* =============================== ENDCORE =============================== */
 
@@ -589,47 +688,103 @@ function drawHist(canvas, deltas) {
 
 const STATE_COLORS = { IDLE: "#475569", OBSERVING: "#eab308", CONFIRMED: "#ef4444", COMMITTED: "#f97316", RECOVERING: "#3b82f6" };
 
-function drawEpisode(canvas, ep, entries) {
-  const t0 = ep.onsetT - 20 * 60000, t1 = ep.endT + 10 * 60000;
-  const es = entries.filter(e => e.date >= t0 && e.date <= t1);
+function drawMealAgp(canvas, m) {
   const ctx = canvas.getContext("2d");
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
-  const X = t => 40 + (W - 50) * (t - t0) / (t1 - t0);
-  const bgs = es.map(e => e.sgv);
-  const bgMax = Math.max(200, ...bgs) + 20, bgMin = Math.max(40, Math.min(...bgs) - 20);
-  const Y = bg => 8 + (H - 90) * (1 - (bg - bgMin) / (bgMax - bgMin));
-  // 180 line
+  const nb = m.bg.length;
+  const X = i => 44 + (W - 56) * i / (nb - 1);
+  const bgVals = m.bg.flatMap(b => [b.p25, b.p75]).filter(x => x !== null);
+  if (!bgVals.length) { ctx.fillStyle = "#9aa0ad"; ctx.fillText("No episodes in window", 60, 40); return; }
+  const bgMax = Math.max(200, ...bgVals) + 15, bgMin = Math.max(40, Math.min(...bgVals) - 15);
+  const bgH = H - 150;
+  const Y = v => 8 + bgH * (1 - (v - bgMin) / (bgMax - bgMin));
+  // 180 guide
   ctx.strokeStyle = "#513a3a"; ctx.setLineDash([4, 4]); ctx.beginPath();
-  ctx.moveTo(40, Y(180)); ctx.lineTo(W - 10, Y(180)); ctx.stroke(); ctx.setLineDash([]);
-  // BG line
-  ctx.strokeStyle = "#4ade80"; ctx.lineWidth = 2; ctx.beginPath();
-  es.forEach((e, i) => { const x = X(e.date), y = Y(e.sgv); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+  ctx.moveTo(44, Y(180)); ctx.lineTo(W - 12, Y(180)); ctx.stroke(); ctx.setLineDash([]);
+  // band p25–p75
+  ctx.beginPath();
+  let started = false;
+  for (let i = 0; i < nb; i++) if (m.bg[i].p75 !== null) { const f = started ? "lineTo" : "moveTo"; ctx[f](X(i), Y(m.bg[i].p75)); started = true; }
+  for (let i = nb - 1; i >= 0; i--) if (m.bg[i].p25 !== null) ctx.lineTo(X(i), Y(m.bg[i].p25));
+  ctx.closePath(); ctx.fillStyle = "rgba(74,222,128,0.16)"; ctx.fill();
+  // median line
+  ctx.strokeStyle = "#4ade80"; ctx.lineWidth = 2; ctx.beginPath(); started = false;
+  for (let i = 0; i < nb; i++) if (m.bg[i].p50 !== null) { const f = started ? "lineTo" : "moveTo"; ctx[f](X(i), Y(m.bg[i].p50)); started = true; }
   ctx.stroke(); ctx.lineWidth = 1;
-  // axis labels
-  ctx.fillStyle = "#9aa0ad"; ctx.font = "11px system-ui"; ctx.textAlign = "right";
-  [bgMin, 180, bgMax].forEach(v => ctx.fillText(String(Math.round(v)), 36, Y(v) + 4));
-  // dose bars + state ribbon
-  const doseTop = H - 78, doseH = 44, ribbonY = H - 26;
-  const maxD = Math.max(0.3, ...ep.cycles.map(c => Math.max(c.fd || 0, (pairDoses(c) || {}).v1 || 0)));
-  ctx.textAlign = "center";
-  for (const c of ep.cycles) {
-    const x = X(c.ts);
-    const p = pairDoses(c);
-    if (p) {
-      const h1 = doseH * p.v1 / maxD, h6 = doseH * p.v6 / maxD;
-      ctx.fillStyle = "#94a3b8"; ctx.fillRect(x - 4, doseTop + doseH - h1, 3.5, h1);
-      ctx.fillStyle = "#00d4ff"; ctx.fillRect(x + 0.5, doseTop + doseH - h6, 3.5, h6);
+  // onset marker
+  const onsetI = Math.round(-m.LO / m.BIN);
+  ctx.strokeStyle = "#64748b"; ctx.setLineDash([3, 3]); ctx.beginPath();
+  ctx.moveTo(X(onsetI), 8); ctx.lineTo(X(onsetI), H - 40); ctx.stroke(); ctx.setLineDash([]);
+  // dose lanes (median per slot)
+  const dTop = H - 132, dH = 78;
+  const dMax = Math.max(0.2, ...m.v1.filter(x => x !== null), ...m.v6.filter(x => x !== null));
+  const DY = v => dTop + dH * (1 - v / dMax);
+  for (const [arr, col] of [[m.v1, "#94a3b8"], [m.v6, "#00d4ff"]]) {
+    ctx.strokeStyle = col; ctx.lineWidth = 1.6; ctx.beginPath(); started = false;
+    for (let i = 0; i < nb; i++) {
+      if (arr[i] === null) { started = false; continue; }
+      const f = started ? "lineTo" : "moveTo"; ctx[f](X(i), DY(arr[i])); started = true;
     }
-    ctx.fillStyle = STATE_COLORS[c.state] || "#333";
-    ctx.fillRect(x - 5, ribbonY, 10, 10);
+    ctx.stroke();
   }
-  // time ticks hourly
-  ctx.fillStyle = "#9aa0ad";
-  for (let t = Math.ceil(t0 / 3600000) * 3600000; t < t1; t += 3600000) {
-    const d = new Date(t);
-    ctx.fillText(`${String(d.getHours()).padStart(2, "0")}:00`, X(t), H - 2);
+  ctx.lineWidth = 1;
+  // modal state ribbon
+  const rY = H - 44;
+  for (let i = 0; i < nb; i++) if (m.modal[i]) {
+    ctx.fillStyle = STATE_COLORS[m.modal[i]] || "#333";
+    ctx.fillRect(X(i) - (W - 56) / (nb - 1) / 2, rY, (W - 56) / (nb - 1) + 1, 10);
   }
+  // axes
+  ctx.fillStyle = "#9aa0ad"; ctx.font = "11px system-ui"; ctx.textAlign = "right";
+  [bgMin, 180, bgMax].forEach(v => ctx.fillText(String(Math.round(v)), 40, Y(v) + 4));
+  ctx.fillText(dMax.toFixed(2) + "U", 40, dTop + 8);
+  ctx.textAlign = "center";
+  for (let t = m.LO; t <= m.HI; t += 30)
+    ctx.fillText((t > 0 ? "+" : "") + t + "m", X((t - m.LO) / m.BIN), H - 8);
+}
+
+function drawDailyAgp(canvas, act, cf) {
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  const nb = act.length;
+  const X = i => 44 + (W - 56) * i / (nb - 1);
+  const vals = act.flatMap(b => [b.p25, b.p75]).concat(cf.map(b => b.p50)).filter(x => x !== null);
+  if (!vals.length) return;
+  const vMax = Math.max(200, ...vals) + 10, vMin = Math.max(40, Math.min(...vals) - 10);
+  const Y = v => 10 + (H - 44) * (1 - (v - vMin) / (vMax - vMin));
+  // guides 70 / 180
+  for (const g of [70, 180]) {
+    ctx.strokeStyle = g === 70 ? "#4a3535" : "#513a3a"; ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(44, Y(g)); ctx.lineTo(W - 12, Y(g)); ctx.stroke(); ctx.setLineDash([]);
+  }
+  // divergence shading where |Δmedian| ≥ 10
+  for (let i = 0; i < nb - 1; i++) {
+    const a = act[i].p50, c = cf[i].p50;
+    if (a === null || c === null || Math.abs(a - c) < 10) continue;
+    ctx.fillStyle = c < a ? "rgba(0,212,255,0.20)" : "rgba(234,179,8,0.22)";
+    const x0 = X(i), x1 = X(i + 1);
+    ctx.fillRect(x0, Math.min(Y(a), Y(c)), x1 - x0, Math.abs(Y(a) - Y(c)));
+  }
+  // actual band + median
+  ctx.beginPath(); let started = false;
+  for (let i = 0; i < nb; i++) if (act[i].p75 !== null) { const f = started ? "lineTo" : "moveTo"; ctx[f](X(i), Y(act[i].p75)); started = true; }
+  for (let i = nb - 1; i >= 0; i--) if (act[i].p25 !== null) ctx.lineTo(X(i), Y(act[i].p25));
+  ctx.closePath(); ctx.fillStyle = "rgba(74,222,128,0.14)"; ctx.fill();
+  ctx.strokeStyle = "#4ade80"; ctx.lineWidth = 2; ctx.beginPath(); started = false;
+  for (let i = 0; i < nb; i++) if (act[i].p50 !== null) { const f = started ? "lineTo" : "moveTo"; ctx[f](X(i), Y(act[i].p50)); started = true; }
+  ctx.stroke();
+  // counterfactual median (dashed)
+  ctx.strokeStyle = "#00d4ff"; ctx.setLineDash([6, 4]); ctx.beginPath(); started = false;
+  for (let i = 0; i < nb; i++) if (cf[i].p50 !== null) { const f = started ? "lineTo" : "moveTo"; ctx[f](X(i), Y(cf[i].p50)); started = true; }
+  ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1;
+  // axes
+  ctx.fillStyle = "#9aa0ad"; ctx.font = "11px system-ui"; ctx.textAlign = "right";
+  [70, 180, Math.round(vMax)].forEach(v => ctx.fillText(String(v), 40, Y(v) + 4));
+  ctx.textAlign = "center";
+  for (let h = 0; h <= 24; h += 3)
+    ctx.fillText(String(h).padStart(2, "0") + ":00", X(Math.min(nb - 1, h * 2)), H - 8);
 }
 
 function render(model, entries) {
@@ -643,9 +798,11 @@ function render(model, entries) {
     stat("Above 180", g.above180.toFixed(0) + "%"),
     stat("CV", g.cv.toFixed(0) + "%", g.cv <= 36 ? "good" : "warn"),
   ].join("");
-  const mode = model.activeShare > 0.5 ? "V6 ACTIVE (V1 reconstructed from reason text)"
-             : model.withV6 > 0 ? "V1 active, V6 running in shadow"
-             : "no V6 telemetry found — update your Boost build";
+  const shr = model.activeShare;
+  const mode = model.withV6 === 0 ? "no V6 telemetry found — update your Boost build"
+             : shr > 0.85 ? "V6 ACTIVE (V1 reconstructed from reason text)"
+             : shr < 0.15 ? "V1 active, V6 running in shadow"
+             : `MIXED — V6 was the active doser on ${(100 * shr).toFixed(0)}% of cycles (all maths is per-cycle, so this is handled correctly)`;
   $("modeLine").textContent =
     `${model.days.toFixed(1)} days · ${model.cycles} cycles (5-min deduped) · mode: ${mode} · paired dose decisions: ${model.paired}` +
     (model.unpaired ? ` (${model.unpaired} unpaired excluded)` : "");
@@ -664,28 +821,21 @@ function render(model, entries) {
     ["In meal episodes", model.meal.n, fmtU(model.meal.v1), fmtU(model.meal.v6), fmtU(model.meal.v6 - model.meal.v1)]];
   $("splitTable").innerHTML = rows.map((r, i) =>
     `<tr>${r.map((c, j) => `<t${i ? "d" : "h"}${j ? ' class="num"' : ""}>${c}</t${i ? "d" : "h"}>`).join("")}</tr>`).join("");
-  // episodes
+  // meal AGP + compact episode table
   $("epCount").textContent = `(${model.episodes.length} detected)`;
-  const epHost = $("episodes"); epHost.innerHTML = "";
-  const show = model.episodes.slice(-14).reverse();     // newest 14
-  for (const ep of show) {
-    const d = new Date(ep.onsetT);
-    const card = document.createElement("div"); card.className = "card";
-    card.innerHTML = `<div class="ep-head">
-        <span><b>${d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
-        ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}</b>
-        &nbsp; ${Math.round(ep.onsetBg)} → peak ${Math.round(ep.peakBg)} mg/dL</span>
-        <span class="muted">V1 ${fmtU(ep.v1)}U · V6 ${fmtU(ep.v6)}U
-        ${ep.confirmLatencyMin !== null ? ` · confirmed +${ep.confirmLatencyMin} min, shot ${fmtU(ep.commitShot || 0)}U` : " · no CONFIRMED"}</span>
-      </div><canvas width="980" height="240"></canvas>
-      <div class="legend"><span><span class="dot" style="background:#4ade80"></span>BG</span>
-        <span><span class="dot" style="background:#94a3b8"></span>V1 dose</span>
-        <span><span class="dot" style="background:#00d4ff"></span>V6 dose</span>
-        ${Object.entries(STATE_COLORS).map(([s, c]) => `<span><span class="dot" style="background:${c}"></span>${s}</span>`).join("")}
-      </div>`;
-    epHost.appendChild(card);
-    drawEpisode(card.querySelector("canvas"), ep, entries);
-  }
+  drawMealAgp($("mealAgpCanvas"), model.mealAgpData);
+  $("epTable").innerHTML = `<tr><th>when</th><th class="num">rise</th><th class="num">V1 (U)</th><th class="num">V6 (U)</th><th class="num">confirmed</th><th class="num">shot (U)</th></tr>` +
+    model.episodes.slice().reverse().map(ep => {
+      const d = new Date(ep.onsetT);
+      const when = d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }) +
+        " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+      return `<tr><td>${when}</td><td class="num">${Math.round(ep.onsetBg)}→${Math.round(ep.peakBg)}</td>
+        <td class="num">${fmtU(ep.v1)}</td><td class="num">${fmtU(ep.v6)}</td>
+        <td class="num">${ep.confirmLatencyMin !== null ? "+" + ep.confirmLatencyMin + " min" : "—"}</td>
+        <td class="num">${ep.commitShot !== null ? fmtU(ep.commitShot) : "—"}</td></tr>`;
+    }).join("");
+  // daily counterfactual AGP
+  drawDailyAgp($("dailyAgpCanvas"), model.dailyAgp.act, model.dailyAgp.cf);
   // near-miss events
   const nm = model.nearMiss || [];
   $("nearMiss").innerHTML = nm.length ? `<div class="card"><table>
