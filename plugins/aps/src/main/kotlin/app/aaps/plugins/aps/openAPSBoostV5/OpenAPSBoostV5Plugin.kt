@@ -43,6 +43,7 @@ import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Provider
 import javax.inject.Singleton
+import app.aaps.plugins.aps.openAPSBoost.BoostRiskModel
 import app.aaps.plugins.aps.openAPSBoost.OpenAPSBoostPlugin
 import kotlin.math.abs
 import kotlin.math.max
@@ -91,6 +92,9 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
     private val constraintsChecker: ConstraintsChecker,
     private val dateUtil: DateUtil,
     private val uiInteraction: UiInteraction,
+    // @Singleton — same instance the V1 engine scored this cycle; its cached feature vector powers
+    // the projected-IOB re-score for Phase-3 postActionRiskCheck. (2026-07-02)
+    private val boostRiskModel: BoostRiskModel,
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -407,9 +411,12 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             enableSmbPreChecks = enableSmbPreChecks,
             mlHypoRisk = rT.mlHypoRisk,
             mlMealLikely = rT.mlMealLikely,
-            riskAtProjectedIob = null,         // Phase 3 postActionRiskCheck disabled in V0; V4.4.1's
-                                               // postSmbScale already runs against rT.units; V5 doesn't
-                                               // re-run the model in shadow.
+            // 2026-07-02: postActionRiskCheck LIVE. Re-scores the (singleton) risk model at
+            // projected IOB using this cycle's cached feature vector. Previously null since
+            // V0-shadow — but in ACTIVE mode V5 replaces rT.units AFTER V1's postSmbScale ran,
+            // so the delivered dose had neither damper. Null/unavailable → current risk
+            // (gate passes through unchanged).
+            riskAtProjectedIob = { projIob -> boostRiskModel.predictAtProjectedIob(projIob) ?: (rT.mlHypoRisk ?: 0.0) },
             recentLowBg = opb.recentLowBG,
             cumulativeRise30min = cumulativeRise30min,
             hour = hour,

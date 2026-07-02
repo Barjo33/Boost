@@ -169,6 +169,57 @@ class BoostRiskModel @Inject constructor(
             aapsLogger.error(LTag.APS, "BoostRiskModel feature size mismatch: got ${features.size}, expected $expected")
             return null
         }
+        // Cache this cycle's vector so postActionRiskCheck can re-score at projected IOB. (2026-07-02)
+        lastFeatures = features.copyOf()
+        return score(modelTrees, features)
+    }
+
+    // Most recent successfully-scored feature vector (this cycle's, in practice — predict() runs
+    // once per cycle before any projected re-score). Basis for [predictAtProjectedIob]. (2026-07-02)
+    @Volatile private var lastFeatures: DoubleArray? = null
+
+    /**
+     * Re-score the hypo-risk model at the PROJECTED post-SMB state (current IOB + prospective dose),
+     * reusing this cycle's cached feature vector with the post-state features adjusted: `iob_iob`
+     * AND `iob_iob_lag0` (the schema duplicates current IOB in the lookback block — both must move
+     * or the vector is internally inconsistent), `iob_bolusiob` += delta, `recent_smb_units_60m`
+     * (+lag0) += delta, `time_since_last_smb_min` := 0. History lags (lag1..5) untouched.
+     * Powers V5 Phase-3 `postActionRiskCheck` on the ACTIVE path.
+     *
+     * HONEST EXPECTATION (backtest 2026-07-02, offline tree re-run over 210 real meal-state dose
+     * vectors incl. a forced falling-BG probe up to +3U): the v12 model's learned IOB→risk response
+     * is flat-to-INVERTED (high IOB co-occurs with meals in training → fewer hypos in 4h), so
+     * projected risk ≤ current and the gate is expected to ~never fire with THIS model. Kept wired
+     * because it is zero-risk (lower projection → pass-through, identical to the old null wiring),
+     * costs one tree-walk, and becomes live automatically if the model is retrained with a
+     * causally-correct IOB response. The doses' actual post-action protection remains
+     * iobHeadroomBrake + the maxIOB clamp + the state caps. A DETERMINISTIC post-action check
+     * (projected eventualBG = eventualBG − dose×ISF vs target) is the candidate real brake — own
+     * design + backtest, not smuggled in here.
+     * Returns null (→ gate passes through) when the model/vector/feature names are unavailable.
+     */
+    fun predictAtProjectedIob(projectedIob: Double): Double? {
+        val modelTrees = trees ?: return null
+        if (!loaded) return null
+        val base = lastFeatures ?: return null
+        val names = featureNames ?: return null
+        val iobIdx = names.indexOf("iob_iob")
+        if (iobIdx < 0 || iobIdx >= base.size) return null
+        val f = base.copyOf()
+        val delta = projectedIob - f[iobIdx]
+        f[iobIdx] = projectedIob
+        fun set(name: String, v: (Double) -> Double) {
+            val i = names.indexOf(name); if (i in f.indices) f[i] = v(f[i])
+        }
+        set("iob_iob_lag0") { projectedIob }
+        set("iob_bolusiob") { (it + delta).coerceAtLeast(0.0) }
+        set("recent_smb_units_60m") { (it + delta).coerceAtLeast(0.0) }
+        set("recent_smb_units_60m_lag0") { (it + delta).coerceAtLeast(0.0) }
+        set("time_since_last_smb_min") { 0.0 }
+        return score(modelTrees, f)
+    }
+
+    private fun score(modelTrees: List<TreeNode>, features: DoubleArray): Double {
         var rawScore = 0.0
         for (tree in modelTrees) {
             rawScore += walkTree(tree, features)
