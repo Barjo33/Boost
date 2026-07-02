@@ -279,6 +279,10 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             rT.boostV5_finalDose = decision.finalDose
             rT.boostV5_gateReduction = formatGateReduction(decision)
             rT.boostV5_active = activeMode   // true => V5 is the selected/active doser (drives the V5 overview/widget)
+            // Log the live per-user dose caps so the OBSERVING→CONFIRMED gate can be backtested against
+            // REAL caps (not inferred/auto-formula estimates) and manual overrides are captured. (2026-07-02)
+            rT.boostV5_committedCap = preferences.get(DoubleKey.ApsBoostV5CommittedCapU)
+            rT.boostV5_confirmedCap = preferences.get(DoubleKey.ApsBoostV5ConfirmedCapU)
 
             val rtJson = v5DecisionToRtJson(decision)
             aapsLogger.info(LTag.APS, "BoostV5_RT: ${rtJson} actual_smb=${rT.units ?: 0.0} actual_insulinReq=${rT.insulinReq ?: 0.0} activeMode=$activeMode")

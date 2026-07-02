@@ -95,6 +95,8 @@ data class RT(
     var boostV5_finalDose: Double? = null,       // V5's would-have-delivered SMB (U) — direct comparator to rT.units
     var boostV5_gateReduction: String? = null,   // compact summary of which Phase 3 gates fired
     var boostV5_active: Boolean? = null,         // true when V5 was the ACTIVE doser this cycle (not shadow) — drives the V5 overview/widget
+    var boostV5_committedCap: Double? = null,    // per-user COMMITTED per-cycle hold cap (U) — for dose-gate backtests (2026-07-02)
+    var boostV5_confirmedCap: Double? = null,    // per-user CONFIRMED commit-shot cap (U) — for dose-gate backtests (2026-07-02)
 
     // HR + sleep telemetry (2026-06-02) — emitted into NS devicestatus for retrospective
     // sleep-model tuning. Cadence = one observation per Boost cycle (~5 min), which
