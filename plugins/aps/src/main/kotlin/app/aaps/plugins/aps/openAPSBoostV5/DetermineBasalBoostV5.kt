@@ -144,6 +144,28 @@ class DetermineBasalBoostV5 @Inject constructor(
             mlMealLikelyNullStreak = nextNullStreak,
         )
 
+        // Phase 1.c HOISTED — AggressionBudget is state-independent (takes no meal-state input), so
+        // compute it BEFORE the state step so the OBSERVING→CONFIRMED dose-adequacy gate can size the
+        // prospective commit-shot. Pure reorder, no behaviour change. (2026-07-02)
+        val budget = aggressionBudget(
+            baseInsulinReq = inputs.baseInsulinReq,
+            mlHypoRisk = inputs.mlHypoRisk,
+            inPostExerciseWindow = inputs.inPostExerciseWindow,
+            hypoCautionUserKnob = inputs.hypoCautionUserKnob,
+            sensitivityUserKnob = inputs.sensitivityUserKnob,
+        )
+
+        // Dose-adequacy gate for OBSERVING→CONFIRMED (2026-07-02): the single per-session commit-shot
+        // must beat one routine COMMITTED hold cycle (committedCapU) to be worth spending — else a
+        // trivial pre-meal upswing burns the token and the committedInSession lock starves the meal on
+        // holds alone (the 2026-07-01 eventualBG→372 incident). Uses the mlHypoRisk-DAMPED budget, so
+        // confirm is also held back when hypo risk is elevated. Clamped strictly below confirmedCapU so
+        // a manual committedCap ≥ confirmedCap can't make the gate unsatisfiable (which would silently
+        // disable V6 meal response). Fast-carb fast-path is exempt (handled inside step()).
+        val prospectiveConfirmShot = budget.budget * mealActionMultiplier(MealHypothesis.CONFIRMED, inputs.aggressionUserKnob)
+        val confirmDoseFloor = minOf(inputs.committedCapU, CONFIRM_DOSE_FLOOR_MAX_FRAC_OF_CONFIRMED_CAP * inputs.confirmedCapU)
+        val confirmDoseAdequate = prospectiveConfirmShot > confirmDoseFloor
+
         // Phase 1.b — state machine step
         val newHypothesisState = step(
             current = resetState,
@@ -156,15 +178,7 @@ class DetermineBasalBoostV5 @Inject constructor(
             asleep = inputs.asleep,
             exerciseActive = inputs.exerciseActive,
             fastConfirmEnabled = inputs.fastCarbConfirmEnabled,
-        )
-
-        // Phase 1.c — AggressionBudget
-        val budget = aggressionBudget(
-            baseInsulinReq = inputs.baseInsulinReq,
-            mlHypoRisk = inputs.mlHypoRisk,
-            inPostExerciseWindow = inputs.inPostExerciseWindow,
-            hypoCautionUserKnob = inputs.hypoCautionUserKnob,
-            sensitivityUserKnob = inputs.sensitivityUserKnob,
+            confirmDoseAdequate = confirmDoseAdequate,
         )
 
         // Phase 2 — single decision rule

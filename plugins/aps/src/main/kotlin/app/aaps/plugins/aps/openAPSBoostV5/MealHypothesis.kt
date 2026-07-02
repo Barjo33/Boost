@@ -103,6 +103,10 @@ internal const val ENTER_OBSERVING_SCORE = 0.44                 // calibrated: 0
 internal const val CONFIRM_SCORE = 0.55                         // 2026-05-15: 0.66 → 0.55 (was at p99 of observed scores; lowered with peak-score tracking)
 internal const val CONFIRM_EVENTUAL_BG_OFFSET_MGDL = 30.0       // 2026-05-22: 50.0 → 30.0 (Fix 5 — paired with peak-offset tracking)
 internal const val CONFIRM_MIN_OBSERVING_AGE = 2                // hysteresis: must observe ≥2 cycles before confirming
+// 2026-07-02 dose-adequacy gate: the confirm floor is committedCapU, clamped to at most this fraction
+// of confirmedCapU so a manual committedCap ≥ confirmedCap can't make the gate unsatisfiable (which
+// would silently disable V6's meal response). See DetermineBasalBoostV5.decide().
+internal const val CONFIRM_DOSE_FLOOR_MAX_FRAC_OF_CONFIRMED_CAP = 0.8
 internal const val FALL_BACK_TO_IDLE_SCORE = 0.36               // calibrated: 0.30 → 0.36
 internal const val FALL_BACK_TO_IDLE_AGE = 2                    // hysteresis: ≥2 cycles below threshold to fall back
 internal const val CONFIRMED_TO_COMMITTED_AGE = 0               // 2026-05-26 Fix 6: 1 → 0 (true single-cycle commit; previously CONFIRMED stayed for 2 invokes due to age semantics, allowing 2× CONFIRMED-mult doses)
@@ -160,6 +164,10 @@ fun step(
     asleep: Boolean = false,
     exerciseActive: Boolean = false,
     fastConfirmEnabled: Boolean = false,
+    // 2026-07-02: OBSERVING→CONFIRMED dose-adequacy gate. Caller sets it true when the prospective
+    // commit-shot (budget × CONFIRMED mult) exceeds one routine COMMITTED hold (committedCapU, clamped
+    // < confirmedCapU). Defaults true so the fast-carb path and existing callers/tests are unaffected.
+    confirmDoseAdequate: Boolean = true,
 ): MealHypothesisState {
     val state = current.state
     val age = current.ageCycles
@@ -204,6 +212,7 @@ fun step(
             val confirmEligible = age >= CONFIRM_MIN_OBSERVING_AGE &&
                 newMaxScore >= CONFIRM_SCORE &&
                 newMaxOffset >= CONFIRM_EVENTUAL_BG_OFFSET_MGDL &&
+                confirmDoseAdequate &&   // 2026-07-02: don't spend the token on a shot < one COMMITTED hold
                 !committedInSession
             when {
                 // Fast-carb fast-path: confirm in a single OBSERVING cycle, bypassing the age +
