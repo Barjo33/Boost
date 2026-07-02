@@ -1271,9 +1271,20 @@ open class OpenAPSBoostPlugin @Inject constructor(
             // because v5Asleep reflects ONLY the HR sleep-state machine, never the boost-window gate.
             if (v5Active && microBolusAllowed && v5decision != null && !v5Asleep && !cumulativeCapReached && activityResult.boostActive) {
                 val v1WouldDose = it.units ?: 0.0
-                it.units = v5decision.finalDose
-                it.reason.append("V6-ACTIVE drove SMB ${Round.roundTo(v5decision.finalDose, 0.001)}U (base would=${Round.roundTo(v1WouldDose, 0.001)}U, state=${v5decision.mealHypothesis}); ")
-                aapsLogger.info(LTag.APS, "V6-ACTIVE override: SMB ${v1WouldDose} → ${v5decision.finalDose} state=${v5decision.mealHypothesis}")
+                // Non-meal-state cap (2026-07-02): V6 may only OUT-dose V1 when it holds a meal
+                // hypothesis (CONFIRMED/COMMITTED). In IDLE/OBSERVING/RECOVERING the V5 state caps
+                // don't apply (applyStateDoseCap passes them through) and IDLE's 1.0× multiplier can
+                // front a multi-unit correction that bypasses V1's per-SMB sizing — 5-month cohort
+                // shadow data: ~1,430U cumulative IDLE excess over V1, worst 3.7U vs 0.45U at BG 210,
+                // incl. 2.0U at 05:02 where V1 dosed 0. Capping at V1's would-dose makes IDLE match
+                // its own spec ("standard oref dose; no meal hypothesis"); genuine meal rises still
+                // get full V6 dosing via OBSERVING→CONFIRMED.
+                val inMealState = v5decision.mealHypothesis.name == "CONFIRMED" || v5decision.mealHypothesis.name == "COMMITTED"
+                val overrideDose = if (inMealState) v5decision.finalDose else minOf(v5decision.finalDose, v1WouldDose)
+                val nonMealCapped = overrideDose < v5decision.finalDose
+                it.units = overrideDose
+                it.reason.append("V6-ACTIVE drove SMB ${Round.roundTo(overrideDose, 0.001)}U (base would=${Round.roundTo(v1WouldDose, 0.001)}U, state=${v5decision.mealHypothesis}${if (nonMealCapped) ", non-meal-capped from ${Round.roundTo(v5decision.finalDose, 0.001)}U" else ""}); ")
+                aapsLogger.info(LTag.APS, "V6-ACTIVE override: SMB ${v1WouldDose} → ${overrideDose} state=${v5decision.mealHypothesis}${if (nonMealCapped) " (non-meal-capped from ${v5decision.finalDose})" else ""}")
             } else if (v5Active && v5decision != null && cumulativeCapReached) {
                 it.units = 0.0
                 it.reason.append("V6 suppressed (cumulative SMB cap ${Round.roundTo(recentSmbVolume60Min, 0.01)}U/${Round.roundTo(cumulativeSmbCap60Min, 0.01)}U reached); ")
