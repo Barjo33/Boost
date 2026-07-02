@@ -123,6 +123,16 @@
     carbs you might have eaten aren't modelled. Read these as <b>pressure toward hypo</b>, not predicted numbers.</div>
     <div id="nearMiss"></div>
 
+    <h2>Counterfactual highs <span class="muted">(same method, other tail)</span></h2>
+    <div id="cfPeaks"></div>
+
+    <h2>Levers to consider</h2>
+    <div class="banner"><b>Not medical advice.</b> These are pattern-matched pointers at the Boost settings most
+    associated with what the data shows — validate any change against the
+    <a href="boost_tuning_guide.html">Tuning Guide</a>, move one lever at a time in small steps, and give each
+    change several days before judging it.</div>
+    <div id="levers"></div>
+
     <h2>V6 state machine &amp; safety gates</h2>
     <div class="row">
       <div class="card"><table id="stateTable"></table></div>
@@ -171,6 +181,8 @@ function parseCycles(dsList) {
       gates: sug.boostV5_gateReduction || null,
       boostActive: sug.boostActive,
       isf: numOrNull(sug.variable_sens),
+      ccap: numOrNull(sug.boostV5_committedCap),
+      fcap: numOrNull(sug.boostV5_confirmedCap),
       reason
     });
   }
@@ -303,9 +315,15 @@ function analyse(cycles, entries, episodes) {
     };
   });
   const days = cycles.length ? (cycles[cycles.length - 1].ts - cycles[0].ts) / 86400000 : 0;
-  const nearMiss = nearMissAnalysis(cycles, entries, (cycles.filter(c=>c.active).length) > cycles.length/2);
+  const activeMode = (cycles.filter(c=>c.active).length) > cycles.length/2;
+  const nearMiss = nearMissAnalysis(cycles, entries, activeMode);
+  const modelStub = { episodes: eps, nearMiss, night: mk(night), gly };
+  const hints = leverHints(modelStub, cycles, activeMode);
   return {
     nearMiss,
+    cfPeaks: counterfactualPeaks(cycles, entries, activeMode),
+    hints,
+    _activeMode: activeMode,
     gly, cycles: cycles.length, withV6, paired: paired.length, unpaired,
     activeShare: cycles.length ? activeCount / cycles.length : 0,
     days, stateCount, gateCount,
@@ -391,6 +409,113 @@ function nearMissAnalysis(cycles, entries, activeMode) {
   }
   return events;
 }
+
+// ---- Counterfactual peaks: would the other engine have run higher/lower? ----
+function findPeaks(entries) {
+  const es = entries.filter(e => typeof e.sgv === "number" && e.sgv > 20)
+                    .map(e => ({ t: e.date, bg: e.sgv })).sort((a, b) => a.t - b.t);
+  const peaks = [];
+  for (let i = 2; i < es.length - 2; i++) {
+    const c = es[i];
+    if (c.bg < 180) continue;
+    if (es[i-1].bg > c.bg || es[i+1].bg > c.bg) continue;
+    if (peaks.length && c.t - peaks[peaks.length-1].t < 60*60000) {
+      if (c.bg > peaks[peaks.length-1].bg) peaks[peaks.length-1] = c;
+      continue;
+    }
+    peaks.push({ t: c.t, bg: c.bg });
+  }
+  return peaks;
+}
+
+function counterfactualPeaks(cycles, entries, activeMode) {
+  const out = [];
+  for (const pk of findPeaks(entries)) {
+    const win = cycles.filter(c => c.ts >= pk.t - 180*60000 && c.ts < pk.t);
+    let extra = 0, pairsN = 0; const isfs = [];
+    for (const c of win) {
+      const p = pairDoses(c);
+      if (!p) continue;
+      pairsN++;
+      const other = activeMode ? p.v1 : p.v6, actual = activeMode ? p.v6 : p.v1;
+      extra += (other - actual) * absorbedFrac((pk.t - c.ts) / 60000);
+      if (c.isf) isfs.push(c.isf);
+    }
+    if (pairsN < 6 || Math.abs(extra) < 0.4) continue;
+    const isf = isfs.length ? isfs.sort((a,b)=>a-b)[Math.floor(isfs.length/2)] : null;
+    if (!isf) continue;
+    const shiftHi = extra * isf, shiftLo = shiftHi * 0.5;       // other-engine peak = peak − shift
+    const projHi = pk.bg - shiftHi, projLo = pk.bg - shiftLo;
+    const cf = activeMode ? "V1" : "V6", ran = activeMode ? "V6" : "V1";
+    const rng = "~" + Math.round(Math.min(projHi, projLo)) + "\u2013" + Math.round(Math.max(projHi, projLo));
+    let verdict;
+    if (extra < 0)       // counterfactual dosed LESS before the peak → would have been HIGHER
+      verdict = `${ran} likely reduced this high — ${cf} would have peaked ${rng}`;
+    else                 // counterfactual dosed MORE → would have peaked lower (check the lows panel for the flip side)
+      verdict = `${cf} would likely have peaked lower (${rng}) — ${ran} traded peak height for descent safety; check the lows panel`;
+    out.push({ t: pk.t, peak: pk.bg, extra, isf, projRange: rng, verdict, reduced: extra < 0 });
+  }
+  return out;
+}
+
+// ---- Lever hints: map observed patterns to the user-adjustable Boost settings ----
+function leverHints(model, cycles, activeMode) {
+  const hints = [];
+  const eps = model.episodes || [];
+  // sharp onset helper: max BG step in the first 30 min of the episode
+  const sharp = e => {
+    const c2 = (e.cycles || []).filter(c => c.bg !== null && c.ts <= e.onsetT + 30*60000).map(c => c.bg);
+    for (let i = 1; i < c2.length; i++) if (c2[i] - c2[i-1] >= 8) return true;
+    return false;
+  };
+  // 1. slow confirm on sharp meals → fast-carb confirm
+  const slow = eps.filter(e => e.peakBg >= 200 && e.confirmLatencyMin !== null && e.confirmLatencyMin >= 25 && sharp(e));
+  if (slow.length >= 2)
+    hints.push({ lever: "Fast-carb confirm (Advanced)", dir: "enable / review",
+      why: `${slow.length} sharp rises peaked ≥200 with CONFIRMED arriving ≥25 min after onset (median ${median(slow.map(e=>e.confirmLatencyMin))} min). The fast path confirms sharp+accelerating rises in one cycle.` });
+  // 2. confirmed cap binding
+  const fc = cycles.find(c => c.fcap !== null);
+  if (fc) {
+    const clipped = eps.filter(e => e.commitShot !== null && e.commitShot >= 0.95 * fc.fcap && e.peakBg >= 200);
+    if (clipped.length >= 2)
+      hints.push({ lever: "Confirmed cap (U)", dir: "consider a modest raise",
+        why: `${clipped.length} commit-shots were clipped at the cap (${fc.fcap}U) on episodes that still peaked ≥200.` });
+  }
+  // 3. committed cap binding while still rising high
+  const cc = cycles.find(c => c.ccap !== null);
+  if (cc) {
+    const pinned = cycles.filter(c => c.state === "COMMITTED" && c.fd !== null && c.fd >= 0.95 * cc.ccap && (c.bg || 0) > 180);
+    if (pinned.length >= 4)
+      hints.push({ lever: "Committed cap (U)", dir: "consider a modest raise",
+        why: `${pinned.length} COMMITTED holding cycles were pinned at the cap (${cc.ccap}U) while BG was above 180.` });
+  }
+  // 4. events where V6's dosing was the low-side pressure → gentler V6
+  //    nearMiss.extra > 0 ⇔ the COUNTERFACTUAL engine dosed more. So V6 is the presser when:
+  //    shadow mode (running V1, counterfactual V6): extra > 0;  active mode (running V6): extra < 0.
+  const v6Pressure = (model.nearMiss || []).filter(e => activeMode ? e.extra < 0 : e.extra > 0)
+                                           .filter(e => e.nadir < 80);
+  if (v6Pressure.length >= 1)
+    hints.push({ lever: "Aggression ↓ or Hypo Caution ↑", dir: "gentler",
+      why: `${v6Pressure.length} low/near-low event(s) where V6's extra dosing was the low-side pressure — see the lows panel for the occasions.` });
+  // 5. maxIOB clamp binding during highs
+  const iobClamp = cycles.filter(c => (c.gates || "").includes("maxIOB") && (c.bg || 0) > 200).length;
+  if (iobClamp >= 3)
+    hints.push({ lever: "Max IOB", dir: "review (safety setting — small steps)",
+      why: `the maxIOB clamp was the binding constraint on ${iobClamp} cycles while BG was above 200.` });
+  // 6. nights running high while V6 held back
+  const nightHi = model.night && model.night.n > 24 && model.gly && model.night.v6 < model.night.v1 - 1.0;
+  if (nightHi)
+    hints.push({ lever: "Night mode window / basal profile", dir: "review",
+      why: `overnight, V6 decided ${fmt2(model.night.v1 - model.night.v6)}U less than V1 (by design — the night gate). If nights run high, the fix is the night window end or basal, not Boost aggression.` });
+  // 7. nothing binding → profile, not Boost
+  const bigPeaks = eps.filter(e => e.peakBg >= 220).length;
+  if (bigPeaks >= 3 && hints.length === 0)
+    hints.push({ lever: "Profile (ISF / basal / CR)", dir: "look outside Boost",
+      why: `${bigPeaks} peaks ≥220 with no Boost cap or gate binding — the engine delivered what its budget allowed, which points at profile strength rather than Boost settings.` });
+  return hints;
+}
+function median(a){ const s=a.slice().sort((x,y)=>x-y); return s.length? s[Math.floor(s.length/2)] : 0; }
+function fmt2(x){ return (Math.round(x*100)/100).toFixed(2); }
 
 /* =============================== ENDCORE =============================== */
 
@@ -577,6 +702,30 @@ function render(model, entries) {
     : `<div class="card muted">No events found: no nadir ≤95 mg/dL had a material (≥0.4U absorbed) dose difference
        between the engines in the preceding 3 hours. That itself is informative — the engines' disagreements didn't
        coincide with your low-side excursions in this window.</div>`;
+
+  // counterfactual peaks
+  const cp = model.cfPeaks || [];
+  $("cfPeaks").innerHTML = cp.length ? `<div class="card"><table>
+      <tr><th>when</th><th class="num">actual peak</th><th class="num">net Δdose (3h, absorbed)</th><th class="num">ISF</th><th class="num">other engine's peak</th><th>assessment</th></tr>` +
+    cp.map(e => {
+      const d = new Date(e.t);
+      const when = d.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}) +
+        " " + String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
+      const badge = e.reduced ? `<b style="color:var(--green)">●</b> ` : `<b style="color:var(--blue)">●</b> `;
+      return `<tr><td>${when}</td><td class="num">${Math.round(e.peak)}</td>
+        <td class="num">${e.extra>0?"+":""}${fmtU(e.extra)} U</td><td class="num">${Math.round(e.isf)}</td>
+        <td class="num">${e.projRange}</td><td>${badge}${e.verdict}</td></tr>`;
+    }).join("") + `</table></div>`
+    : `<div class="card muted">No peaks ≥180 mg/dL had a material dose difference between the engines in the
+       preceding 3 hours.</div>`;
+  // levers
+  const hv = model.hints || [];
+  $("levers").innerHTML = hv.length ? hv.map(h =>
+      `<div class="card"><b style="color:var(--accent)">${h.lever}</b> — ${h.dir}<br>
+       <span class="muted">${h.why}</span></div>`).join("")
+    : `<div class="card muted">No lever pattern stood out in this window: confirms arrived promptly, no cap or gate
+       was persistently binding, and neither tail flagged. If results still aren't where you want them, the
+       <a href="boost_tuning_guide.html">Tuning Guide</a> walks the settings from conservative to aggressive.</div>`;
 
   // states + gates
   const sc = model.stateCount, total = Object.values(sc).reduce((a, b) => a + b, 0) || 1;
