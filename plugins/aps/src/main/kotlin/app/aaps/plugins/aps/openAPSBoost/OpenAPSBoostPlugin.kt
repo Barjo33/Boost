@@ -498,7 +498,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
         // Boost, or a full V6 meal-amplified SMB could fire while asleep (the 2026-07-01 incident).
         // Replaces the old fixed Boost time window; the Boost window now tracks night mode, so
         // "Boost active" == "not night". `ApsBoostStartTime`/`ApsBoostEndTime` are retired. (2026-07-02)
-        val nightEndMs = midnight + parseTimeToMillis(preferences.get(StringKey.ApsBoostNightModeEnd))
+        val nightEndMs = midnight + parseTimeToMillisOrDefault(preferences.get(StringKey.ApsBoostNightModeEnd), "07:00")
 
         var boostActive = !isInNightSleepPeriod()
         var disableReason = ""
@@ -717,6 +717,24 @@ open class OpenAPSBoostPlugin @Inject constructor(
             } catch (_: DateTimeParseException) {
                 aapsLogger.error(LTag.APS, "Failed to parse time: $timeStr, defaulting to 0")
                 0L
+            }
+        }
+    }
+
+    /** [parseTimeToMillis] but falling back to [defaultStr] — NOT silently to midnight — on a
+     *  malformed pref. Midnight-on-typo moved the whole night window (night "ending" at 00:00 put
+     *  the sleep-in anchor at midnight and Boost fully active from 00:00 while asleep). (2026-07-02) */
+    private fun parseTimeToMillisOrDefault(timeStr: String, defaultStr: String): Long {
+        return try {
+            val time = LocalTime.parse(timeStr, DateTimeFormatter.ofPattern("H:mm"))
+            (time.hour * 3600000L) + (time.minute * 60000L)
+        } catch (_: DateTimeParseException) {
+            try {
+                val time = LocalTime.parse(timeStr, DateTimeFormatter.ofPattern("HH:mm"))
+                (time.hour * 3600000L) + (time.minute * 60000L)
+            } catch (_: DateTimeParseException) {
+                aapsLogger.error(LTag.APS, "Malformed night-mode time '$timeStr' — using default $defaultStr")
+                parseTimeToMillis(defaultStr)
             }
         }
     }
@@ -1173,8 +1191,13 @@ open class OpenAPSBoostPlugin @Inject constructor(
             } ?: 720.0
             Pair(sum60, tSince)
         } catch (e: Exception) {
-            aapsLogger.warn(LTag.APS, "Boost V1 recent SMB volume query failed (${e.message}) — falling back to 0.0 / 720m (cap will not engage this cycle)")
-            Pair(0.0, 720.0)
+            // FAIL CLOSED (2026-07-02): a DB failure must not disarm the anti-stacking cap — treat the
+            // 60-min volume as AT the cap so both V1's internal cap and the V5-override re-check
+            // suppress SMB this cycle (basal control continues; SMBs resume when the query recovers).
+            // Previously fell open to 0.0 ("cap will not engage this cycle") — the backstop vanished
+            // exactly when state was already degraded. tSince stays 720 (neutral ML feature).
+            aapsLogger.error(LTag.APS, "Boost V1 recent SMB volume query failed (${e.message}) — FAIL CLOSED: treating 60-min volume as at-cap; SMB suspended this cycle")
+            Pair(if (cumulativeSmbCap60Min > 0.0) cumulativeSmbCap60Min else 0.0, 720.0)
         }
         aapsLogger.debug(LTag.APS, "Boost V1 cumulative SMB last 60min: ${recentSmbVolume60Min}U / cap ${cumulativeSmbCap60Min}U | minutes-since-last-SMB: ${timeSinceLastSmbMin}")
 
@@ -1622,8 +1645,11 @@ open class OpenAPSBoostPlugin @Inject constructor(
 
     // ---- Night Mode ----
 
-    private var lastNightModeRun: Long = 0
-    private var lastNightModeResult: Boolean = false
+    // @Volatile (2026-07-02): read from the constraint path (isSMBModeEnabled) on non-loop threads;
+    // without a happens-before edge a racing reader could pair a fresh timestamp with a stale result
+    // and return "not night" on a night cycle (SMB let through). Benign worst case now: recompute.
+    @Volatile private var lastNightModeRun: Long = 0
+    @Volatile private var lastNightModeResult: Boolean = false
 
     // ---- Sleep state (2026-06-02) ----
     // Updated at end of invoke() once HR + steps + mlMealLikely are known. Read by
@@ -1667,8 +1693,17 @@ open class OpenAPSBoostPlugin @Inject constructor(
         if (!preferences.get(BooleanKey.ApsBoostNightModeEnabled)) return false
         val now = System.currentTimeMillis()
         val midnight = now - MidnightUtils.milliSecFromMidnight(now)
-        val start = midnight + parseTimeToMillis(preferences.get(StringKey.ApsBoostNightModeStart))
-        val end = midnight + parseTimeToMillis(preferences.get(StringKey.ApsBoostNightModeEnd))
+        val start = midnight + parseTimeToMillisOrDefault(preferences.get(StringKey.ApsBoostNightModeStart), "22:00")
+        val end = midnight + parseTimeToMillisOrDefault(preferences.get(StringKey.ApsBoostNightModeEnd), "07:00")
+        // Equal-times guard (2026-07-02): with start==end the wrap-branch union covers the whole
+        // day → always-night → Boost/V6 silently never doses. Treat as an EMPTY time window
+        // (mathematically a zero-length interval); HR/step sleep detection + the steps lie-in
+        // backstop still protect the night.
+        if (start == end) {
+            aapsLogger.error(LTag.APS, "Night-mode start == end — treating time window as empty (sleep detection still active)")
+            return preferences.get(BooleanKey.ApsBoostNightModeAutoBySleep) &&
+                sleepStateCached.state != SleepStateDetector.SleepState.AWAKE
+        }
         val active = if (end > start) now in start until end
         else (now in (start - 86400000) until end || now in start until (end + 86400000))
         val autoBySleep = preferences.get(BooleanKey.ApsBoostNightModeAutoBySleep)
