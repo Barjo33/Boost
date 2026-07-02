@@ -162,7 +162,13 @@ class DetermineBasalBoostV5 @Inject constructor(
         // confirm is also held back when hypo risk is elevated. Clamped strictly below confirmedCapU so
         // a manual committedCap ≥ confirmedCap can't make the gate unsatisfiable (which would silently
         // disable V6 meal response). Fast-carb fast-path is exempt (handled inside step()).
-        val prospectiveConfirmShot = budget.budget * mealActionMultiplier(MealHypothesis.CONFIRMED, inputs.aggressionUserKnob)
+        // 2026-07-02 (2): the gate sizes the shot as it would actually DELIVER — including velocity
+        // scaling — not the pre-velocity raw. Backtest (1,860 deduped cohort confirms): the raw gate
+        // passed 1,072 of which 384 (35.8%) delivered BELOW the floor after velocity scaling — token
+        // burnt on a sub-hold shot, recreating the starvation the gate exists to prevent. The
+        // velocityFactor is hoisted here (pure fn of inputs) and reused by Phase 2.5 below.
+        val velocityFactor = velocityScaledDoseFactor(inputs.cumulativeRise30min)
+        val prospectiveConfirmShot = budget.budget * mealActionMultiplier(MealHypothesis.CONFIRMED, inputs.aggressionUserKnob) * velocityFactor
         val confirmDoseFloor = minOf(inputs.committedCapU, CONFIRM_DOSE_FLOOR_MAX_FRAC_OF_CONFIRMED_CAP * inputs.confirmedCapU)
         val confirmDoseAdequate = prospectiveConfirmShot > confirmDoseFloor
 
@@ -204,7 +210,7 @@ class DetermineBasalBoostV5 @Inject constructor(
         //      MAX_CONFIRMED_COMMIT_DOSE_U; COMMITTED holding doses cap at MAX_COMMITTED_DOSE_U.
         //      These caps are calibrated so V5 cannot deliver more than V4.4.2 would on the same
         //      cycle, regardless of any upstream bug.
-        val velocityFactor = velocityScaledDoseFactor(inputs.cumulativeRise30min)
+        // velocityFactor hoisted above the state step (used by the confirm dose gate). (2026-07-02)
         val velocityScaled = rawInsulinToDeliver * velocityFactor
         val cappedInsulinToDeliver = applyStateDoseCap(newHypothesisState.state, velocityScaled, inputs.confirmedCapU, inputs.committedCapU)
         val insulinToDeliver = cappedInsulinToDeliver
