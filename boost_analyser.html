@@ -94,11 +94,14 @@
   <div id="results">
     <h2>Your actual glycaemia (on the engine you were running)</h2>
     <div class="row" style="align-items:stretch">
-      <div style="flex:0 0 110px;display:flex;flex-direction:column">
-        <div id="tirBar" style="flex:1;min-height:210px;display:flex;flex-direction:column;border-radius:8px;overflow:hidden;border:1px solid var(--line)"></div>
-        <div class="muted" style="text-align:center;font-size:0.75em;margin-top:4px">time in range</div>
+      <div class="card" style="flex:1.25;min-width:340px;margin:0">
+        <div style="font-weight:600;font-size:1.05em;margin-bottom:12px">Time in Ranges</div>
+        <div style="display:flex;gap:18px">
+          <div id="tirBar" style="flex:0 0 46px;min-height:260px;display:flex;flex-direction:column;border-radius:10px;overflow:hidden"></div>
+          <div id="tirLegend" style="flex:1;display:flex;flex-direction:column;justify-content:space-between;padding:2px 0"></div>
+        </div>
       </div>
-      <div style="flex:1;min-width:260px"><div class="stats" id="glyStats"></div></div>
+      <div style="flex:1;min-width:250px"><div class="stats" id="glyStats"></div></div>
     </div>
     <p class="muted" id="modeLine"></p>
 
@@ -850,21 +853,35 @@ function drawDailyAgp(canvas, act, cf) {
 
 function render(model, entries) {
   const g = model.gly;
-  // standard TIR bar (top→bottom: very high, high, in range, low, very low)
+  // Time in Ranges — Clarity-style: thin rounded bar + legend rows (chip, name, range, %, h/min per day)
   const tb = model.tirBands;
-  const seg = (pct, col, label, dark) => pct <= 0 ? "" :
-    `<div style="flex:${Math.max(pct, 1.5)} 0 0;background:${col};display:flex;align-items:center;justify-content:center;
-      font-size:0.72em;font-weight:600;color:${dark ? "#0f1117" : "#e2e8f0"}">${pct >= 6 ? label + " " + pct.toFixed(0) + "%" : ""}</div>`;
-  $("tirBar").innerHTML = !tb ? "" :
-    seg(tb.vhigh, "#f97316", ">250") + seg(tb.high, "#eab308", "181–250", true) +
-    seg(tb.inR, "#4ade80", "70–180", true) + seg(tb.low, "#ef4444", "54–69") + seg(tb.vlow, "#7f1d1d", "<54");
+  const BANDS = [
+    { k: "vhigh", col: "#f97316", name: "Very High", rng: "&gt;13.9", mg: "&gt;250" },
+    { k: "high",  col: "#eab308", name: "High",      rng: "10.0–13.9", mg: "181–250" },
+    { k: "inR",   col: "#4ade80", name: "Target Range", rng: "3.9–10.0", mg: "70–180", green: true },
+    { k: "low",   col: "#ef4444", name: "Low",       rng: "3.0–3.8", mg: "54–69" },
+    { k: "vlow",  col: "#7f1d1d", name: "Very Low",  rng: "&lt;3.0", mg: "&lt;54" },
+  ];
+  const perDay = pct => {
+    const mins = Math.round(pct * 1440 / 100);
+    return (mins >= 60 ? Math.floor(mins / 60) + "h " : "") + (mins % 60) + "min/day avg";
+  };
+  if (tb) {
+    $("tirBar").innerHTML = BANDS.map(b =>
+      `<div style="flex:${Math.max(tb[b.k], 0.8)} 0 0;background:${b.col}"></div>`).join("");
+    $("tirLegend").innerHTML = BANDS.map(b =>
+      `<div style="display:flex;align-items:baseline;gap:10px;padding:3px 0">
+        <span class="dot" style="background:${b.col};width:13px;height:13px;border-radius:3px;flex:0 0 13px;align-self:center"></span>
+        <span style="flex:0 0 108px;${b.green ? "color:var(--green);font-weight:600" : "font-weight:600"}">${b.name}</span>
+        <span class="muted" style="flex:0 0 84px">${b.rng}<br><span style="font-size:0.8em">${b.mg} mg/dL</span></span>
+        <span style="flex:0 0 66px;font-weight:700;font-size:1.15em">${tb[b.k].toFixed(1)}%</span>
+        <span class="muted">${perDay(tb[b.k])}</span>
+      </div>`).join("");
+  }
   $("glyStats").innerHTML = !g ? "<div class='muted'>No BG entries found.</div>" : [
-    stat("TIR 70–180", g.tir.toFixed(0) + "%", g.tir >= 70 ? "good" : "warn"),
     stat("TING 63–140", g.ting.toFixed(0) + "%", "hi", "3.5–7.8 mmol"),
     stat("Mean BG", Math.round(g.mean), "", mmol(g.mean) + " mmol"),
     stat("GMI", g.gmi.toFixed(1) + "%"),
-    stat("Below 70", g.below70.toFixed(1) + "%", g.below70 < 4 ? "good" : "warn", `&lt;54: ${g.below54.toFixed(1)}%`),
-    stat("Above 180", g.above180.toFixed(0) + "%"),
     stat("CV", g.cv.toFixed(0) + "%", g.cv <= 36 ? "good" : "warn"),
   ].join("");
   const shr = model.activeShare;
