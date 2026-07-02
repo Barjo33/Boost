@@ -114,6 +114,15 @@
     per-cycle doses, and V6's meal-hypothesis state ribbon.</p>
     <div id="episodes"></div>
 
+    <h2>Likely-avoided lows <span class="muted">(first-order estimate)</span></h2>
+    <div class="banner" style="background:#1b2233;border-color:#31518a"><b style="color:#7fb2ff">How this is estimated — read before trusting it.</b>
+    For every BG nadir ≤95 mg/dL, the net dose difference between the engines over the preceding 3&nbsp;hours is
+    absorption-weighted (triangular activity, DIA&nbsp;5h) and multiplied by your <em>logged</em> per-cycle ISF to project
+    how much deeper (or shallower) the nadir would have been under the other engine. The range shown applies a 50%
+    discount for engine feedback — the counterfactual engine would have reacted to falling BG (zero-temps, LGS), and
+    carbs you might have eaten aren't modelled. Read these as <b>pressure toward hypo</b>, not predicted numbers.</div>
+    <div id="nearMiss"></div>
+
     <h2>V6 state machine &amp; safety gates</h2>
     <div class="row">
       <div class="card"><table id="stateTable"></table></div>
@@ -161,6 +170,7 @@ function parseCycles(dsList) {
       active: sug.boostV5_active === true,
       gates: sug.boostV5_gateReduction || null,
       boostActive: sug.boostActive,
+      isf: numOrNull(sug.variable_sens),
       reason
     });
   }
@@ -293,7 +303,9 @@ function analyse(cycles, entries, episodes) {
     };
   });
   const days = cycles.length ? (cycles[cycles.length - 1].ts - cycles[0].ts) / 86400000 : 0;
+  const nearMiss = nearMissAnalysis(cycles, entries, (cycles.filter(c=>c.active).length) > cycles.length/2);
   return {
+    nearMiss,
     gly, cycles: cycles.length, withV6, paired: paired.length, unpaired,
     activeShare: cycles.length ? activeCount / cycles.length : 0,
     days, stateCount, gateCount,
@@ -302,6 +314,82 @@ function analyse(cycles, entries, episodes) {
     confirms: confirms.length, commitShots,
     episodes: eps
   };
+}
+
+// ---- Likely-avoided / likely-caused lows (first-order estimate) ----
+// Absorbed fraction of a dose t minutes after delivery: triangular insulin-activity model,
+// peak 75 min, tail 300 min (DIA 5h). Returns cumulative fraction in [0,1].
+function absorbedFrac(tMin) {
+  if (tMin <= 0) return 0;
+  if (tMin >= 300) return 1;
+  // triangle area: rise 0..75, fall 75..300; total area normalised to 1
+  // activity(t) = t/75 rising, (300−t)/225 falling (unit peak); total area = 150
+  const T = 150;
+  if (tMin <= 75) return (tMin * tMin / 150) / T;
+  const f = tMin - 75;
+  return (37.5 + f - (f * f) / 450) / T;
+}
+
+function findNadirs(entries) {
+  const es = entries.filter(e => typeof e.sgv === "number" && e.sgv > 20)
+                    .map(e => ({ t: e.date, bg: e.sgv })).sort((a, b) => a.t - b.t);
+  const nadirs = [];
+  for (let i = 2; i < es.length - 2; i++) {
+    const c = es[i];
+    if (c.bg > 95) continue;                                    // candidates: nadir ≤ 95
+    if (es[i-1].bg < c.bg || es[i+1].bg < c.bg) continue;       // local minimum
+    if (nadirs.length && c.t - nadirs[nadirs.length-1].t < 60*60000) {
+      if (c.bg < nadirs[nadirs.length-1].bg) nadirs[nadirs.length-1] = c;   // keep deeper within 1h
+      continue;
+    }
+    nadirs.push({ t: c.t, bg: c.bg });
+  }
+  return nadirs;
+}
+
+// For each nadir: net counterfactual-minus-actual insulin in the prior 3h, absorption-weighted
+// to the nadir, × median logged ISF → projected nadir shift. active=true → counterfactual is V1.
+function nearMissAnalysis(cycles, entries, activeMode) {
+  const nadirs = findNadirs(entries);
+  const events = [];
+  for (const nd of nadirs) {
+    const win = cycles.filter(c => c.ts >= nd.t - 180*60000 && c.ts < nd.t);
+    let extra = 0, pairsN = 0;
+    const isfs = [];
+    for (const c of win) {
+      const p = pairDoses(c);
+      if (!p) continue;
+      pairsN++;
+      const other = activeMode ? p.v1 : p.v6;      // counterfactual engine
+      const actual = activeMode ? p.v6 : p.v1;     // what actually ran
+      extra += (other - actual) * absorbedFrac((nd.t - c.ts) / 60000);
+      if (c.isf) isfs.push(c.isf);
+    }
+    if (pairsN < 6) continue;                       // need real coverage
+    if (Math.abs(extra) < 0.4) continue;            // material dose difference only
+    const isf = isfs.length ? isfs.sort((a,b)=>a-b)[Math.floor(isfs.length/2)] : null;
+    if (!isf) continue;
+    const shiftHi = extra * isf;                    // mg/dL, no engine-feedback
+    const shiftLo = shiftHi * 0.5;                  // 50% feedback discount
+    const projHi = nd.bg - shiftHi, projLo = nd.bg - shiftLo;   // counterfactual nadir range
+    // display: physiologic floor — anything projected under 40 is just "under 40"
+    const pf = x => x < 40 ? "<40" : String(Math.round(x));
+    const projRange = (projHi < 40 && projLo < 40) ? "well under 40" : ("~" + pf(Math.min(projHi, projLo)) + "\u2013" + pf(Math.max(projHi, projLo)));
+    let verdict = null;
+    const cf = activeMode ? "V1" : "V6";            // counterfactual engine name
+    const ran = activeMode ? "V6" : "V1";
+    if (extra > 0) {                                 // counterfactual dosed MORE → deeper nadir
+      if (nd.bg >= 54 && projHi < 54) verdict = `${ran} likely avoided a SEVERE low (${cf} pressure → ${projRange})`;
+      else if (nd.bg >= 70 && projHi < 70) verdict = `${ran} likely avoided a low (${cf} pressure → ${projRange})`;
+      else if (nd.bg < 70) verdict = `actual low — ${cf} would likely have made it worse (${projRange})`;
+    } else {                                         // counterfactual dosed LESS → shallower
+      if (nd.bg < 70 && projLo >= 70) verdict = `${cf} would likely have avoided this low (${projRange})`;
+      else if (nd.bg < 70) verdict = `actual low — ${cf} pressure was lower (${projRange})`;
+    }
+    if (!verdict) continue;
+    events.push({ t: nd.t, nadir: nd.bg, extra, isf, projLo, projHi, projRange, verdict, avoided: extra > 0 && nd.bg >= 70 });
+  }
+  return events;
 }
 
 /* =============================== ENDCORE =============================== */
@@ -473,6 +561,23 @@ function render(model, entries) {
     epHost.appendChild(card);
     drawEpisode(card.querySelector("canvas"), ep, entries);
   }
+  // near-miss events
+  const nm = model.nearMiss || [];
+  $("nearMiss").innerHTML = nm.length ? `<div class="card"><table>
+      <tr><th>when</th><th class="num">actual nadir</th><th class="num">net Δdose (3h, absorbed)</th><th class="num">ISF</th><th class="num">projected nadir</th><th>assessment</th></tr>` +
+    nm.map(e => {
+      const d = new Date(e.t);
+      const when = d.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}) +
+        " " + String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
+      const badge = e.avoided ? `<b style="color:var(--green)">●</b> ` : `<b style="color:var(--amber)">●</b> `;
+      return `<tr><td>${when}</td><td class="num">${Math.round(e.nadir)}</td>
+        <td class="num">${e.extra>0?"+":""}${fmtU(e.extra)} U</td><td class="num">${Math.round(e.isf)}</td>
+        <td class="num">${e.projRange}</td><td>${badge}${e.verdict}</td></tr>`;
+    }).join("") + `</table></div>`
+    : `<div class="card muted">No events found: no nadir ≤95 mg/dL had a material (≥0.4U absorbed) dose difference
+       between the engines in the preceding 3 hours. That itself is informative — the engines' disagreements didn't
+       coincide with your low-side excursions in this window.</div>`;
+
   // states + gates
   const sc = model.stateCount, total = Object.values(sc).reduce((a, b) => a + b, 0) || 1;
   $("stateTable").innerHTML = `<tr><th>V6 state</th><th class="num">cycles</th><th class="num">share</th></tr>` +
