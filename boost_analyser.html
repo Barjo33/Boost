@@ -139,10 +139,12 @@
     interquartile band) against the projected other-engine band (<span style="color:var(--accent)">cyan</span>,
     dashed median). <b>Lower medians are not free:</b> wherever the other engine's 25th percentile dips below
     70 mg/dL the low-side tail is filled <span style="color:var(--amber)">amber</span> — that is the hypo risk a
-    lower median line hides. Same absorbed-Δdose × logged-ISF projection as the panels below, with an LGS emulation
-    (once projected BG reaches 90, the other engine's further extra insulin is suspended). Even so, rescue carbs and
-    the zero-temp <em>basal</em> cut aren't modelled — so read the amber tails and the numbers above as
-    <b>hypo pressure, an upper bound</b>, not time that would actually have been spent low.</p>
+    lower median line hides. Same absorbed-Δdose × logged-ISF projection as the panels below, with an IOB-feedback ledger (the other
+    engine's later intents shrink as its counterfactual insulin accumulates) and an LGS emulation (its further
+    insulin suspends once projected BG reaches 90). <b>Validated limitation:</b> cross-checked against a dual-era
+    user's <em>real</em> V1 history, even this bounded projection overstates low-side tails roughly 3× — rescue
+    carbs and the zero-temp basal cut can't be modelled from decision data. So read the amber areas as
+    <b>where the hypo pressure concentrates</b>, never as projected time-below-range.</p>
     <div class="stats" id="cfStats" style="margin-bottom:10px"></div>
     <div class="card">
       <canvas id="dailyAgpCanvas" width="1000" height="300"></canvas>
@@ -356,13 +358,14 @@ function analyse(cycles, entries, episodes) {
   });
   const days = cycles.length ? (cycles[cycles.length - 1].ts - cycles[0].ts) / 86400000 : 0;
   const activeMode = (cycles.filter(c=>c.active).length) > cycles.length/2;
-  const nearMiss = nearMissAnalysis(cycles, entries);
+  const cfDeltas = counterfactualDeltas(cycles);
+  const nearMiss = nearMissAnalysis(cycles, entries, cfDeltas);
   const modelStub = { episodes: eps, nearMiss, night: mk(night), gly };
   const hints = leverHints(modelStub, cycles, activeMode);
   const cfSeries = counterfactualSeries(entries, cycles);
   return {
     nearMiss,
-    cfPeaks: counterfactualPeaks(cycles, entries),
+    cfPeaks: counterfactualPeaks(cycles, entries, cfDeltas),
     hints,
     dailyAgp: { act: agpBins(cfSeries, x => x.bg), cf: agpBins(cfSeries, x => x.cf) },
     cfGly: cfGlycaemia(cfSeries),
@@ -412,45 +415,33 @@ function findNadirs(entries) {
 
 // For each nadir: net counterfactual-minus-actual insulin in the prior 3h, absorption-weighted
 // to the nadir, × median logged ISF → projected nadir shift. active=true → counterfactual is V1.
-function nearMissAnalysis(cycles, entries) {
+function nearMissAnalysis(cycles, entries, deltas) {
   const nadirs = findNadirs(entries);
   const events = [];
   for (const nd of nadirs) {
-    const win = cycles.filter(c => c.ts >= nd.t - 180*60000 && c.ts < nd.t);
-    let extra = 0, v6MinusV1 = 0, pairsN = 0, actN = 0;
-    const isfs = [];
-    for (const c of win) {
-      const p = pairDoses(c);
-      if (!p) continue;
-      pairsN++;
-      if (c.active) actN++;
-      // PER-CYCLE mode: counterfactual = the engine that wasn't running THIS cycle
-      const other = c.active ? p.v1 : p.v6;
-      const actual = c.active ? p.v6 : p.v1;
-      const w = absorbedFrac((nd.t - c.ts) / 60000);
-      extra += (other - actual) * w;
-      v6MinusV1 += (p.v6 - p.v1) * w;
-      if (c.isf) isfs.push(c.isf);
+    const win = deltas.filter(x => x.ts >= nd.t - 180 * 60000 && x.ts < nd.t);
+    if (win.length < 6) continue;
+    let extra = 0, v6MinusV1 = 0;
+    for (const x of win) {
+      const w = absorbedFrac((nd.t - x.ts) / 60000);
+      extra += x.d * w;
+      v6MinusV1 += (x.active ? -x.d : x.d) * w;
     }
-    if (pairsN < 6) continue;                       // need real coverage
-    if (Math.abs(extra) < 0.4) continue;            // material dose difference only
-    const activeMode = actN > pairsN / 2;           // dominant mode in THIS window (for naming)
-    const isf = isfs.length ? isfs.sort((a,b)=>a-b)[Math.floor(isfs.length/2)] : null;
-    if (!isf) continue;
-    const shiftHi = extra * isf;                    // mg/dL, no engine-feedback
-    const shiftLo = shiftHi * 0.5;                  // 50% feedback discount
-    const projHi = nd.bg - shiftHi, projLo = nd.bg - shiftLo;   // counterfactual nadir range
-    // display: physiologic floor — anything projected under 40 is just "under 40"
+    if (Math.abs(extra) < 0.25) continue;
+    const activeMode = win.filter(x => x.active).length > win.length / 2;
+    const isfs = win.map(x => x.isf).sort((a, b) => a - b);
+    const isf = isfs[Math.floor(isfs.length / 2)];
+    const shiftHi = extra * isf, shiftLo = shiftHi * 0.5;
+    const projHi = nd.bg - shiftHi, projLo = nd.bg - shiftLo;
     const pf = x => x < 40 ? "<40" : String(Math.round(x));
     const projRange = (projHi < 40 && projLo < 40) ? "well under 40" : ("~" + pf(Math.min(projHi, projLo)) + "\u2013" + pf(Math.max(projHi, projLo)));
     let verdict = null;
-    const cf = activeMode ? "V1" : "V6";            // counterfactual engine name
-    const ran = activeMode ? "V6" : "V1";
-    if (extra > 0) {                                 // counterfactual dosed MORE → deeper nadir
+    const cf = activeMode ? "V1" : "V6", ran = activeMode ? "V6" : "V1";
+    if (extra > 0) {
       if (nd.bg >= 54 && projHi < 54) verdict = `${ran} likely avoided a SEVERE low (${cf} pressure → ${projRange})`;
       else if (nd.bg >= 70 && projHi < 70) verdict = `${ran} likely avoided a low (${cf} pressure → ${projRange})`;
       else if (nd.bg < 70) verdict = `actual low — ${cf} would likely have made it worse (${projRange})`;
-    } else {                                         // counterfactual dosed LESS → shallower
+    } else {
       if (nd.bg < 70 && projLo >= 70) verdict = `${cf} would likely have avoided this low (${projRange})`;
       else if (nd.bg < 70) verdict = `actual low — ${cf} pressure was lower (${projRange})`;
     }
@@ -478,32 +469,25 @@ function findPeaks(entries) {
   return peaks;
 }
 
-function counterfactualPeaks(cycles, entries) {
+function counterfactualPeaks(cycles, entries, deltas) {
   const out = [];
   for (const pk of findPeaks(entries)) {
-    const win = cycles.filter(c => c.ts >= pk.t - 180*60000 && c.ts < pk.t);
-    let extra = 0, pairsN = 0, actN = 0; const isfs = [];
-    for (const c of win) {
-      const p = pairDoses(c);
-      if (!p) continue;
-      pairsN++;
-      if (c.active) actN++;
-      const other = c.active ? p.v1 : p.v6, actual = c.active ? p.v6 : p.v1;
-      extra += (other - actual) * absorbedFrac((pk.t - c.ts) / 60000);
-      if (c.isf) isfs.push(c.isf);
-    }
-    const activeMode = actN > pairsN / 2;
-    if (pairsN < 6 || Math.abs(extra) < 0.4) continue;
-    const isf = isfs.length ? isfs.sort((a,b)=>a-b)[Math.floor(isfs.length/2)] : null;
-    if (!isf) continue;
-    const shiftHi = extra * isf, shiftLo = shiftHi * 0.5;       // other-engine peak = peak − shift
+    const win = deltas.filter(x => x.ts >= pk.t - 180 * 60000 && x.ts < pk.t);
+    if (win.length < 6) continue;
+    let extra = 0;
+    for (const x of win) extra += x.d * absorbedFrac((pk.t - x.ts) / 60000);
+    if (Math.abs(extra) < 0.25) continue;
+    const activeMode = win.filter(x => x.active).length > win.length / 2;
+    const isfs = win.map(x => x.isf).sort((a, b) => a - b);
+    const isf = isfs[Math.floor(isfs.length / 2)];
+    const shiftHi = extra * isf, shiftLo = shiftHi * 0.5;
     const projHi = pk.bg - shiftHi, projLo = pk.bg - shiftLo;
     const cf = activeMode ? "V1" : "V6", ran = activeMode ? "V6" : "V1";
     const rng = "~" + Math.round(Math.min(projHi, projLo)) + "\u2013" + Math.round(Math.max(projHi, projLo));
     let verdict;
-    if (extra < 0)       // counterfactual dosed LESS before the peak → would have been HIGHER
+    if (extra < 0)
       verdict = `${ran} likely reduced this high — ${cf} would have peaked ${rng}`;
-    else                 // counterfactual dosed MORE → would have peaked lower (check the lows panel for the flip side)
+    else
       verdict = `${cf} would likely have peaked lower (${rng}) — ${ran} traded peak height for descent safety; check the lows panel`;
     out.push({ t: pk.t, peak: pk.bg, extra, isf, projRange: rng, verdict, reduced: extra < 0 });
   }
@@ -567,38 +551,55 @@ function leverHints(model, cycles, activeMode) {
 function median(a){ const s=a.slice().sort((x,y)=>x-y); return s.length? s[Math.floor(s.length/2)] : 0; }
 function fmt2(x){ return (Math.round(x*100)/100).toFixed(2); }
 
-// ---- Counterfactual daily series: per BG reading, project the other engine's BG ----
-function counterfactualSeries(entries, cycles) {
-  // Pass 1: per-cycle net extra (other − actual) × ISF, GATED by an LGS emulation — once the
-  // PROJECTED BG at a cycle's own time is ≤ 90 mg/dL, further positive counterfactual insulin is
-  // suppressed (the other engine would have zero-temped / failed minGuard, not kept dosing into a
-  // low). Without this gate the naive projection compounds for hours and shows absurd hypo tails.
+// ---- Self-consistent counterfactual deltas (ONE model used by the daily series AND the
+// low/high event windows) ----
+// Two corrections over the naive sum-of-intents, both validated against a user's REAL V1-era data:
+//  1. IOB FEEDBACK LEDGER: each logged intent was computed against the ACTUAL delivered IOB. Had
+//     the other engine delivered its earlier (different) doses, its later intents would shrink
+//     ~1:1 with the counterfactual insulin still unabsorbed (and grow when it is BEHIND — so V1
+//     catches up after a V6 commit-shot). Without this the projection compounds absurdly.
+//  2. LGS GATE: further counterfactual insulin suspends once projected BG ≤ 90 (the engine would
+//     have zero-temped / failed minGuard, not kept dosing into a low).
+function counterfactualDeltas(cycles) {
   const raw = [];
   for (const c of cycles) {
     const p = pairDoses(c);
     if (!p || !c.isf) continue;
-    const other = c.active ? p.v1 : p.v6, actual = c.active ? p.v6 : p.v1;
-    raw.push({ ts: c.ts, bg: c.bg, d: other - actual, isf: c.isf });
+    raw.push({ ts: c.ts, bg: c.bg, isf: c.isf, active: c.active,
+               other: c.active ? p.v1 : p.v6, actual: c.active ? p.v6 : p.v1 });
   }
   raw.sort((a, b) => a.ts - b.ts);
-  const pre = [];
+  const out = [];
   for (let j = 0; j < raw.length; j++) {
-    let shift = 0;
-    for (let i = pre.length - 1; i >= 0; i--) {
-      if (pre[i].ts < raw[j].ts - 300 * 60000) break;
-      shift += pre[i].dIsf * absorbedFrac((raw[j].ts - pre[i].ts) / 60000);
+    let outstanding = 0, shift = 0;
+    for (let i = out.length - 1; i >= 0; i--) {
+      const dt = (raw[j].ts - out[i].ts) / 60000;
+      if (dt >= 300) break;
+      const af = absorbedFrac(dt);
+      outstanding += out[i].d * (1 - af);           // counterfactual insulin still on board
+      shift += out[i].d * out[i].isf * af;          // BG shift already realised
     }
-    const cfBgHere = (raw[j].bg !== null ? raw[j].bg : 120) - shift;
-    const gatedD = (raw[j].d > 0 && cfBgHere <= 90) ? 0 : raw[j].d;   // LGS gate on the low side
-    pre.push({ ts: raw[j].ts, dIsf: gatedD * raw[j].isf });
+    const r = raw[j];
+    const cfIntent = Math.max(0, r.other - outstanding);   // feedback: ahead → wants less; behind → wants more
+    let d = cfIntent - r.actual;
+    const cfBg = (r.bg !== null ? r.bg : 120) - shift;
+    if (cfBg <= 90 && d > 0) d = 0;                        // LGS gate: no further counterfactual SMBs into a low
+    // NOTE: no zero-temp basal credit — tried and it oscillates (5h absorption tail + threshold
+    // gating rings). Its absence is one reason the low-side projection OVERSTATES; see the banner.
+    out.push({ ts: r.ts, d, isf: r.isf, active: r.active });
   }
+  return out;
+}
+
+function counterfactualSeries(entries, cycles) {
+  const pre = counterfactualDeltas(cycles);
   const es = entries.filter(e => typeof e.sgv === "number" && e.sgv > 20).sort((a, b) => a.date - b.date);
   let lo = 0; const out = [];
   for (const e of es) {
-    while (lo < pre.length && pre[lo].ts < e.date - 180 * 60000) lo++;
+    while (lo < pre.length && pre[lo].ts < e.date - 300 * 60000) lo++;
     let shift = 0;
     for (let i = lo; i < pre.length && pre[i].ts < e.date; i++)
-      shift += pre[i].dIsf * absorbedFrac((e.date - pre[i].ts) / 60000);
+      shift += pre[i].d * pre[i].isf * absorbedFrac((e.date - pre[i].ts) / 60000);
     out.push({ t: e.date, bg: e.sgv, cf: e.sgv - shift });
   }
   return out;
@@ -922,11 +923,12 @@ function render(model, entries) {
     }).join("");
   // daily counterfactual AGP + the medians-hide-risk stats
   const cg = model.cfGly;
+  const amberBins = model.dailyAgp.cf.filter(b => b.p25 !== null && b.p25 < 70).length;
+  const cyanBins = model.dailyAgp.cf.filter((b, i) => b.p50 !== null && model.dailyAgp.act[i].p50 !== null && b.p50 < model.dailyAgp.act[i].p50 - 10).length;
   $("cfStats").innerHTML = !cg ? "" : [
     stat("Actual time <70", cg.actBelow70.toFixed(1) + "%", cg.actBelow70 < 4 ? "good" : "warn"),
-    stat("Other engine, <70 pressure", cg.below70.toFixed(1) + "%", cg.below70 > cg.actBelow70 + 0.5 ? "warn" : "", "upper bound"),
-    stat("Other engine, <54 pressure", cg.below54.toFixed(1) + "%", cg.below54 > 0.5 ? "warn" : "", "upper bound"),
-    stat("Other engine, projected TIR", cg.tir.toFixed(0) + "%", "", "vs actual " + (model.gly ? model.gly.tir.toFixed(0) : "–") + "%"),
+    stat("Low-side pressure window", (amberBins / 2).toFixed(1) + " h/day", amberBins ? "warn" : "good", "other engine p25 < 70"),
+    stat("Other engine runs lower", (cyanBins / 2).toFixed(1) + " h/day", "", "median gap ≥ 10"),
   ].join("");
   drawDailyAgp($("dailyAgpCanvas"), model.dailyAgp.act, model.dailyAgp.cf);
   // near-miss events
