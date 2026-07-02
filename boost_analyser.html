@@ -93,7 +93,13 @@
 
   <div id="results">
     <h2>Your actual glycaemia (on the engine you were running)</h2>
-    <div class="stats" id="glyStats"></div>
+    <div class="row" style="align-items:stretch">
+      <div style="flex:0 0 110px;display:flex;flex-direction:column">
+        <div id="tirBar" style="flex:1;min-height:210px;display:flex;flex-direction:column;border-radius:8px;overflow:hidden;border:1px solid var(--line)"></div>
+        <div class="muted" style="text-align:center;font-size:0.75em;margin-top:4px">time in range</div>
+      </div>
+      <div style="flex:1;min-width:260px"><div class="stats" id="glyStats"></div></div>
+    </div>
     <p class="muted" id="modeLine"></p>
 
     <h2>Dose decisions: V1 vs V6</h2>
@@ -109,28 +115,37 @@
       pattern the V6 night gate (July 2026) now suppresses on current builds.</div>
     </div>
 
-    <h2>Meal response — aggregated <span class="muted" id="epCount"></span></h2>
-    <p class="muted">All auto-detected rises (≥50 mg/dL within 90 min), aligned at onset — an AGP for your meals:
-    BG median with interquartile band, each engine's <em>median dose per 5-min slot</em>, and the modal V6 state
-    underneath.</p>
+    <h2>How the engines dose a meal, on average <span class="muted" id="epCount"></span></h2>
+    <p class="muted">All auto-detected rises (≥50 mg/dL within 90 min) aligned at onset. Lines are the <b>mean
+    cumulative insulin</b> each engine decided from 30 min before onset — the shape difference IS the story:
+    V6 holds, fires its commit-shot, then tapers; V1 ramps steadily. The gap is shaded
+    (<span style="color:var(--accent)">cyan</span> where V6 has delivered more,
+    <span style="color:var(--amber)">amber</span> where V1 has). Modal V6 state underneath.</p>
     <div class="card">
-      <canvas id="mealAgpCanvas" width="1000" height="330"></canvas>
-      <div class="legend"><span><span class="dot" style="background:#4ade80"></span>BG median (band = p25–p75)</span>
-        <span><span class="dot" style="background:#94a3b8"></span>V1 median dose</span>
-        <span><span class="dot" style="background:#00d4ff"></span>V6 median dose</span>
-        <span>ribbon: modal V6 state per slot</span></div>
+      <canvas id="mealDoseCanvas" width="1000" height="280"></canvas>
+      <div class="legend"><span><span class="dot" style="background:#94a3b8"></span>V1 cumulative (mean)</span>
+        <span><span class="dot" style="background:#00d4ff"></span>V6 cumulative (mean)</span>
+        <span>ribbon: modal V6 state</span></div>
     </div>
-    <div class="card"><table id="epTable"></table></div>
+    <details><summary class="muted" style="cursor:pointer;margin:8px 0">Show the individual meals…</summary>
+      <div class="card"><table id="epTable"></table></div>
+    </details>
 
     <h2>Where the engines differ across your day <span class="muted">(counterfactual AGP)</span></h2>
-    <p class="muted">Your actual BG by time of day (median + interquartile band) with the projected
-    other-engine median overlaid — built from the same absorbed-Δdose × logged-ISF projection as the panels below.
-    Shaded gaps mark where the medians differ by ≥10 mg/dL: <span style="color:var(--accent)">cyan</span> = the other
-    engine would likely have run <em>lower</em>, <span style="color:var(--amber)">amber</span> = higher.</p>
+    <p class="muted">Your actual BG by time of day (<span style="color:var(--green)">green</span> median +
+    interquartile band) against the projected other-engine band (<span style="color:var(--accent)">cyan</span>,
+    dashed median). <b>Lower medians are not free:</b> wherever the other engine's 25th percentile dips below
+    70 mg/dL the low-side tail is filled <span style="color:var(--amber)">amber</span> — that is the hypo risk a
+    lower median line hides. Same absorbed-Δdose × logged-ISF projection as the panels below, with an LGS emulation
+    (once projected BG reaches 90, the other engine's further extra insulin is suspended). Even so, rescue carbs and
+    the zero-temp <em>basal</em> cut aren't modelled — so read the amber tails and the numbers above as
+    <b>hypo pressure, an upper bound</b>, not time that would actually have been spent low.</p>
+    <div class="stats" id="cfStats" style="margin-bottom:10px"></div>
     <div class="card">
       <canvas id="dailyAgpCanvas" width="1000" height="300"></canvas>
-      <div class="legend"><span><span class="dot" style="background:#4ade80"></span>actual median (band p25–p75)</span>
-        <span><span class="dot" style="background:#00d4ff"></span>other engine, projected median</span></div>
+      <div class="legend"><span><span class="dot" style="background:#4ade80"></span>actual median + band</span>
+        <span><span class="dot" style="background:#00d4ff"></span>other engine, projected median + band</span>
+        <span><span class="dot" style="background:#eab308"></span>other engine's projected low tail (&lt;70)</span></div>
     </div>
 
     <h2>Likely-avoided lows <span class="muted">(first-order estimate)</span></h2>
@@ -140,10 +155,10 @@
     how much deeper (or shallower) the nadir would have been under the other engine. The range shown applies a 50%
     discount for engine feedback — the counterfactual engine would have reacted to falling BG (zero-temps, LGS), and
     carbs you might have eaten aren't modelled. Read these as <b>pressure toward hypo</b>, not predicted numbers.</div>
-    <div id="nearMiss"></div>
+    <details><summary class="muted" style="cursor:pointer;margin:8px 0">Show the occasions…</summary><div id="nearMiss"></div></details>
 
     <h2>Counterfactual highs <span class="muted">(same method, other tail)</span></h2>
-    <div id="cfPeaks"></div>
+    <details><summary class="muted" style="cursor:pointer;margin:8px 0">Show the occasions…</summary><div id="cfPeaks"></div></details>
 
     <h2>Levers to consider</h2>
     <div class="banner"><b>Not medical advice.</b> These are pattern-matched pointers at the Boost settings most
@@ -347,7 +362,9 @@ function analyse(cycles, entries, episodes) {
     cfPeaks: counterfactualPeaks(cycles, entries),
     hints,
     dailyAgp: { act: agpBins(cfSeries, x => x.bg), cf: agpBins(cfSeries, x => x.cf) },
-    mealAgpData: mealAgp(eps, entries),
+    cfGly: cfGlycaemia(cfSeries),
+    tirBands: tirBands(entries),
+    mealDose: mealDoseCurves(eps),
     _activeMode: activeMode,
     gly, cycles: cycles.length, withV6, paired: paired.length, unpaired,
     activeShare: cycles.length ? activeCount / cycles.length : 0,
@@ -549,14 +566,29 @@ function fmt2(x){ return (Math.round(x*100)/100).toFixed(2); }
 
 // ---- Counterfactual daily series: per BG reading, project the other engine's BG ----
 function counterfactualSeries(entries, cycles) {
-  const pre = [];
+  // Pass 1: per-cycle net extra (other − actual) × ISF, GATED by an LGS emulation — once the
+  // PROJECTED BG at a cycle's own time is ≤ 90 mg/dL, further positive counterfactual insulin is
+  // suppressed (the other engine would have zero-temped / failed minGuard, not kept dosing into a
+  // low). Without this gate the naive projection compounds for hours and shows absurd hypo tails.
+  const raw = [];
   for (const c of cycles) {
     const p = pairDoses(c);
     if (!p || !c.isf) continue;
     const other = c.active ? p.v1 : p.v6, actual = c.active ? p.v6 : p.v1;
-    pre.push({ ts: c.ts, dIsf: (other - actual) * c.isf });
+    raw.push({ ts: c.ts, bg: c.bg, d: other - actual, isf: c.isf });
   }
-  pre.sort((a, b) => a.ts - b.ts);
+  raw.sort((a, b) => a.ts - b.ts);
+  const pre = [];
+  for (let j = 0; j < raw.length; j++) {
+    let shift = 0;
+    for (let i = pre.length - 1; i >= 0; i--) {
+      if (pre[i].ts < raw[j].ts - 300 * 60000) break;
+      shift += pre[i].dIsf * absorbedFrac((raw[j].ts - pre[i].ts) / 60000);
+    }
+    const cfBgHere = (raw[j].bg !== null ? raw[j].bg : 120) - shift;
+    const gatedD = (raw[j].d > 0 && cfBgHere <= 90) ? 0 : raw[j].d;   // LGS gate on the low side
+    pre.push({ ts: raw[j].ts, dIsf: gatedD * raw[j].isf });
+  }
   const es = entries.filter(e => typeof e.sgv === "number" && e.sgv > 20).sort((a, b) => a.date - b.date);
   let lo = 0; const out = [];
   for (const e of es) {
@@ -586,33 +618,58 @@ function agpBins(series, get, binMin = 30) {
   return bins.map(a => ({ p25: quantile(a, 0.25), p50: quantile(a, 0.5), p75: quantile(a, 0.75), n: a.length }));
 }
 
-// Meal AGP: all episodes aligned at onset (t=0), −30..+180 min in 5-min slots
-function mealAgp(episodes, entries) {
+// Mean CUMULATIVE dose per engine vs time-from-onset, averaged across all meal episodes.
+// This is the "how does dosing differ over a meal, on average" curve: V6's shape is
+// hold → commit-shot step → taper; V1's is a steadier ramp.
+function mealDoseCurves(episodes) {
   const LO = -30, HI = 180, BIN = 5, nb = (HI - LO) / BIN + 1;
-  const bg = Array.from({ length: nb }, () => []);
-  const v1 = Array.from({ length: nb }, () => []), v6 = Array.from({ length: nb }, () => []);
+  const sum1 = new Array(nb).fill(0), sum6 = new Array(nb).fill(0), cnt = new Array(nb).fill(0);
   const st = Array.from({ length: nb }, () => ({}));
-  const es = entries.filter(e => typeof e.sgv === "number" && e.sgv > 20);
   for (const ep of episodes) {
-    for (const e of es) {
-      const off = (e.date - ep.onsetT) / 60000;
-      if (off < LO || off > HI) continue;
-      bg[Math.round((off - LO) / BIN)].push(e.sgv);
-    }
-    for (const c of (ep.cycles || [])) {
+    let c1 = 0, c6 = 0;
+    const covered = new Array(nb).fill(null);
+    const cyc = (ep.cycles || []).slice().sort((a, b) => a.ts - b.ts);
+    for (const c of cyc) {
       const off = (c.ts - ep.onsetT) / 60000;
       if (off < LO || off > HI) continue;
       const b = Math.round((off - LO) / BIN);
       const p = pairDoses(c);
-      if (p) { v1[b].push(p.v1); v6[b].push(p.v6); }
+      if (p) { c1 += p.v1; c6 += p.v6; }
+      covered[b] = { c1, c6 };
       if (c.state) st[b][c.state] = (st[b][c.state] || 0) + 1;
     }
+    let last = null;                                  // carry cumulative forward across gaps
+    for (let b = 0; b < nb; b++) { if (covered[b]) last = covered[b]; else if (last) covered[b] = last; }
+    for (let b = 0; b < nb; b++) if (covered[b]) { sum1[b] += covered[b].c1; sum6[b] += covered[b].c6; cnt[b]++; }
   }
   return {
-    LO, HI, BIN,
-    bg: bg.map(a => ({ p25: quantile(a, 0.25), p50: quantile(a, 0.5), p75: quantile(a, 0.75) })),
-    v1: v1.map(a => quantile(a, 0.5)), v6: v6.map(a => quantile(a, 0.5)),
+    LO, HI, BIN, n: Math.max(0, ...cnt),
+    v1: sum1.map((v, i) => cnt[i] ? v / cnt[i] : null),
+    v6: sum6.map((v, i) => cnt[i] ? v / cnt[i] : null),
     modal: st.map(o => { let best = null, bn = 0; for (const k in o) if (o[k] > bn) { bn = o[k]; best = k; } return best; })
+  };
+}
+
+// Consensus CGM bands for the standard TIR bar
+function tirBands(entries) {
+  const v = entries.map(e => e.sgv).filter(x => typeof x === "number" && x > 20);
+  const n = v.length || 1;
+  const pc = f => 100 * v.filter(f).length / n;
+  return {
+    vlow: pc(x => x < 54), low: pc(x => x >= 54 && x < 70), inR: pc(x => x >= 70 && x <= 180),
+    high: pc(x => x > 180 && x <= 250), vhigh: pc(x => x > 250)
+  };
+}
+
+// Glycaemia of the PROJECTED other-engine series — the stat that shows what medians hide
+function cfGlycaemia(cfSeries) {
+  const v = cfSeries.map(x => x.cf).filter(x => isFinite(x));
+  const a = cfSeries.map(x => x.bg);
+  const n = v.length || 1;
+  const pc = (arr, f) => 100 * arr.filter(f).length / (arr.length || 1);
+  return {
+    below70: pc(v, x => x < 70), below54: pc(v, x => x < 54), tir: pc(v, x => x >= 70 && x <= 180),
+    actBelow70: pc(a, x => x < 70), actBelow54: pc(a, x => x < 54)
   };
 }
 
@@ -688,60 +745,56 @@ function drawHist(canvas, deltas) {
 
 const STATE_COLORS = { IDLE: "#475569", OBSERVING: "#eab308", CONFIRMED: "#ef4444", COMMITTED: "#f97316", RECOVERING: "#3b82f6" };
 
-function drawMealAgp(canvas, m) {
+function drawMealDose(canvas, md) {
   const ctx = canvas.getContext("2d");
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
-  const nb = m.bg.length;
-  const X = i => 44 + (W - 56) * i / (nb - 1);
-  const bgVals = m.bg.flatMap(b => [b.p25, b.p75]).filter(x => x !== null);
-  if (!bgVals.length) { ctx.fillStyle = "#9aa0ad"; ctx.fillText("No episodes in window", 60, 40); return; }
-  const bgMax = Math.max(200, ...bgVals) + 15, bgMin = Math.max(40, Math.min(...bgVals) - 15);
-  const bgH = H - 150;
-  const Y = v => 8 + bgH * (1 - (v - bgMin) / (bgMax - bgMin));
-  // 180 guide
-  ctx.strokeStyle = "#513a3a"; ctx.setLineDash([4, 4]); ctx.beginPath();
-  ctx.moveTo(44, Y(180)); ctx.lineTo(W - 12, Y(180)); ctx.stroke(); ctx.setLineDash([]);
-  // band p25–p75
-  ctx.beginPath();
-  let started = false;
-  for (let i = 0; i < nb; i++) if (m.bg[i].p75 !== null) { const f = started ? "lineTo" : "moveTo"; ctx[f](X(i), Y(m.bg[i].p75)); started = true; }
-  for (let i = nb - 1; i >= 0; i--) if (m.bg[i].p25 !== null) ctx.lineTo(X(i), Y(m.bg[i].p25));
-  ctx.closePath(); ctx.fillStyle = "rgba(74,222,128,0.16)"; ctx.fill();
-  // median line
-  ctx.strokeStyle = "#4ade80"; ctx.lineWidth = 2; ctx.beginPath(); started = false;
-  for (let i = 0; i < nb; i++) if (m.bg[i].p50 !== null) { const f = started ? "lineTo" : "moveTo"; ctx[f](X(i), Y(m.bg[i].p50)); started = true; }
-  ctx.stroke(); ctx.lineWidth = 1;
-  // onset marker
-  const onsetI = Math.round(-m.LO / m.BIN);
-  ctx.strokeStyle = "#64748b"; ctx.setLineDash([3, 3]); ctx.beginPath();
-  ctx.moveTo(X(onsetI), 8); ctx.lineTo(X(onsetI), H - 40); ctx.stroke(); ctx.setLineDash([]);
-  // dose lanes (median per slot)
-  const dTop = H - 132, dH = 78;
-  const dMax = Math.max(0.2, ...m.v1.filter(x => x !== null), ...m.v6.filter(x => x !== null));
-  const DY = v => dTop + dH * (1 - v / dMax);
-  for (const [arr, col] of [[m.v1, "#94a3b8"], [m.v6, "#00d4ff"]]) {
-    ctx.strokeStyle = col; ctx.lineWidth = 1.6; ctx.beginPath(); started = false;
+  const nb = md.v1.length;
+  const X = i => 46 + (W - 58) * i / (nb - 1);
+  const vals = md.v1.concat(md.v6).filter(x => x !== null);
+  if (!vals.length || md.n === 0) { ctx.fillStyle = "#9aa0ad"; ctx.font = "13px system-ui"; ctx.fillText("No meal episodes with paired dosing in this window", 60, 40); return; }
+  const vMax = Math.max(0.5, ...vals) * 1.1;
+  const chartH = H - 66;
+  const Y = v => 10 + chartH * (1 - v / vMax);
+  // shaded gap between the curves: cyan where V6 ahead, amber where V1 ahead
+  for (let i = 0; i < nb - 1; i++) {
+    const a1 = md.v1[i], a6 = md.v6[i], b1 = md.v1[i + 1], b6 = md.v6[i + 1];
+    if (a1 === null || a6 === null || b1 === null || b6 === null) continue;
+    ctx.beginPath();
+    ctx.moveTo(X(i), Y(a6)); ctx.lineTo(X(i + 1), Y(b6));
+    ctx.lineTo(X(i + 1), Y(b1)); ctx.lineTo(X(i), Y(a1));
+    ctx.closePath();
+    ctx.fillStyle = (a6 + b6) / 2 >= (a1 + b1) / 2 ? "rgba(0,212,255,0.16)" : "rgba(234,179,8,0.18)";
+    ctx.fill();
+  }
+  // the two cumulative curves
+  for (const [arr, col] of [[md.v1, "#94a3b8"], [md.v6, "#00d4ff"]]) {
+    ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); let started = false;
     for (let i = 0; i < nb; i++) {
       if (arr[i] === null) { started = false; continue; }
-      const f = started ? "lineTo" : "moveTo"; ctx[f](X(i), DY(arr[i])); started = true;
+      const f = started ? "lineTo" : "moveTo"; ctx[f](X(i), Y(arr[i])); started = true;
     }
     ctx.stroke();
   }
   ctx.lineWidth = 1;
+  // onset line
+  const onsetI = Math.round(-md.LO / md.BIN);
+  ctx.strokeStyle = "#64748b"; ctx.setLineDash([3, 3]); ctx.beginPath();
+  ctx.moveTo(X(onsetI), 10); ctx.lineTo(X(onsetI), H - 40); ctx.stroke(); ctx.setLineDash([]);
   // modal state ribbon
-  const rY = H - 44;
-  for (let i = 0; i < nb; i++) if (m.modal[i]) {
-    ctx.fillStyle = STATE_COLORS[m.modal[i]] || "#333";
-    ctx.fillRect(X(i) - (W - 56) / (nb - 1) / 2, rY, (W - 56) / (nb - 1) + 1, 10);
+  const rY = H - 36;
+  for (let i = 0; i < nb; i++) if (md.modal[i]) {
+    ctx.fillStyle = STATE_COLORS[md.modal[i]] || "#333";
+    ctx.fillRect(X(i) - (W - 58) / (nb - 1) / 2, rY, (W - 58) / (nb - 1) + 1, 9);
   }
   // axes
   ctx.fillStyle = "#9aa0ad"; ctx.font = "11px system-ui"; ctx.textAlign = "right";
-  [bgMin, 180, bgMax].forEach(v => ctx.fillText(String(Math.round(v)), 40, Y(v) + 4));
-  ctx.fillText(dMax.toFixed(2) + "U", 40, dTop + 8);
+  [0, vMax / 2, vMax].forEach(v => ctx.fillText(v.toFixed(1) + "U", 42, Y(v) + 4));
   ctx.textAlign = "center";
-  for (let t = m.LO; t <= m.HI; t += 30)
-    ctx.fillText((t > 0 ? "+" : "") + t + "m", X((t - m.LO) / m.BIN), H - 8);
+  for (let t = md.LO; t <= md.HI; t += 30)
+    ctx.fillText((t > 0 ? "+" : "") + t + "m", X((t - md.LO) / md.BIN), H - 8);
+  ctx.textAlign = "left";
+  ctx.fillText(`${md.n} meals averaged`, 50, 20);
 }
 
 function drawDailyAgp(canvas, act, cf) {
@@ -759,13 +812,21 @@ function drawDailyAgp(canvas, act, cf) {
     ctx.strokeStyle = g === 70 ? "#4a3535" : "#513a3a"; ctx.setLineDash([4, 4]);
     ctx.beginPath(); ctx.moveTo(44, Y(g)); ctx.lineTo(W - 12, Y(g)); ctx.stroke(); ctx.setLineDash([]);
   }
-  // divergence shading where |Δmedian| ≥ 10
+  // other-engine projected band (p25–p75, faint cyan)
+  ctx.beginPath(); let cfStarted = false;
+  for (let i = 0; i < nb; i++) if (cf[i].p75 !== null) { const f = cfStarted ? "lineTo" : "moveTo"; ctx[f](X(i), Y(cf[i].p75)); cfStarted = true; }
+  for (let i = nb - 1; i >= 0; i--) if (cf[i].p25 !== null) ctx.lineTo(X(i), Y(cf[i].p25));
+  ctx.closePath(); ctx.fillStyle = "rgba(0,212,255,0.10)"; ctx.fill();
+  // AMBER low tail: wherever the other engine's p25 dips under 70, fill 70→p25 —
+  // this is the hypo risk a lower median hides
   for (let i = 0; i < nb - 1; i++) {
-    const a = act[i].p50, c = cf[i].p50;
-    if (a === null || c === null || Math.abs(a - c) < 10) continue;
-    ctx.fillStyle = c < a ? "rgba(0,212,255,0.20)" : "rgba(234,179,8,0.22)";
-    const x0 = X(i), x1 = X(i + 1);
-    ctx.fillRect(x0, Math.min(Y(a), Y(c)), x1 - x0, Math.abs(Y(a) - Y(c)));
+    const c0 = cf[i].p25, c1 = cf[i + 1].p25;
+    if (c0 === null || c1 === null || (c0 >= 70 && c1 >= 70)) continue;
+    ctx.beginPath();
+    ctx.moveTo(X(i), Y(Math.min(70, Math.max(c0, vMin))));
+    ctx.lineTo(X(i + 1), Y(Math.min(70, Math.max(c1, vMin))));
+    ctx.lineTo(X(i + 1), Y(70)); ctx.lineTo(X(i), Y(70));
+    ctx.closePath(); ctx.fillStyle = "rgba(234,179,8,0.45)"; ctx.fill();
   }
   // actual band + median
   ctx.beginPath(); let started = false;
@@ -789,6 +850,14 @@ function drawDailyAgp(canvas, act, cf) {
 
 function render(model, entries) {
   const g = model.gly;
+  // standard TIR bar (top→bottom: very high, high, in range, low, very low)
+  const tb = model.tirBands;
+  const seg = (pct, col, label, dark) => pct <= 0 ? "" :
+    `<div style="flex:${Math.max(pct, 1.5)} 0 0;background:${col};display:flex;align-items:center;justify-content:center;
+      font-size:0.72em;font-weight:600;color:${dark ? "#0f1117" : "#e2e8f0"}">${pct >= 6 ? label + " " + pct.toFixed(0) + "%" : ""}</div>`;
+  $("tirBar").innerHTML = !tb ? "" :
+    seg(tb.vhigh, "#f97316", ">250") + seg(tb.high, "#eab308", "181–250", true) +
+    seg(tb.inR, "#4ade80", "70–180", true) + seg(tb.low, "#ef4444", "54–69") + seg(tb.vlow, "#7f1d1d", "<54");
   $("glyStats").innerHTML = !g ? "<div class='muted'>No BG entries found.</div>" : [
     stat("TIR 70–180", g.tir.toFixed(0) + "%", g.tir >= 70 ? "good" : "warn"),
     stat("TING 63–140", g.ting.toFixed(0) + "%", "hi", "3.5–7.8 mmol"),
@@ -821,9 +890,9 @@ function render(model, entries) {
     ["In meal episodes", model.meal.n, fmtU(model.meal.v1), fmtU(model.meal.v6), fmtU(model.meal.v6 - model.meal.v1)]];
   $("splitTable").innerHTML = rows.map((r, i) =>
     `<tr>${r.map((c, j) => `<t${i ? "d" : "h"}${j ? ' class="num"' : ""}>${c}</t${i ? "d" : "h"}>`).join("")}</tr>`).join("");
-  // meal AGP + compact episode table
+  // meal dose-difference curves + compact episode table
   $("epCount").textContent = `(${model.episodes.length} detected)`;
-  drawMealAgp($("mealAgpCanvas"), model.mealAgpData);
+  drawMealDose($("mealDoseCanvas"), model.mealDose);
   $("epTable").innerHTML = `<tr><th>when</th><th class="num">rise</th><th class="num">V1 (U)</th><th class="num">V6 (U)</th><th class="num">confirmed</th><th class="num">shot (U)</th></tr>` +
     model.episodes.slice().reverse().map(ep => {
       const d = new Date(ep.onsetT);
@@ -834,7 +903,14 @@ function render(model, entries) {
         <td class="num">${ep.confirmLatencyMin !== null ? "+" + ep.confirmLatencyMin + " min" : "—"}</td>
         <td class="num">${ep.commitShot !== null ? fmtU(ep.commitShot) : "—"}</td></tr>`;
     }).join("");
-  // daily counterfactual AGP
+  // daily counterfactual AGP + the medians-hide-risk stats
+  const cg = model.cfGly;
+  $("cfStats").innerHTML = !cg ? "" : [
+    stat("Actual time <70", cg.actBelow70.toFixed(1) + "%", cg.actBelow70 < 4 ? "good" : "warn"),
+    stat("Other engine, <70 pressure", cg.below70.toFixed(1) + "%", cg.below70 > cg.actBelow70 + 0.5 ? "warn" : "", "upper bound"),
+    stat("Other engine, <54 pressure", cg.below54.toFixed(1) + "%", cg.below54 > 0.5 ? "warn" : "", "upper bound"),
+    stat("Other engine, projected TIR", cg.tir.toFixed(0) + "%", "", "vs actual " + (model.gly ? model.gly.tir.toFixed(0) : "–") + "%"),
+  ].join("");
   drawDailyAgp($("dailyAgpCanvas"), model.dailyAgp.act, model.dailyAgp.cf);
   // near-miss events
   const nm = model.nearMiss || [];
