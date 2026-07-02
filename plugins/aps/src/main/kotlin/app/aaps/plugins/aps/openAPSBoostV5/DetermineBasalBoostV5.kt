@@ -177,7 +177,9 @@ class DetermineBasalBoostV5 @Inject constructor(
             deltaDeclining = deltaDeclining(inputs.deltaHistory, windowCycles = 2),
             asleep = inputs.asleep,
             exerciseActive = inputs.exerciseActive,
-            fastConfirmEnabled = inputs.fastCarbConfirmEnabled,
+            // 2026-07-02: post-hypo rescue-carb guard — fast path suppressed when the 60-min low
+            // is < FAST_CONFIRM_MIN_RECENT_LOW_MGDL (replay-calibrated; see MealHypothesis.kt).
+            fastConfirmEnabled = fastConfirmAllowed(inputs.fastCarbConfirmEnabled, inputs.recentLowBg),
             confirmDoseAdequate = confirmDoseAdequate,
         )
 

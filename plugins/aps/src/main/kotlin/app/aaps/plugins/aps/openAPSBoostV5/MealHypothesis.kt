@@ -136,6 +136,23 @@ internal const val RECOVERING_REENGAGE_MIN_AGE = 1          // ≥1 cycle in REC
 internal const val FAST_CONFIRM_DELTA = 8.0                    // mg/dL per 5 min — sharp rise
 internal const val FAST_CONFIRM_ACCL = 15.0                    // delta_accl % — accelerating
 internal const val FAST_CONFIRM_SCORE = 0.60                   // meal score must corroborate (> ENTER_OBSERVING 0.44)
+// 2026-07-02 post-hypo rescue-carb guard: the fast path is suppressed when the 60-min BG low is
+// below this. A rescue-carb rebound routinely satisfies delta≥8 + accl≥15 + score≥0.60, and the
+// fast path is EXEMPT from the confirmDoseAdequate gate — so it was the only unguarded CONFIRMED
+// entry within an hour of a hypo. Replay over 613 real fast-path firings (7 users, May–Jul):
+// threshold 80 blocks 36% of firings, 47 of which preceded a SECOND low <70 within 2h; the rest
+// are rebound-shaped meals whose confirm arrives ~2 cycles later via the normal path (V1 base
+// dosing continues meanwhile). 100 over-blocked (63%, normal pre-meal dips); 80→90 marginal trade
+// is poor (8 more catches for 80 more blocks). See v6-safety-review-2026-07-02.
+internal const val FAST_CONFIRM_MIN_RECENT_LOW_MGDL = 80.0
+
+/**
+ * Effective fast-carb fast-path enable for this cycle: the user toggle AND the post-hypo
+ * rescue-carb guard ([FAST_CONFIRM_MIN_RECENT_LOW_MGDL]). Computed by the caller (decide())
+ * and passed to [step] as `fastConfirmEnabled` — same pattern as `confirmDoseAdequate`.
+ */
+fun fastConfirmAllowed(fastCarbConfirmEnabled: Boolean, recentLowBg: Double): Boolean =
+    fastCarbConfirmEnabled && recentLowBg >= FAST_CONFIRM_MIN_RECENT_LOW_MGDL
 
 /** Time-jump threshold (minutes) for forcing IDLE on clock changes (e.g. timezone switch). */
 internal const val TIME_JUMP_RESET_MINUTES = 30.0
