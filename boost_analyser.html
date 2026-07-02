@@ -863,7 +863,7 @@ function render(model, entries) {
     { k: "low",   col: "#ef4444", name: "Low",       rng: "3.0–3.8", mg: "54–69" },
     { k: "vlow",  col: "#7f1d1d", name: "Very Low",  rng: "&lt;3.0", mg: "&lt;54" },
   ];
-  const perDay = pct => {
+  const bandPerDay = pct => {
     const mins = Math.round(pct * 1440 / 100);
     return (mins >= 60 ? Math.floor(mins / 60) + "h " : "") + (mins % 60) + "min/day avg";
   };
@@ -876,7 +876,7 @@ function render(model, entries) {
         <span style="flex:0 0 108px;${b.green ? "color:var(--green);font-weight:600" : "font-weight:600"}">${b.name}</span>
         <span class="muted" style="flex:0 0 84px">${b.rng}<br><span style="font-size:0.8em">${b.mg} mg/dL</span></span>
         <span style="flex:0 0 66px;font-weight:700;font-size:1.15em">${tb[b.k].toFixed(1)}%</span>
-        <span class="muted">${perDay(tb[b.k])}</span>
+        <span class="muted">${bandPerDay(tb[b.k])}</span>
       </div>`).join("");
   }
   $("glyStats").innerHTML = !g ? "<div class='muted'>No BG entries found.</div>" : [
