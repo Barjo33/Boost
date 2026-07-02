@@ -8,31 +8,27 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Lightweight on-device hypo risk model for Boost (V1 ML retrofit, Layer A).
+ * Lightweight on-device hypo risk model for Boost.
  *
- * Loads a LightGBM model exported as JSON (50 trees, depth 4, ~150KB) from the
- * APK's assets directory and runs inference via pure-Kotlin tree traversal.
- * No native library dependencies. Inference time: <5ms for 50 trees.
+ * Loads a LightGBM model exported as JSON from the APK's assets and runs inference via
+ * pure-Kotlin tree traversal — no native library dependencies.
  *
- * Trained on a 28-user cohort with proper Leave-One-User-Out cross-validation
- * (LOUO AUC 0.6796, GroupKFold AUC 0.7011). Out-of-cohort transfer validated
- * 2026-05-12 — out-of-cohort mean hypo AUC 0.679 across 5 new users.
+ * CURRENT model (v12, 2026-06-06): 100 trees, 53 features (17 static + 36 windowed lag0..5
+ * lookback), ~368KB. The feature vector is assembled by [BoostMlFeatureBuilder] from cycle
+ * state + a persisted 6-cycle ring buffer. The legacy 8-feature entry point
+ * [predictHypoRisk] is retained for rollback to pre-v10 models (it no-ops via size-mismatch
+ * → null when a 53-feature model is loaded).
  *
- * Features (8, all available at decision time):
- *   0: cgm_mgdl          — current BG
- *   1: iob_iob            — total insulin on board
- *   2: iob_basaliob        — basal IOB component (signed deviation)
- *   3: bg_above_target     — BG minus algorithm target
- *   4: direction_num       — BG trend as numeric (-2 to +2)
- *   5: hour                — hour of day (0-23)
- *   6: iob_activity         — insulin activity (rate of IOB decay)
- *   7: sug_insulinReq       — algorithm's insulin requirement this cycle
+ * Trained on a 28-user cohort with Leave-One-User-Out cross-validation; out-of-cohort
+ * transfer validated 2026-05-12.
  *
  * Output: P(hypo event in next 4h) as a Double in [0, 1].
  *
- * Layer A retrofit: model output is logged to Nightscout via RT.mlHypoRisk but
- * does NOT drive dosing decisions. Dosing logic remains identical to V1 baseline.
- * Layer B adds graduated SMB scaling and tier downgrade consumption.
+ * CONSUMPTION (doc updated 2026-07-02 — the old "Layer A observability-only" text was stale):
+ * Layer B is LIVE in the V1 engine (graduated riskScale on the microBolus + tier downgrade at
+ * risk > 0.6), the V5/V6 AggressionBudget consumes it as mlHypoRiskScale, and
+ * [predictAtProjectedIob] powers V5's Phase-3 postActionRiskCheck (expected ~never to fire
+ * with the v12 model — see its KDoc).
  */
 @Singleton
 class BoostRiskModel @Inject constructor(

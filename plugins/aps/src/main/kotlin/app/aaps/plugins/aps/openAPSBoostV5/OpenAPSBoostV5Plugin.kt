@@ -62,7 +62,9 @@ import kotlin.math.max
  *   Phase 3 — ordered safety gates (hard gates → soft gates ordered → final clamp)
  *
  * Design tenets:
- *   - Minimal user settings: ≤3 user-facing knobs; ~14–15 internal constants frozen at release.
+ *   - Minimal user settings: 3 headline tuning knobs (Aggression / Hypo Caution / Sensitivity)
+ *     plus a small advanced set (dose caps, fast-carb toggle, pre-meal target); ~14–15 internal
+ *     constants frozen at release.
  *   - Sensitivity inheritance: baseInsulinReq is Boost-flavoured oref (DynISF + 7D TDD with W8H
  *     pull-down + TDD-anchored EMA sensitivity + autosens + hour-of-day ISF + TempTargets).
  *     V5 contains NO sensitivity logic of its own.
@@ -152,17 +154,17 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         if (preferences.get(BooleanKey.ApsBoostV5AutoConfigDone)) return
 
         val now = dateUtil.now()
-        val start = now - 14L * 24 * 60 * 60 * 1000
+        val start = now - BoostV5AutoConfig.LOOKBACK_DAYS * 24L * 60 * 60 * 1000
 
         // TDD (median over available days) + days-of-data.
-        val tdds = tddCalculator.calculate(14, allowMissingDays = true)
+        val tdds = tddCalculator.calculate(BoostV5AutoConfig.LOOKBACK_DAYS, allowMissingDays = true)
         val tddValues = mutableListOf<Double>()
         if (tdds != null) for (i in 0 until tdds.size()) {
             val t = tdds.valueAt(i)
             val total = if (t.totalAmount > 0) t.totalAmount else t.basalAmount + t.bolusAmount
             if (total > 0) tddValues.add(total)
         }
-        val tddMedian = median(tddValues)
+        val tddMedian = BoostV5AutoConfig.percentile(tddValues, 50.0)
         val daysWithData = tddValues.size
 
         // Boluses split into manual (meal) vs SMB.
@@ -173,8 +175,8 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         // Glycaemia (TBR / severe / mean) from CGM.
         val bgs = persistenceLayer.getBgReadingsDataFromTimeToTime(start, now, true)
         val n = bgs.size
-        val tbr70 = if (n > 0) 100.0 * bgs.count { it.value in 1.0..69.9 } / n else 0.0
-        val sev54 = if (n > 0) 100.0 * bgs.count { it.value in 1.0..53.9 } / n else 0.0
+        val tbr70 = if (n > 0) 100.0 * bgs.count { it.value >= 1.0 && it.value < 70.0 } / n else 0.0
+        val sev54 = if (n > 0) 100.0 * bgs.count { it.value >= 1.0 && it.value < 54.0 } / n else 0.0
         val meanBg = if (n > 0) bgs.sumOf { it.value } / n else 0.0
 
         val suggestion = BoostV5AutoConfig.compute(
@@ -198,7 +200,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             BoostV5AutoConfigApply.managedDoubleKnobs(suggestion),
             isSet = { preferences.getIfExists(it) != null },
             put = { key, value -> preferences.put(key, value) }
-        ).forEach { (key, value) -> applied += "${key.key}=$value" }
+        ).forEach { (key, value) -> applied += "${key.name.removePrefix("ApsBoostV5").removePrefix("ApsBoost")}=$value" }
         if (preferences.getIfExists(BooleanKey.ApsBoostV5FastCarbConfirm) == null) {
             preferences.put(BooleanKey.ApsBoostV5FastCarbConfirm, suggestion.fastCarbConfirm)
             applied += "fastCarbConfirm=${suggestion.fastCarbConfirm}"
@@ -207,10 +209,10 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         preferences.put(BooleanKey.ApsBoostV5AutoConfigDone, true)
         aapsLogger.info(LTag.APS, "BoostV5 auto-config applied [$applied]; rationale: ${suggestion.rationale}")
         // Only surface a banner if we ACTUALLY changed something. If every knob was already tuned by
-        // the user, putDoubleIfUnset is a no-op (applied is empty) — announcing "configured" then
+        // the user, applyAutoConfig skips it (applied is empty) — announcing "configured" then
         // changing nothing was the confusing behaviour Tim hit. One concise, readable line per knob.
         if (applied.isNotEmpty()) {
-            val pretty = applied.joinToString("\n") { "• " + it.removePrefix("ApsBoostV5").removePrefix("ApsBoost") }
+            val pretty = applied.joinToString("\n") { "• $it" }
             uiInteraction.addNotification(
                 Notification.USER_MESSAGE,
                 "Boost V6 set ${applied.size} setting(s) from your last 14 days (your other settings were kept):\n$pretty",
@@ -219,25 +221,22 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         }
     }
 
-    private fun median(xs: List<Double>): Double {
-        if (xs.isEmpty()) return 0.0
-        val s = xs.sorted()
-        return if (s.size % 2 == 1) s[s.size / 2] else (s[s.size / 2 - 1] + s[s.size / 2]) / 2.0
-    }
-
     // Enable/show under the same condition as plain Boost (temp-basal-capable pump) — delegate to
     // the engine so the two plugins stay in lock-step.
     override fun specialEnableCondition(): Boolean = openAPSBoostEngine.get().specialEnableCondition()
     override fun specialShowInListCondition(): Boolean = openAPSBoostEngine.get().specialShowInListCondition()
 
     /**
-     * Sidecar shadow runner. Called by V4.4.1 (`OpenAPSBoostV3MLG3Plugin.invoke()`) with the
-     * inputs and result V4.4.1 just produced. V5 sees exactly what V4.4.1 saw — no duplication
-     * of input gathering, no risk of input drift between the two algorithms.
+     * V5 decision runner. Called by the live V1 engine (`OpenAPSBoostPlugin.runEngine`) with the
+     * inputs and result the engine just produced — V5 sees exactly what V1 saw, no duplication of
+     * input gathering, no input drift. Runs in BOTH modes: `activeMode=false` (plain Boost selected;
+     * decision is telemetry-only) and `activeMode=true` (V6 selected; the engine may adopt
+     * `finalDose` as the SMB, subject to its own gates). (KDoc updated 2026-07-02 — previously
+     * described the retired V4.4.1 sidecar arrangement.)
      *
      * V5 reads:
-     *  - V4.4.1's RT for `eventualBG`, `insulinReq` (used as `baseInsulinReq`), `mlHypoRisk`,
-     *    `mlMealLikely` — V4.4.1 already ran the ML predictions.
+     *  - the engine's RT for `eventualBG`, `insulinReq` (used as `baseInsulinReq`), `mlHypoRisk`,
+     *    `mlMealLikely` — the V1 engine already ran the ML predictions.
      *  - GlucoseStatus for `delta`, `shortAvgDelta`, `longAvgDelta`, `glucose`.
      *  - OapsProfileBoost for `target_bg`, `boost_maxIOB`, `recentLowBG`, `lgsThreshold`,
      *    and the `v5_*` activity fields V4.4.1 fills (exerciseActive, inPostExerciseWindow).
@@ -248,10 +247,11 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
      *  - Its own meal_signal_score, MealHypothesis transition, AggressionBudget, action
      *    multiplier, Phase 3 gates via [determineBasalBoostV5.decide].
      *
-     * Output: V5 RT JSON logged via aapsLogger at INFO with prefix "BoostV5_RT:" — Tim greps
-     * logs to compare V5 shadow decisions against V4.4.1's actual delivery.
+     * Output: V5 RT JSON logged via aapsLogger at INFO with prefix "BoostV5_RT:" and the
+     * boostV5_* RT fields for NS — comparing V5 decisions against V1's delivery.
      *
-     * Safety: any exception is caught and logged; V5 never propagates an error to V4.4.1.
+     * Safety: any exception is caught and logged; V5 never propagates an error to the engine
+     * (the engine falls back to its own dose).
      */
     fun runShadow(
         rT: RT,
@@ -325,18 +325,9 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         return mins.minOrNull()
     }
 
-    /** Same compact summary used in the log line and in `v5DecisionToRtJson`'s gate string. */
-    private fun formatGateReduction(decision: V5Decision): String {
-        val parts = mutableListOf<String>()
-        decision.phase3.reductions.iobHeadroomBrake.takeIf { it < 1.0 }?.let { parts.add("iobHeadroom:${"%.2f".format(java.util.Locale.US, it)}") }
-        decision.phase3.reductions.postActionRiskCheck.takeIf { it < 1.0 }?.let { parts.add("postAction:${"%.2f".format(java.util.Locale.US, it)}") }
-        decision.phase3.reductions.decelerationBrake.takeIf { it < 1.0 }?.let { parts.add("decel:${"%.2f".format(java.util.Locale.US, it)}") }
-        decision.phase3.reductions.sensorQualityCheck.takeIf { it < 1.0 }?.let { parts.add("sensor:${"%.2f".format(java.util.Locale.US, it)}") }
-        decision.phase3.reductions.hardGateFired?.let { parts.add("HARD:$it") }
-        if (decision.phase3.reductions.maxIobClampApplied) parts.add("maxIOB")
-        if (decision.phase3.reductions.dynamicSpikeCapped) parts.add("spike")
-        return parts.joinToString(",").ifEmpty { "none" }
-    }
+    /** Delegates to the single shared formatter (V5StateStore.kt) — the same string goes to the
+     *  rT field, the log line, and v5DecisionToRtJson, so the three can never diverge. (2026-07-02) */
+    private fun formatGateReduction(decision: V5Decision): String = formatGateReduction(decision.phase3.reductions)
 
     private fun buildInputs(
         rT: RT,
@@ -347,7 +338,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         activeMode: Boolean,
         microBolusAllowed: Boolean,
         flatBGsDetected: Boolean,
-        asleep: Boolean = false,
+        asleep: Boolean,
     ): V5Inputs {
         // delta_accl with V3's denominator floor — `max(|shortAvgDelta|, 2.0)` — carried over
         // verbatim from V3 input preprocessing.
@@ -371,7 +362,9 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
 
         val iob = iobArray.firstOrNull()?.iob ?: 0.0
 
-        val hour = LocalTime.now(ZoneId.systemDefault()).hour
+        // Hour from dateUtil (not wall-clock LocalTime.now()) so tests/replays can fake time like
+        // every other time read in this class. (2026-07-02)
+        val hour = java.time.Instant.ofEpochMilli(dateUtil.now()).atZone(ZoneId.systemDefault()).hour
 
         // V0 SHADOW MODE: enableSmbPreChecks is permissive — V5 makes its own decision and the
         // operator compares against V4.4.1's actual delivery. Earlier code derived this from
@@ -477,7 +470,8 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
     override fun preprocessPreferences(preferenceFragment: PreferenceFragmentCompat) =
         openAPSBoostEngine.get().preprocessPreferences(preferenceFragment)
 
-    /** V5's three (and only three) user-facing knobs, per the minimal-settings tenet. */
+    /** V5's three HEADLINE tuning knobs (advanced settings — caps, fast-carb, pre-meal — live on
+     *  the preference screen; these three are the per-user calibration surface). */
     val aggressionKnob: Double get() = preferences.get(DoubleKey.ApsBoostV5Aggression)
     val hypoCautionKnob: Double get() = preferences.get(DoubleKey.ApsBoostV5HypoCaution)
 
@@ -490,27 +484,23 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
      */
     val sensitivityKnob: Double get() = preferences.get(DoubleKey.ApsBoostV5Sensitivity)
 
+    // Preference sub-screens this plugin may (re)build — the V5 root, the Advanced parent, and the
+    // shared engine sub-screens (they live nested under "Advanced" and are rebuilt by key when
+    // navigated into). Must stay in lock-step with the keys used in OpenAPSBoostPlugin's screens.
+    private val prefScreenKeys = setOf(
+        "openapsboostv5_settings", "boost_advanced_settings", "absorption_smb_advanced",
+        "boost_default_aaps_settings", "boost_dynisf_settings", "boost_exercise_settings",
+        "boost_stepcount_settings", "boost_hr_integration_settings",
+        "boost_post_exercise_recovery_settings", "boost_night_mode_settings", "boost_safety_settings",
+    )
+
     override fun addPreferenceScreen(
         preferenceManager: PreferenceManager,
         parent: PreferenceScreen,
         context: Context,
         requiredKey: String?,
     ) {
-        // Allow the V5 root, the Advanced parent, AND the shared engine sub-screen keys (rebuilt
-        // by name when navigated into; they now live nested under "Advanced").
-        if (requiredKey != null &&
-            requiredKey != "openapsboostv5_settings" &&
-            requiredKey != "boost_advanced_settings" &&
-            requiredKey != "absorption_smb_advanced" &&
-            requiredKey != "boost_default_aaps_settings" &&
-            requiredKey != "boost_dynisf_settings" &&
-            requiredKey != "boost_exercise_settings" &&
-            requiredKey != "boost_stepcount_settings" &&
-            requiredKey != "boost_hr_integration_settings" &&
-            requiredKey != "boost_post_exercise_recovery_settings" &&
-            requiredKey != "boost_night_mode_settings" &&
-            requiredKey != "boost_safety_settings"
-        ) return
+        if (requiredKey != null && requiredKey !in prefScreenKeys) return
         val category = PreferenceCategory(context)
         parent.addPreference(category)
         category.apply {

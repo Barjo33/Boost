@@ -30,6 +30,13 @@ object BoostV5AutoConfig {
 
     // Glycaemic thresholds that trigger extra caution (international consensus targets).
     private const val TBR70_TARGET = 4.0      // % time <70 mg/dL
+
+    /** Hypo-prone history cut-points (drive both the Aggression ease-down and fastCarbConfirm). */
+    const val SEV54_HYPO_PRONE = 1.5
+    const val TBR70_HYPO_PRONE = 6.0
+
+    /** History window for auto-config (also used by the plugin's data pulls). */
+    const val LOOKBACK_DAYS = 14L
     private const val SEV54_TARGET = 1.0      // % time <54 mg/dL
 
     /** What the plugin gathers from the user's last-N-day V1 history. */
@@ -64,7 +71,7 @@ object BoostV5AutoConfig {
         if (p.daysWithData < MIN_DAYS || p.bgReadingCount < MIN_BG_READINGS) return null
 
         val reasons = mutableListOf<String>()
-        val hypoProne = p.timeBelow54Pct > 1.5 || p.tbrBelow70Pct > 6.0
+        val hypoProne = p.timeBelow54Pct > SEV54_HYPO_PRONE || p.tbrBelow70Pct > TBR70_HYPO_PRONE
 
         // HypoCaution [1.0..2.0]: scale up with time-below-range above target.
         val cautionRaw = 1.0 +
@@ -76,7 +83,7 @@ object BoostV5AutoConfig {
         // Aggression [0.7..1.3]: NEVER auto-raise above 1.0. Ease down for a hypo-prone history.
         val aggression = round2(
             when {
-                p.timeBelow54Pct > 1.5 || p.tbrBelow70Pct > 6.0 -> 0.85
+                hypoProne                                       -> 0.85
                 p.tbrBelow70Pct > TBR70_TARGET                  -> 0.92
                 else                                            -> 1.0
             }

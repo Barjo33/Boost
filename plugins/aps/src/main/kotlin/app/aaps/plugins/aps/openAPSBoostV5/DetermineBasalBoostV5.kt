@@ -1,18 +1,16 @@
 package app.aaps.plugins.aps.openAPSBoostV5
 
-import app.aaps.core.interfaces.logging.AAPSLogger
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
  * Boost V5 algorithm core — Observe-Confirm-Commit pipeline orchestrator.
  *
- * Status: PRE-ALPHA. Phase 1.a (meal_signal_score), 1.b (state machine), 1.c (AggressionBudget),
- * 2 (action multiplier), and 3 (safety gates) are all implemented in their respective files.
- * The orchestrator below stitches them into a single `decide()` entry point. The plugin's
- * `invoke()` wires inputs from oref / Boost services into [V5Inputs] and calls [decide];
- * that wiring lands in a follow-up task (#9: RT serialization), and feature-gating happens
- * via the plugin's `isEnabled()` returning false until shadow mode is approved.
+ * Status: PRODUCTION — this is the dosing core behind the selectable "Boost V6" plugin
+ * (header corrected 2026-07-02; previously said PRE-ALPHA from the shadow era). Phase 1.a
+ * (meal_signal_score), 1.b (state machine), 1.c (AggressionBudget), 2 (action multiplier), and
+ * 3 (safety gates) live in their respective files; the orchestrator below stitches them into the
+ * single `decide()` entry point, wired from oref/Boost services by OpenAPSBoostV5Plugin.
  *
  * Architecture (mirrors `boost_v5_redesign_proposal.md` exactly):
  *
@@ -116,9 +114,7 @@ data class V5Decision(
 )
 
 @Singleton
-class DetermineBasalBoostV5 @Inject constructor(
-    @Suppress("unused") private val aapsLogger: AAPSLogger,
-) {
+class DetermineBasalBoostV5 @Inject constructor() {
     /** Run one full V5 cycle. Pure function over inputs + prior state. */
     fun decide(inputs: V5Inputs, persisted: V5PersistedState): V5Decision {
         // Reset state machine if any reset condition fired (reboot equivalents)
@@ -311,11 +307,13 @@ internal fun velocityScaledDoseFactor(cumulativeRise30min: Double): Double {
  * - **CONFIRMED**: capped at [MAX_CONFIRMED_COMMIT_DOSE_U] (1.0 U). The commit-shot is the
  *   single most dose-impactful decision V5 makes; safety floor it tightly until validation
  *   data justifies raising the cap.
- * - **COMMITTED**: capped at [MAX_COMMITTED_DOSE_U] (0.5 U). Multiple of these can fire per
- *   meal (one per cycle while in COMMITTED state), so per-cycle cap must be smaller.
- * - **IDLE / OBSERVING / RECOVERING**: no cap; these states either don't dose (IDLE,
- *   RECOVERING) or use a test-dose multiplier (OBSERVING 0.3×) that doesn't reach dangerous
- *   magnitudes from any plausible baseInsulinReq.
+ * - **COMMITTED**: capped at [MAX_COMMITTED_DOSE_U] (0.25 U default; runtime cap is the
+ *   auto-configured `Inputs.committedCapU`). Multiple of these can fire per meal (one per cycle
+ *   while COMMITTED), so the per-cycle cap must be smaller.
+ * - **IDLE / OBSERVING / RECOVERING**: NO cap here — IDLE is 1.0× and RECOVERING 0.4× of budget
+ *   (they DO dose). Since 2026-07-02 these states are instead capped at V1's would-dose at the
+ *   override site (OpenAPSBoostPlugin, "non-meal-state cap") — V6 may only out-dose V1 when it
+ *   holds a meal hypothesis.
  */
 internal fun applyStateDoseCap(
     state: MealHypothesis,

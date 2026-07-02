@@ -102,13 +102,13 @@ data class MealHypothesisState(
 internal const val ENTER_OBSERVING_SCORE = 0.44                 // calibrated: 0.40 → 0.44
 internal const val CONFIRM_SCORE = 0.55                         // 2026-05-15: 0.66 → 0.55 (was at p99 of observed scores; lowered with peak-score tracking)
 internal const val CONFIRM_EVENTUAL_BG_OFFSET_MGDL = 30.0       // 2026-05-22: 50.0 → 30.0 (Fix 5 — paired with peak-offset tracking)
-internal const val CONFIRM_MIN_OBSERVING_AGE = 2                // hysteresis: must observe ≥2 cycles before confirming
+internal const val CONFIRM_MIN_OBSERVING_AGE = 2                // hysteresis: age enters OBSERVING at 0 and increments post-check, so confirm is first possible on the 4th OBSERVING cycle (age ≥ 2 checked on the 3rd increment)
 // 2026-07-02 dose-adequacy gate: the confirm floor is committedCapU, clamped to at most this fraction
 // of confirmedCapU so a manual committedCap ≥ confirmedCap can't make the gate unsatisfiable (which
 // would silently disable V6's meal response). See DetermineBasalBoostV5.decide().
 internal const val CONFIRM_DOSE_FLOOR_MAX_FRAC_OF_CONFIRMED_CAP = 0.8
 internal const val FALL_BACK_TO_IDLE_SCORE = 0.36               // calibrated: 0.30 → 0.36
-internal const val FALL_BACK_TO_IDLE_AGE = 2                    // hysteresis: ≥2 cycles below threshold to fall back
+internal const val FALL_BACK_TO_IDLE_AGE = 2                    // hysteresis: falls back when TOTAL OBSERVING age ≥ 2 AND the CURRENT cycle is below threshold (not "2 consecutive below" — one sub-threshold blip after age 2 exits)
 internal const val CONFIRMED_TO_COMMITTED_AGE = 0               // 2026-05-26 Fix 6: 1 → 0 (true single-cycle commit; previously CONFIRMED stayed for 2 invokes due to age semantics, allowing 2× CONFIRMED-mult doses)
 internal const val RECOVERING_DECEL_THRESHOLD = -5.0            // delta_accl < -5 enters RECOVERING (with delta declining)
 internal const val RECOVERING_TO_IDLE_SCORE = 0.18              // calibrated: 0.20 → 0.18

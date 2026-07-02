@@ -84,9 +84,10 @@ data class RT(
     var mlMealG3Released: Boolean? = null,      // true if any v4.4+ release condition lifted the G3 hold this cycle (V3MLG3 only)
     var mlG3ReleaseSource: String? = null,      // v4.4.1: which release condition fired ("delta_accl" | "bg_threshold" | "meal_model")
 
-    // Boost V5 shadow fields (filled by OpenAPSBoostV5Plugin.runShadow during V4.4.1's invoke).
-    // These ride along V4.4.1's RT through the existing NS deviceStatus uploader so V5's parallel
-    // decision is visible alongside V4.4.1's actual delivery without a separate publication channel.
+    // Boost V5/V6 decision fields (filled by OpenAPSBoostV5Plugin.runShadow during the Boost V1
+    // engine's invoke — both shadow and V6-active modes; comment updated 2026-07-02, was V4.4.1-era).
+    // They ride along the engine's RT through the existing NS deviceStatus uploader so the V5
+    // decision is visible alongside the actual delivery without a separate publication channel.
     var boostV5_score: Double? = null,           // meal_signal_score 0.0-1.0
     var boostV5_state: String? = null,           // IDLE | OBSERVING | CONFIRMED | COMMITTED | RECOVERING
     var boostV5_age: Int? = null,                // cycles in current state

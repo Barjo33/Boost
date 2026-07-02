@@ -93,6 +93,7 @@ import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
+import app.aaps.plugins.aps.openAPSBoostV5.MealHypothesis
 
 @Singleton
 open class OpenAPSBoostPlugin @Inject constructor(
@@ -1302,7 +1303,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 // incl. 2.0U at 05:02 where V1 dosed 0. Capping at V1's would-dose makes IDLE match
                 // its own spec ("standard oref dose; no meal hypothesis"); genuine meal rises still
                 // get full V6 dosing via OBSERVING→CONFIRMED.
-                val inMealState = v5decision.mealHypothesis.name == "CONFIRMED" || v5decision.mealHypothesis.name == "COMMITTED"
+                val inMealState = v5decision.mealHypothesis == MealHypothesis.CONFIRMED || v5decision.mealHypothesis == MealHypothesis.COMMITTED
                 val overrideDose = if (inMealState) v5decision.finalDose else minOf(v5decision.finalDose, v1WouldDose)
                 val nonMealCapped = overrideDose < v5decision.finalDose
                 it.units = overrideDose
@@ -1323,7 +1324,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
             v6PreMealReason?.let { r -> it.reason.append(r) }
             // V6 meal-time learner: record a FRESH CONFIRMED commit (the event V5 treats as a meal)
             // so the pre-meal window learns this user's habitual meal times. Persist only on change.
-            if (v5decision != null && v5decision.mealHypothesis.name == "CONFIRMED" && v5decision.mealHypothesisAge == 0) {
+            if (v5decision != null && v5decision.mealHypothesis == MealHypothesis.CONFIRMED && v5decision.mealHypothesisAge == 0) {
                 mealTimeHistoryCached = MealTimeLearner.record(mealTimeHistoryCached, now)
                 preferences.put(StringKey.ApsBoostMealTimeHistory, mealTimeHistoryCached.serialize())
                 aapsLogger.debug(LTag.APS, "V6 meal-time learner: recorded CONFIRMED @ ${dateUtil.dateAndTimeString(now)} (${mealTimeHistoryCached.events.size} events)")
