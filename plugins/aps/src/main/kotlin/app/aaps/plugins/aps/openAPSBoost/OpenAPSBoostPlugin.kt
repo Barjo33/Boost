@@ -1358,6 +1358,17 @@ open class OpenAPSBoostPlugin @Inject constructor(
 
                 // 30-min window for HR — sufficient for both 5-min and 15-min avgs and sleep eval.
                 val hrReadingsForSleep = persistenceLayer.getHeartRatesFromTime(now - 30 * 60_000L)
+                // Lump-tolerant wake evidence (2026-07-03): the detector needs today's CUMULATIVE
+                // steps (max of wear-reconstructed and phone) — wear-bridge steps arrive in batches
+                // the phone's 15-min bucket never sees (the phone sits on the nightstand overnight),
+                // which is why the 06:00 wake was missed and every wake was boundary-forced.
+                val sleepTodayIdx = DailyStepHistoryTracker.dayIndex(now, localOffsetMs)
+                val sleepDayStartMs = sleepTodayIdx * 86_400_000L - localOffsetMs
+                val scTodayForSleep = try { persistenceLayer.getStepsCountFromTimeToTime(sleepDayStartMs, now) } catch (t: Throwable) { emptyList() }
+                val stepsTodayForSleep = maxOf(
+                    WearStepSource.stepsToday(scTodayForSleep, sleepDayStartMs, now),
+                    StepService.getStepsToday(localOffsetMs)
+                )
                 val sleepResult = SleepStateDetector.evaluate(
                     prev = sleepStateCached,
                     inputs = SleepStateDetector.Inputs(
@@ -1372,7 +1383,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
                         nightEndMin = effectiveNightEndMin,
                         preSleepLeadMin = preferences.get(IntKey.ApsBoostPreSleepLeadMin),
                         minSleepHysteresisMin = preferences.get(IntKey.ApsBoostSleepHysteresisMin),
-                        wakeHrHysteresisMin = preferences.get(IntKey.ApsBoostWakeHrHysteresisMin)
+                        wakeHrHysteresisMin = preferences.get(IntKey.ApsBoostWakeHrHysteresisMin),
+                        stepsToday = stepsTodayForSleep
                     ),
                     aapsLogger = aapsLogger
                 )
