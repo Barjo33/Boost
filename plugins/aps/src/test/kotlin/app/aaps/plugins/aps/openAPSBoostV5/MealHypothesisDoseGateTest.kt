@@ -43,6 +43,21 @@ class MealHypothesisDoseGateTest {
         assertThat(r.state).isEqualTo(MealHypothesis.CONFIRMED)
     }
 
+    // ── 2026-07-03 gate telemetry: the exposed eligibility predicate (boostV5_confirmGate) ────
+    // confirmEligibleExceptDoseGate is the SAME predicate step() doses with, minus the adequacy
+    // gate — decide() uses it to label cycles "pass"/"blocked"/"n/a".
+
+    @Test fun `eligibility predicate matches the OBSERVING confirm sub-conditions`() {
+        // Eligible-except-gate on the ready state...
+        assertThat(confirmEligibleExceptDoseGate(observedReady(), score, eventualBg, targetBg)).isTrue()
+        // ...false when the session lock is held...
+        assertThat(confirmEligibleExceptDoseGate(observedReady().copy(committedInSession = true), score, eventualBg, targetBg)).isFalse()
+        // ...false outside OBSERVING...
+        assertThat(confirmEligibleExceptDoseGate(MealHypothesisState(), score, eventualBg, targetBg)).isFalse()
+        // ...and false when the age gate hasn't opened (no streak).
+        assertThat(confirmEligibleExceptDoseGate(observedReady().copy(ageCycles = 1), score, eventualBg, targetBg)).isFalse()
+    }
+
     @Test fun `fast-carb path is NOT gated by dose adequacy`() {
         // Sharp, corroborated rise with the toggle on still confirms in one cycle even when
         // confirmDoseAdequate=false — the fast-path is intentionally exempt.

@@ -287,6 +287,11 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             // REAL caps (not inferred/auto-formula estimates) and manual overrides are captured. (2026-07-02)
             rT.boostV5_committedCap = preferences.get(DoubleKey.ApsBoostV5CommittedCapU)
             rT.boostV5_confirmedCap = preferences.get(DoubleKey.ApsBoostV5ConfirmedCapU)
+            // 2026-07-03 confirm-gate telemetry for the 2026-07-10 live gate review — a dose-adequacy
+            // gate block was previously indistinguishable from a score fade in NS. Read-only.
+            rT.boostV5_confirmGate = decision.confirmGate
+            rT.boostV5_prospectiveShot = decision.prospectiveConfirmShot
+            rT.boostV5_aggressionKnob = aggressionKnob
 
             val rtJson = v5DecisionToRtJson(decision)
             aapsLogger.info(LTag.APS, "BoostV5_RT: ${rtJson} actual_smb=${rT.units ?: 0.0} actual_insulinReq=${rT.insulinReq ?: 0.0} activeMode=$activeMode")

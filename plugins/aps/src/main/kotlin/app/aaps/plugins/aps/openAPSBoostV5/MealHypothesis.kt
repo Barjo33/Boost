@@ -180,6 +180,36 @@ fun fastConfirmAllowed(fastCarbConfirmEnabled: Boolean, recentLowBg: Double): Bo
 internal const val TIME_JUMP_RESET_MINUTES = 30.0
 
 /**
+ * OBSERVING → CONFIRMED eligibility EXCLUDING the dose-adequacy gate — the exact sub-conditions
+ * [step]'s OBSERVING branch checks (age gate incl. the 2026-07-03 sustained-score early path,
+ * peak score, peak eventualBG offset, single-confirm-per-session lock), minus confirmDoseAdequate.
+ *
+ * Exposed for gate telemetry (`boostV5_confirmGate`, 2026-07-03): decide() labels each cycle
+ * "pass" / "blocked" / "n/a" so a dose-adequacy gate block is distinguishable from a score fade
+ * in NS — needed for the 2026-07-10 live gate review. [step] calls this SAME function for its
+ * dosing decision, so the telemetry and dosing predicates can never diverge.
+ */
+fun confirmEligibleExceptDoseGate(
+    current: MealHypothesisState,
+    score: Double,
+    eventualBg: Double,
+    targetBg: Double,
+    scoreReadyStreak: Boolean = false,
+): Boolean {
+    if (current.state != MealHypothesis.OBSERVING || current.committedInSession) return false
+    val newMaxScore = max(current.maxScoreInObserving, score)
+    val newMaxOffset = max(current.maxEventualBgOffsetInObserving, eventualBg - targetBg)
+    val age = current.ageCycles
+    // 2026-07-03: age gate opens one cycle early when the score has been ≥ CONFIRM_SCORE on BOTH
+    // this cycle and the previous one (see CONFIRM_MIN_OBSERVING_AGE_SCORE_READY). The early path
+    // checks the CURRENT score, not the tracked max — a sustained-ready score, not a transient
+    // peak, is what justifies shaving the hysteresis.
+    val ageEligible = age >= CONFIRM_MIN_OBSERVING_AGE ||
+        (age >= CONFIRM_MIN_OBSERVING_AGE_SCORE_READY && score >= CONFIRM_SCORE && scoreReadyStreak)
+    return ageEligible && newMaxScore >= CONFIRM_SCORE && newMaxOffset >= CONFIRM_EVENTUAL_BG_OFFSET_MGDL
+}
+
+/**
  * Single-step transition. Pure function; no side effects. Caller threads state across cycles.
  *
  * @param current state from the previous cycle.
@@ -254,17 +284,11 @@ fun step(
             // shadow dose; this guard caps it to a single commit-shot per meal session.
             val newMaxScore = max(maxScore, score)
             val newMaxOffset = max(maxOffset, currentOffset)
-            // 2026-07-03: age gate opens one cycle early when the score has been ≥ CONFIRM_SCORE
-            // on BOTH this cycle and the previous one (see CONFIRM_MIN_OBSERVING_AGE_SCORE_READY).
-            // Note the early path checks the CURRENT score, not the tracked max — a sustained-ready
-            // score, not a transient peak, is what justifies shaving the hysteresis.
-            val ageEligible = age >= CONFIRM_MIN_OBSERVING_AGE ||
-                (age >= CONFIRM_MIN_OBSERVING_AGE_SCORE_READY && score >= CONFIRM_SCORE && scoreReadyStreak)
-            val confirmEligible = ageEligible &&
-                newMaxScore >= CONFIRM_SCORE &&
-                newMaxOffset >= CONFIRM_EVENTUAL_BG_OFFSET_MGDL &&
-                confirmDoseAdequate &&   // 2026-07-02: don't spend the token on a shot < one COMMITTED hold
-                !committedInSession
+            // Eligibility sub-conditions (age gate incl. the 2026-07-03 sustained-score early path,
+            // peak score, peak offset, session lock) live in confirmEligibleExceptDoseGate — shared
+            // with decide()'s boostV5_confirmGate telemetry so the two can never diverge (2026-07-03).
+            val confirmEligible = confirmEligibleExceptDoseGate(current, score, eventualBg, targetBg, scoreReadyStreak) &&
+                confirmDoseAdequate   // 2026-07-02: don't spend the token on a shot < one COMMITTED hold
             when {
                 // Fast-carb fast-path: confirm in a single OBSERVING cycle, bypassing the age +
                 // eventualBg-offset gates, but still honouring the Fix-6 single-confirm guard.

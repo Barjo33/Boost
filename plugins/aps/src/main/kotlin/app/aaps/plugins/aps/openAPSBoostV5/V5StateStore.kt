@@ -121,9 +121,10 @@ class V5StateStore(private val preferences: Preferences, private val aapsLogger:
 
 /**
  * Names of the core NS RT fields emitted via [v5DecisionToRtJson]. The plugin additionally sets
- * `boostV5_finalDose`, `boostV5_active`, `boostV5_committedCap`, `boostV5_confirmedCap` directly on
- * RT (see OpenAPSBoostV5Plugin.runShadow) — 10 fields total as of 2026-07-02. These core six plus
- * per-cycle inputs reconstruct any V5 decision (per `boost_v5_test_plan.md`).
+ * `boostV5_finalDose`, `boostV5_active`, `boostV5_committedCap`, `boostV5_confirmedCap`, and (from
+ * 2026-07-03) `boostV5_confirmGate`, `boostV5_prospectiveShot`, `boostV5_aggressionKnob` directly
+ * on RT (see OpenAPSBoostV5Plugin.runShadow) — 13 fields total as of 2026-07-03. These core six
+ * plus per-cycle inputs reconstruct any V5 decision (per `boost_v5_test_plan.md`).
  */
 object V5RTFields {
     const val MEAL_SIGNAL_SCORE = "boostV5_score"

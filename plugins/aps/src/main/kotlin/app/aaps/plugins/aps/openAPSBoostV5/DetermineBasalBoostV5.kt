@@ -118,6 +118,14 @@ data class V5Decision(
     val insulinToDeliver: Double,
     val phase3: Phase3Result,
     val newPersistedState: V5PersistedState,
+    // 2026-07-03 gate telemetry (read-only; needed for the 2026-07-10 live gate review — a
+    // dose-adequacy gate block was previously indistinguishable from a score fade in NS):
+    /** "pass" = confirm-eligible OBSERVING cycle whose adequacy gate passed; "blocked" =
+     *  eligibility met EXCEPT the gate; "n/a" otherwise. → `boostV5_confirmGate`. */
+    val confirmGate: String = "n/a",
+    /** Velocity-scaled prospective confirm shot (budget × CONFIRMED mult × velocityFactor), U —
+     *  the exact quantity the adequacy gate compares to the floor. → `boostV5_prospectiveShot`. */
+    val prospectiveConfirmShot: Double = 0.0,
 )
 
 @Singleton
@@ -175,6 +183,25 @@ class DetermineBasalBoostV5 @Inject constructor() {
         val confirmDoseFloor = minOf(inputs.committedCapU, CONFIRM_DOSE_FLOOR_MAX_FRAC_OF_CONFIRMED_CAP * inputs.confirmedCapU)
         val confirmDoseAdequate = prospectiveConfirmShot > confirmDoseFloor
 
+        // 2026-07-03 sustained-score early confirm input: was LAST cycle's score already
+        // confirm-ready? Sourced from the in-memory persisted state (null on cold start → false →
+        // legacy timing). Used by step() AND the confirmGate telemetry below.
+        val scoreReadyStreak = (persisted.lastCycleScore ?: 0.0) >= CONFIRM_SCORE
+
+        // 2026-07-03 gate telemetry (boostV5_confirmGate) — read-only, ZERO dosing-path effect.
+        // Labels this cycle's OBSERVING→CONFIRMED adequacy-gate outcome so a gate block is
+        // distinguishable from a score fade in NS (needed for the 2026-07-10 live gate review):
+        //   "pass"    — confirm-eligible OBSERVING cycle, adequacy gate passed
+        //   "blocked" — eligibility met EXCEPT the adequacy gate
+        //   "n/a"     — not otherwise eligible this cycle
+        // Uses the SAME predicate step() doses with (confirmEligibleExceptDoseGate), so the two
+        // can never diverge.
+        val confirmGate = when {
+            !confirmEligibleExceptDoseGate(resetState, scoreResult.score, inputs.eventualBg, inputs.targetBg, scoreReadyStreak) -> "n/a"
+            confirmDoseAdequate                                                                                                -> "pass"
+            else                                                                                                               -> "blocked"
+        }
+
         // Phase 1.b — state machine step
         val newHypothesisState = step(
             current = resetState,
@@ -190,9 +217,7 @@ class DetermineBasalBoostV5 @Inject constructor() {
             // is < FAST_CONFIRM_MIN_RECENT_LOW_MGDL (replay-calibrated; see MealHypothesis.kt).
             fastConfirmEnabled = fastConfirmAllowed(inputs.fastCarbConfirmEnabled, inputs.recentLowBg),
             confirmDoseAdequate = confirmDoseAdequate,
-            // 2026-07-03 sustained-score early confirm: was LAST cycle's score already confirm-ready?
-            // Sourced from the in-memory persisted state (null on cold start → false → legacy timing).
-            scoreReadyStreak = (persisted.lastCycleScore ?: 0.0) >= CONFIRM_SCORE,
+            scoreReadyStreak = scoreReadyStreak,   // 2026-07-03 sustained-score early confirm (hoisted above)
         )
 
         // Phase 2 — single decision rule
@@ -257,6 +282,8 @@ class DetermineBasalBoostV5 @Inject constructor() {
                 mlMealLikelyNullStreak = nextNullStreak,
                 lastCycleScore = scoreResult.score,
             ),
+            confirmGate = confirmGate,
+            prospectiveConfirmShot = prospectiveConfirmShot,
         )
     }
 }

@@ -98,6 +98,11 @@ data class RT(
     var boostV5_active: Boolean? = null,         // true when V5 was the ACTIVE doser this cycle (not shadow) — drives the V5 overview/widget
     var boostV5_committedCap: Double? = null,    // per-user COMMITTED per-cycle hold cap (U) — for dose-gate backtests (2026-07-02)
     var boostV5_confirmedCap: Double? = null,    // per-user CONFIRMED commit-shot cap (U) — for dose-gate backtests (2026-07-02)
+    // 2026-07-03 confirm-gate telemetry — needed for the 2026-07-10 live gate review: a
+    // dose-adequacy gate block was previously indistinguishable from a score fade in NS.
+    var boostV5_confirmGate: String? = null,     // "pass" | "blocked" | "n/a" — OBSERVING→CONFIRMED dose-adequacy gate outcome this cycle
+    var boostV5_prospectiveShot: Double? = null, // velocity-scaled prospective confirm shot (budget × CONFIRMED mult × velocityFactor), U — what the gate compares to the floor
+    var boostV5_aggressionKnob: Double? = null,  // user's Aggression knob value (context for reading prospectiveShot)
 
     // HR + sleep telemetry (2026-06-02) — emitted into NS devicestatus for retrospective
     // sleep-model tuning. Cadence = one observation per Boost cycle (~5 min), which
