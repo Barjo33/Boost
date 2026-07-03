@@ -5,9 +5,11 @@ import org.junit.jupiter.api.Test
 
 /**
  * 2026-06-16 fast-carb fast-path. Single-cycle OBSERVING/IDLE → CONFIRMED when the rise is sharp
- * (delta ≥ 8) AND accelerating (deltaAccl ≥ 15) AND score corroborates (≥ 0.60) AND awake AND not
- * exercising AND the toggle is on — replay-validated to recover the ~15-min confirm latency that
- * crashed the 2026-06-16 fast carb, without firing on sleep/compression. Pure-function tests on step().
+ * (delta ≥ FAST_CONFIRM_DELTA) AND accelerating (deltaAccl ≥ FAST_CONFIRM_ACCL) AND score
+ * corroborates (≥ FAST_CONFIRM_SCORE) AND awake AND not exercising AND the toggle is on —
+ * replay-validated to recover the ~15-min confirm latency that crashed the 2026-06-16 fast carb,
+ * without firing on sleep/compression. Retuned 2026-07-03 (Δ 8→6, accl 15→10, score 0.60→0.65 —
+ * see MealHypothesis.kt). Pure-function tests on step().
  */
 class MealHypothesisFastConfirmTest {
 

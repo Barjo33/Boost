@@ -1213,7 +1213,8 @@ const V6 = {
   RECOVER_REENGAGE_ACCL: 10.0, RECOVER_REENGAGE_DELTA: 3.0,
   RECOVER_REENGAGE_OFFSET: 20.0, RECOVER_REENGAGE_MIN_AGE: 1,
   // fast-carb fast-path (2026-06-16) + post-hypo rescue guard (2026-07-02)
-  FC_DELTA: 8.0, FC_ACCL: 15.0, FC_SCORE: 0.60, FC_MIN_RECENT_LOW: 80.0,
+  // 2026-07-03 retune: Δ 8→6, accl 15→10, score 0.60→0.65 (replay sweep: +21 meals ~9 min earlier, false fires 39%→32%)
+  FC_DELTA: 6.0, FC_ACCL: 10.0, FC_SCORE: 0.65, FC_MIN_RECENT_LOW: 80.0,
   // 2026-07-02 confirm dose-adequacy gate (DetermineBasalBoostV5.kt:166-169, MealHypothesis.kt:109)
   CONFIRM_FLOOR_FRAC_OF_CONFIRMED_CAP: 0.8,
   // ── MealActionMultiplier.kt ──
@@ -2264,7 +2265,7 @@ function renderV6Tab(inp, r) {
   sd += `cumRise30 = shortAvgDelta ×6 = ${fmt(m.cumRise30,0)} mg/dL | eventualBG offset ${fmt(m.eventualBgOffset,0)} (confirm needs peak ≥30)\n`;
   sd += `prior state ${inp.v6PriorState} (age ${prior.age}) → ${v6.state}. Age gates check PRE-increment age: confirm is first possible on the 4th OBSERVING cycle.\n`;
   const fcAllowed = inp.fastCarbConfirm && inp.recentLowBg >= V6.FC_MIN_RECENT_LOW;
-  sd += `fast-carb fast-path: ${inp.fastCarbConfirm ? (fcAllowed ? 'armed' : `BLOCKED — recent low ${fmt(inp.recentLowBg,0)} < ${V6.FC_MIN_RECENT_LOW} (post-hypo rescue guard)`) : 'disabled (pref)'}${fcAllowed ? ` (needs delta ≥8, accl ≥15, score ≥0.60, awake, not exercising${prior.committed ? ', blocked: already committed this session' : ''})` : ''}`;
+  sd += `fast-carb fast-path: ${inp.fastCarbConfirm ? (fcAllowed ? 'armed' : `BLOCKED — recent low ${fmt(inp.recentLowBg,0)} < ${V6.FC_MIN_RECENT_LOW} (post-hypo rescue guard)`) : 'disabled (pref)'}${fcAllowed ? ` (needs delta ≥${V6.FC_DELTA}, accl ≥${V6.FC_ACCL}, score ≥${V6.FC_SCORE}, awake, not exercising${prior.committed ? ', blocked: already committed this session' : ''})` : ''}`;
   document.getElementById('out-v6-state-detail').textContent = sd;
 
   // Confirm-adequacy gate verdict

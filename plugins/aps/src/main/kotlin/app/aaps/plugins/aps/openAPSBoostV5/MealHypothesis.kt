@@ -149,11 +149,17 @@ internal const val RECOVERING_REENGAGE_MIN_AGE = 1          // ≥1 cycle in REC
 // ~⅓ of meals ~15 min earlier with ZERO sleep-fires and ~1 false fire/day; the raw delta+accl
 // rule (no score/awake gate) fired during sleep (compression risk) and ~2×/day falsely.
 // Still respects the Fix-6 single-CONFIRMED-per-session guard (committedInSession).
-internal const val FAST_CONFIRM_DELTA = 8.0                    // mg/dL per 5 min — sharp rise
-internal const val FAST_CONFIRM_ACCL = 15.0                    // delta_accl % — accelerating
-internal const val FAST_CONFIRM_SCORE = 0.60                   // meal score must corroborate (> ENTER_OBSERVING 0.44)
+//
+// 2026-07-03 retune (replay sweep over the cohort): Δ 8→6, accl 15→10, score 0.60→0.65. This
+// point catches +21 meals ~9 min earlier while REDUCING false fires 39%→32% — the score raise
+// pays for the physics relaxation. A plain physics relaxation WITHOUT the score raise is worse
+// (40% false); the tighter score gate is what makes the looser Δ/accl thresholds safe. All
+// guards (awake, not exercising, recentLowBg ≥ 80, !committedInSession, pref toggle) unchanged.
+internal const val FAST_CONFIRM_DELTA = 6.0                    // mg/dL per 5 min — sharp rise (2026-07-03: 8.0 → 6.0)
+internal const val FAST_CONFIRM_ACCL = 10.0                    // delta_accl % — accelerating (2026-07-03: 15.0 → 10.0)
+internal const val FAST_CONFIRM_SCORE = 0.65                   // meal score must corroborate (2026-07-03: 0.60 → 0.65; > ENTER_OBSERVING 0.44)
 // 2026-07-02 post-hypo rescue-carb guard: the fast path is suppressed when the 60-min BG low is
-// below this. A rescue-carb rebound routinely satisfies delta≥8 + accl≥15 + score≥0.60, and the
+// below this. A rescue-carb rebound routinely satisfies the fast-path Δ/accl/score thresholds, and the
 // fast path is EXEMPT from the confirmDoseAdequate gate — so it was the only unguarded CONFIRMED
 // entry within an hour of a hypo. Replay over 613 real fast-path firings (7 users, May–Jul):
 // threshold 80 blocks 36% of firings, 47 of which preceded a SECOND low <70 within 2h; the rest
