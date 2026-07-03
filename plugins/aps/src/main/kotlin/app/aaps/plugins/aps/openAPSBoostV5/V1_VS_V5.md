@@ -2,13 +2,20 @@
 
 A comparison of the original Boost (V1) and the new V5 redesign.
 
+> **Status (2026-07):** this document was written during V5's development. V5 has since
+> graduated to production as the user-facing **"Boost V6"** plugin — see
+> [Currently — what V5 is and isn't](#currently--what-v5-is-and-isnt-updated-2026-07)
+> and the main [README](../../../../../../../../../../README.md) for the current picture.
+> The design rationale below is unchanged and still authoritative.
+
 V1 reference: `~/StudioProjects/AndroidAPS/master/openAPSBoost/` (the canonical
 V1 source). V5 reference: `~/StudioProjects/Boost-AAPS-core/openAPSBoostV5/`.
 
 
 ## TL;DR
 
-- **V5 adds 3 new user settings; most of V1's settings still apply.** V5
+- **V5 adds 3 headline settings (plus an Advanced screen of dose caps);
+  most of V1's settings still apply.** V5
   replaces the dose-sizing dials inside `determineBasal` (boost_scale,
   insulin_req_pct, percent_scale_factor, bolus_cap, etc.) with hardcoded
   calibrated values. The upstream environment settings (sleep-in,
@@ -26,9 +33,10 @@ V1 source). V5 reference: `~/StudioProjects/Boost-AAPS-core/openAPSBoostV5/`.
   Boost figures out your sensitivity — it inherits all that from V1's
   existing pipeline. So your TDD-based ISF, autosens, hour-of-day basal
   rates, etc. all still apply.
-- **V5 is currently shadow-only.** It runs alongside whatever Boost variant
-  you have selected, makes its own decision, and writes that to the log —
-  but doesn't dose. You stay on your existing Boost while V5 collects data.
+- **V5 ships as the "Boost V6" plugin.** Selecting "Boost V6" makes the
+  state machine drive the SMB; selecting plain "Boost" runs V1 dosing with
+  the V5/V6 decision in shadow (logged to Nightscout, never dosed).
+  Shadow-first is the supported path for anyone but the developer.
 
 
 ## Why V5 was built
@@ -106,8 +114,10 @@ V5 was designed to:
 - **Not faster dosing on average.** V5's post-exercise modifier and ML
   hypo-risk damping make it more conservative in many situations.
   The goal is *correct* dosing, not maximum dosing.
-- **Not a clinical superiority claim.** V5 is PRE-ALPHA. There is no
-  demonstrated TIR / TBR improvement vs the current Boost yet.
+- **Not a clinical superiority claim.** The evidence is one developer's
+  ~5 months of active use plus a small shadow cohort — real-world
+  experience, not a demonstrated TIR / TBR improvement vs the current
+  Boost (see the README's Testing & evidence section).
 - **Not a replacement for sensitivity calibration.** DynISF, autosens,
   hour-of-day basal / ISF are all preserved unchanged. V5 trusts the
   user's existing sensitivity setup.
@@ -341,23 +351,27 @@ candidate for becoming a knob. If either condition fails, it stays
 hardcoded.
 
 
-## Currently — what V5 is and isn't
+## Currently — what V5 is and isn't (updated 2026-07)
 
-V5 is **PRE-ALPHA** and **shadow-only**. It is hidden from the plugin list
-(you cannot select it as your active APS algorithm). During development
-testing it runs alongside the active Boost variant as a **sidecar**:
+V5 **graduated to production as the "Boost V6" plugin** after the shadow
+acceptance gates passed. Two selectable plugins share one engine:
 
-1. The active Boost finishes its normal cycle and decides what to dose.
-2. Its inputs (glucose status, IOB, ML predictions where present,
-   sensitivity values, exercise state) are handed to V5.
-3. V5 runs its own decision on the same inputs and logs the result to
-   `aapsLogger` with prefix `BoostV5_RT:` and to Nightscout deviceStatus
-   under `boostV5_*` fields.
-4. V5 does **not** affect what was actually dosed.
+- **"Boost"** — V1 dosing, with the V5/V6 decision computed as a
+  **sidecar shadow** every cycle: the same inputs (glucose status, IOB,
+  ML predictions where present, sensitivity values, exercise state) are
+  handed to V5, which logs its decision to `aapsLogger` with prefix
+  `BoostV5_RT:` and to Nightscout deviceStatus under `boostV5_*` fields —
+  without affecting what was dosed.
+- **"Boost V6"** — the state machine drives the SMB. The override is
+  gated: suppressed while asleep, capped at V1's would-dose outside
+  CONFIRMED/COMMITTED, re-checked against the cumulative 60-minute SMB
+  cap, and clamped to the system max-IOB. On first activation an
+  auto-config seeds the knobs from the user's own 14-day history
+  (suggestion-only — see the README, §4).
 
-Test builds collect parallel V5 decisions for analysis. V5 will only
-become user-selectable in the plugin list after the test plan's Layer
-1–3 acceptance gates pass on real shadow data.
+Shadow-first remains the supported onboarding for anyone but the
+developer: run "Boost", watch the paired telemetry in Nightscout for a
+couple of weeks, then decide.
 
 
 ---
