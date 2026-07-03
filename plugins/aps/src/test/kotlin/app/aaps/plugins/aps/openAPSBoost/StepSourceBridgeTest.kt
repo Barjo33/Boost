@@ -233,14 +233,53 @@ class StepSourceBridgeTest {
         assertThat(r.history.days[4]!!.source).isEqualTo("wear")                  // worn drove it
     }
 
-    @Test fun `phone-anchored window during phone warmup falls back to phone day or raw, flagged`() {
-        // phone has only 2 days (< MIN_OVERLAP_DAYS) so wear can't be scaled yet
+    @Test fun `phone-anchored window during phone warmup holds the higher raw worn count, flagged`() {
+        // phone has only 2 days (< MIN_OVERLAP_DAYS) so wear can't be scaled yet. HOLD-HIGHER
+        // (2026-07-03): the uncalibrated worn count is NOT discarded for the phone's lower own-day —
+        // that cascade recorded 07-02 as the pocketed phone's 2227/3095 while the watch knew 6224.
         val phone = srcHist("phone", mapOf(8L to 7000, 9L to 7000))
         val wear = srcHist("wear", (0L..9L).associateWith { 14000 })
         val r = T.phoneAnchoredWindow(msh(phone, wear), todayIndex = 10)
         assertThat(r.calibrated).isFalse()                                       // raw fallback used
-        assertThat(r.history.days[8]!!.steps).isEqualTo(7000)                     // phone's own day where it has one
-        assertThat(r.history.days[0]!!.steps).isEqualTo(14000)                    // else wear raw (flagged)
+        assertThat(r.history.days[8]!!.steps).isEqualTo(14000)                   // wear raw held over phone 7000
+        assertThat(r.history.days[8]!!.source).isEqualTo("wear")
+        assertThat(r.history.days[0]!!.steps).isEqualTo(14000)                    // wear raw (flagged)
+    }
+
+    // ── Hold-higher rollover (2026-07-03 incident): wear 6224 @23:57 must not roll over as the
+    //    phone's 2227, nor creep as a lower counter's intraday value tracks in as "yesterday". ────
+
+    @Test fun `rollover holds the higher source - the 2026-07-02 case`() {
+        // Yesterday (day 9): wear counted 6224; the pocketed phone only 2227. Wear can't be
+        // calibrated yet (no phone overlap before day 8). The day must record 6224, not 2227.
+        val phone = srcHist("phone", mapOf(8L to 3000, 9L to 2227))
+        val wear = srcHist("wear", mapOf(9L to 6224))
+        val r = T.phoneAnchoredWindow(msh(phone, wear), todayIndex = 10)
+        assertThat(r.history.days[9]!!.steps).isEqualTo(6224)
+        assertThat(r.history.days[9]!!.source).isEqualTo("wear")
+        val f = T.shadowFactors(r.history, todayIndex = 10)
+        assertThat(f.lastDaySteps).isEqualTo(6224)
+    }
+
+    @Test fun `a post-midnight lower HC value cannot drag yesterday down`() {
+        // Yesterday recorded at 6224; after midnight the source re-syncs a stale/partial 3095 for
+        // the same day. merge() holds the higher recorded total.
+        var h = History(mutableMapOf(9L to DailyTotal(9, 6224, "wear")))
+        h = T.merge(h, listOf(DailyTotal(9, 3095, "wear")), todayIndex = 10)
+        assertThat(h.days[9]!!.steps).isEqualTo(6224)
+        // an upward revision still applies
+        h = T.merge(h, listOf(DailyTotal(9, 6500, "wear")), todayIndex = 10)
+        assertThat(h.days[9]!!.steps).isEqualTo(6500)
+    }
+
+    @Test fun `heldNote breadcrumb fires when yesterday is held over a lower source`() {
+        val phone = srcHist("phone", mapOf(8L to 3000, 9L to 3095))
+        val wear = srcHist("wear", mapOf(9L to 6224))
+        val r = T.phoneAnchoredWindow(msh(phone, wear), todayIndex = 10)
+        assertThat(r.heldNote).isEqualTo("held wear 6224 over phone 3095")
+        // single-candidate yesterday → no note
+        val solo = T.phoneAnchoredWindow(msh(srcHist("wear", mapOf(9L to 6224))), todayIndex = 10)
+        assertThat(solo.heldNote).isNull()
     }
 
     @Test fun `toPhoneUnits scales a worn today count and passes phone or uncalibrated through`() {

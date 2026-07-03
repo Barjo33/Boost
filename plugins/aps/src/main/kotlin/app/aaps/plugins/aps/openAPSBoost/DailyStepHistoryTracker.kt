@@ -90,10 +90,20 @@ object DailyStepHistoryTracker {
     /**
      * Merge newly-read **completed**-day totals (dayIndex < [todayIndex]; today is partial and
      * excluded) and trim to the rolling window. Returns a new History (caller persists on change).
+     *
+     * HOLD-HIGHER (2026-07-03): within a source, a recorded day is only ever revised UP. A later
+     * LOWER value for the same day (a stale/partial post-midnight HC sync, an SC-table prune, a
+     * source recount) must not drag a completed day's total down — 2026-07-02 was recorded at 2227
+     * and crept to 3095 while the watch had counted 6224, and the shadow read it as "0.5× baseline /
+     * inactivity". Undercount is the unsafe direction (false inactivity → would-LOWER ISF → more
+     * insulin), so the day record holds the maximum end-of-day count ever seen.
      */
     fun merge(h: History, totals: List<DailyTotal>, todayIndex: Long): History {
         val m = LinkedHashMap(h.days)
-        for (t in totals) if (t.dayIndex in (todayIndex - WINDOW_DAYS) until todayIndex) m[t.dayIndex] = t
+        for (t in totals) if (t.dayIndex in (todayIndex - WINDOW_DAYS) until todayIndex) {
+            val prev = m[t.dayIndex]
+            if (prev == null || t.steps > prev.steps) m[t.dayIndex] = t
+        }
         val cutoff = todayIndex - WINDOW_DAYS
         m.keys.filter { it < cutoff }.toList().forEach { m.remove(it) }
         return History(m)
@@ -231,7 +241,18 @@ object DailyStepHistoryTracker {
         return ratios[ratios.size / 2]
     }
 
-    data class BridgeResult(val history: History, val calibrated: Boolean, val donorsUsed: List<String>)
+    data class BridgeResult(
+        val history: History,
+        val calibrated: Boolean,
+        val donorsUsed: List<String>,
+        /**
+         * NS breadcrumb: set when yesterday's total was HELD at a higher source's count over a lower
+         * competing source (e.g. "held wear 6224 over phone 3095"). Null when yesterday had one
+         * candidate or the candidates agreed. Makes the daily-history reconcile visible in reason
+         * lines — the 2026-07-03 undercount was invisible because nothing logged the resolution.
+         */
+        val heldNote: String? = null
+    )
 
     /**
      * Build one rolling-window [History] in [activeSource]'s units for [todayIndex]: use the active
@@ -272,14 +293,20 @@ object DailyStepHistoryTracker {
      * no scale → raw forever. The PHONE runs continuously across every watch era, so it is the one
      * source that overlaps them all: it is the calibration frame.
      *
-     * Per day in the window:
-     *  1. if a worn source (wear > garmin > hc:*) recorded the day AND can be scaled into phone
-     *     units (≥[MIN_OVERLAP_DAYS] of phone↔that-source overlap), use the scaled worn value
-     *     (worn-when-carried beats phone-when-pocketed for accuracy);
-     *  2. else use the phone's own value for the day (the phone has every day it was carried);
-     *  3. else (phone lacks the day and the worn source can't be scaled yet — the phone's warmup
-     *     window) fall back to the worn value raw, flagged uncalibrated. Self-heals once the phone
-     *     accrues [MIN_OVERLAP_DAYS] overlapping days with each worn source.
+     * Per day in the window, every source that recorded the day becomes a candidate — a worn source
+     * (wear > garmin > hc:*) expressed in phone units when it can be scaled (≥[MIN_OVERLAP_DAYS] of
+     * phone↔that-source overlap), raw otherwise (flagged uncalibrated); the phone's own day as-is —
+     * and the day records the HIGHEST candidate (worn wins a tie, being the on-body count).
+     *
+     * HOLD-HIGHER (2026-07-03 incident): the old per-day cascade (scaled-worn → phone's own day →
+     * raw-worn) could DISCARD a watch's full-day count in favour of a lower value: on 2026-07-02 the
+     * wear watch counted 6224 by 23:57, but the day was recorded as the pocketed phone's 2227
+     * (creeping to 3095 as HC synced more phone data) because the wear count could not yet be
+     * calibrated and the cascade preferred the phone's own day over raw-worn. The shadow then read
+     * "0.5× baseline / inactivity −6.6% ISF" off an undercount. Undercount is the UNSAFE direction
+     * (false inactivity → would-LOWER ISF → more insulin), while an uncalibrated raw-worn overcount
+     * only errs toward "activity" (would-RAISE ISF, less insulin) — so a completed day holds the
+     * MAX of all sources' end-of-day counts, never a lower later value.
      *
      * No watch-to-watch calibration is ever needed, so a future swap can never re-open the gap.
      */
@@ -292,27 +319,42 @@ object DailyStepHistoryTracker {
         val out = LinkedHashMap<Long, DailyTotal>()
         val donorsUsed = LinkedHashSet<String>()
         var anyUncalibrated = false
+        var heldNote: String? = null
         var day = todayIndex - WINDOW_DAYS
         while (day < todayIndex) {
-            val phoneDay = phone.days[day]
-            // highest-trust worn source that recorded this day (whether or not it scales)
-            val worn = donors.firstOrNull { it.value.days[day] != null }
-            when {
-                worn != null -> {
-                    val raw = worn.value.days[day]!!.steps
-                    val cal = cals.getOrPut(worn.key) { calibration(phone, worn.value) }   // median(phone/worn)
-                    when {
-                        cal != null      -> { out[day] = DailyTotal(day, (raw * cal).toInt(), worn.key); donorsUsed.add(worn.key) }
-                        phoneDay != null -> out[day] = phoneDay                              // can't scale → phone's own day
-                        else             -> { out[day] = DailyTotal(day, raw, worn.key); donorsUsed.add(worn.key); anyUncalibrated = true }
-                    }
+            // All sources' counts for this day (phone units where a calibration exists, else raw).
+            val cands = ArrayList<Candidate>(3)
+            phone.days[day]?.let { cands.add(Candidate(StepSourceResolver.PHONE, it.steps, calibrated = true)) }
+            for (donor in donors) {
+                val dt = donor.value.days[day] ?: continue
+                val cal = cals.getOrPut(donor.key) { calibration(phone, donor.value) }   // median(phone/donor)
+                if (cal != null) cands.add(Candidate(donor.key, (dt.steps * cal).toInt(), calibrated = true))
+                else cands.add(Candidate(donor.key, dt.steps, calibrated = false))
+            }
+            if (cands.isNotEmpty()) {
+                // Hold-higher: highest count wins; on a tie the worn (lower-tier) source names the day.
+                val winner = cands.maxWith(compareBy({ it.steps }, { -StepSourceResolver.tier(it.source) }))
+                out[day] = DailyTotal(day, winner.steps, winner.source)
+                if (winner.source != StepSourceResolver.PHONE) {
+                    donorsUsed.add(winner.source)
+                    if (!winner.calibrated) anyUncalibrated = true
                 }
-                phoneDay != null -> out[day] = phoneDay
+                // Breadcrumb for YESTERDAY (the day shadowFactors keys on): record what was held
+                // over what, so the reconcile is visible in NS reason lines.
+                if (day == todayIndex - 1) {
+                    val runnerUp = cands.filter { it.source != winner.source }.maxByOrNull { it.steps }
+                    if (runnerUp != null && winner.steps > runnerUp.steps)
+                        heldNote = "held ${winner.source} ${winner.steps} over ${runnerUp.source} ${runnerUp.steps}"
+                }
             }
             day++
         }
-        return BridgeResult(History(out), calibrated = !anyUncalibrated, donorsUsed = donorsUsed.toList())
+        return BridgeResult(History(out), calibrated = !anyUncalibrated, donorsUsed = donorsUsed.toList(), heldNote = heldNote)
     }
+
+    /** One source's count for one day during window resolution: [steps] is phone-units when
+     *  [calibrated], raw otherwise. */
+    private data class Candidate(val source: String, val steps: Int, val calibrated: Boolean)
 
     /**
      * Express [steps] reported by [activeSource] in PHONE-equivalent units, so today's live count

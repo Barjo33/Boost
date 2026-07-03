@@ -1541,6 +1541,10 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     it.boostActivitySource_states = res.note
                     it.boostActivitySource_bridge = if (bridged.donorsUsed.isEmpty()) "phone"
                         else "phone<-" + bridged.donorsUsed.joinToString("+") + if (bridged.calibrated) "" else "(raw)"
+                    // Hold-higher reconcile breadcrumb (2026-07-03): make the yesterday-total
+                    // resolution visible in NS — the 07-02 undercount (wear 6224 recorded as 2227)
+                    // was invisible because nothing logged which source's count won the day.
+                    bridged.heldNote?.let { hn -> it.reason.append("stepHistory: $hn; ") }
                     if (sf.baselineSteps != null && sf.ratio != null) {
                         val sign = if (sf.wouldDeltaIsfPct >= 0) "+" else ""
                         it.reason.append("activityLoad: ${res.active ?: "none"} base ${sf.baselineSteps} last ${sf.lastDaySteps} (${Round.roundTo(sf.ratio!!, 0.01)}x) wouldΔISF $sign${Round.roundTo(sf.wouldDeltaIsfPct, 0.1)}% [${sf.note}] bridge[${it.boostActivitySource_bridge}]; ")
