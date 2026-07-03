@@ -80,6 +80,9 @@ class V5StateStore(private val preferences: Preferences, private val aapsLogger:
             V5PersistedState(
                 mealHypothesis = state,
                 mlMealLikelyNullStreak = json.optInt("mlMealLikelyNullStreak", 0),
+                // lastCycleScore is deliberately NOT in the JSON blob (see V5PersistedState KDoc) —
+                // it lives only in the in-memory cache. Cold start → null → scoreReadyStreak=false
+                // → legacy confirm timing for the first cycle. (2026-07-03)
             )
         } catch (e: Exception) {
             // Corrupt or stale state — fall back to IDLE (safer than carrying forward unknown state),
@@ -97,6 +100,8 @@ class V5StateStore(private val preferences: Preferences, private val aapsLogger:
         // write, so any subsequent load() in the same process sees the new state immediately.
         cached = state
 
+        // NOTE: lastCycleScore is intentionally NOT serialized — cache-only cross-cycle input for
+        // the sustained-score early confirm; losing it on restart fails safe. (2026-07-03)
         val json = JSONObject()
             .put("mealHypothesis", state.mealHypothesis.state.name)
             .put("mealHypothesisAge", state.mealHypothesis.ageCycles)

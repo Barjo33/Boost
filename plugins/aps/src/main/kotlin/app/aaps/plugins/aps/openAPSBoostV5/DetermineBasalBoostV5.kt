@@ -95,6 +95,13 @@ data class V5Inputs(
 data class V5PersistedState(
     val mealHypothesis: MealHypothesisState = MealHypothesisState(),
     val mlMealLikelyNullStreak: Int = 0,
+    /**
+     * Previous cycle's meal_signal_score — input to the sustained-score early confirm
+     * ([CONFIRM_MIN_OBSERVING_AGE_SCORE_READY], 2026-07-03). Held in V5StateStore's IN-MEMORY
+     * cache only, deliberately NOT serialized to the preferences JSON blob: a process restart
+     * loses it, which fails safe (streak=false → legacy confirm timing for one cycle).
+     */
+    val lastCycleScore: Double? = null,
 )
 
 /** Full per-cycle V5 output. Every field is reconstructable into the ~6 NS RT fields. */
@@ -183,6 +190,9 @@ class DetermineBasalBoostV5 @Inject constructor() {
             // is < FAST_CONFIRM_MIN_RECENT_LOW_MGDL (replay-calibrated; see MealHypothesis.kt).
             fastConfirmEnabled = fastConfirmAllowed(inputs.fastCarbConfirmEnabled, inputs.recentLowBg),
             confirmDoseAdequate = confirmDoseAdequate,
+            // 2026-07-03 sustained-score early confirm: was LAST cycle's score already confirm-ready?
+            // Sourced from the in-memory persisted state (null on cold start → false → legacy timing).
+            scoreReadyStreak = (persisted.lastCycleScore ?: 0.0) >= CONFIRM_SCORE,
         )
 
         // Phase 2 — single decision rule
@@ -245,6 +255,7 @@ class DetermineBasalBoostV5 @Inject constructor() {
             newPersistedState = V5PersistedState(
                 mealHypothesis = newHypothesisState,
                 mlMealLikelyNullStreak = nextNullStreak,
+                lastCycleScore = scoreResult.score,
             ),
         )
     }
