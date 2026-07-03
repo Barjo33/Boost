@@ -21,16 +21,16 @@ doses and how V1 and V6 differ, side by side:
 - **[▶ Boost Simulator](https://tim2000s.github.io/Boost-in-AAPS_3.4/boost_simulator.html)**
   ([source](boost_simulator.html)) —
   a live what-if for the dosing maths. Set BG, trend, IOB, TDD and the settings (or pull a snapshot
-  from Nightscout) and watch the ISF and SMB recompute. It runs **both engines at once**: the V1/V2
-  **8-tier** ladder and the **V6 meal state-machine**, shown in a *V1-tiers-vs-V6* panel and as a
-  dual track on the **BG-projection** tab — so you can see exactly where V6 holds back in OBSERVING
-  and catches up in CONFIRMED. Faithful JS ports of the real engine (`MealSignalScore`,
-  `MealHypothesis`, `AggressionBudget`, `SafetyGates`).
+  from Nightscout) and watch the ISF and SMB recompute. **Two tabs, one per engine**: the V1/V2
+  **8-tier** ladder and the **V6 meal state-machine**, each with its own settings, dose breakdown and
+  BG projection (the V6 tab keeps a one-line *"V1 would deliver"* reference, because V6's own
+  non-meal cap depends on it). Faithful JS ports of the real engine (`MealSignalScore`,
+  `MealHypothesis`, `AggressionBudget`, `SafetyGates`), including the July-2026 safety layer.
 - **[▶ Boost Tuning Guide](https://tim2000s.github.io/Boost-in-AAPS_3.4/boost_tuning_guide.html)**
   ([source](boost_tuning_guide.html)) —
-  a visual reference for what every setting does to aggressiveness: each knob on a
-  conservative→aggressive spectrum, real-world tuning scenarios, and a dedicated **Boost V6** section
-  explaining the state-machine model and how V1's ~24 knobs collapse to V6's **3**.
+  a visual reference for what every setting does to aggressiveness: separate **V1** and **V6** tabs,
+  each knob on a conservative→aggressive spectrum, real-world tuning scenarios per engine, and the
+  V6 tab explaining the state-machine model and how V1's ~24 knobs collapse to V6's **3**.
 
 - **[▶ Boost Analyser](https://tim2000s.github.io/Boost-in-AAPS_3.4/boost_analyser.html)**
   ([source](boost_analyser.html)) —
@@ -132,6 +132,16 @@ Two risk inputs pull dosing back *before* trouble, not after:
   insulin (it can only ever reduce delivery — see §7), and
 - a **recent-low penalty** damps the meal-confirm score for a window after any low.
 
+Three further guards (July 2026) bound the state machine's edges:
+
+- in **non-meal states** (IDLE / OBSERVING / RECOVERING) V6 **never doses more than V1 would** on the
+  same inputs — only a confirmed meal hypothesis can out-dose V1;
+- the one-per-meal CONFIRMED catch-up shot is only spent when the velocity-scaled dose would **beat a
+  routine hold cycle** — otherwise V6 keeps observing rather than burning its confirm on a trivial
+  upswing; and
+- the single-cycle **fast-carb confirm is suppressed for an hour after any BG below 80**, so a
+  rescue-carb rebound is never treated as a new meal.
+
 Every stock AndroidAPS safety gate still runs underneath — most importantly the hard
 **`minGuardBG ≥ 80`** gate, which blocks dosing into a projected low regardless of any Boost setting.
 
@@ -221,12 +231,14 @@ derivation was checked line-for-line against the Trio (Swift) port and is in ful
 All Boost settings live under the plugin preferences. Defaults shown; most are auto-seeded (§4).
 
 **Dosing**
-- **Aggression** `0.7–1.3` (1.0) — global confidence/size multiplier on V6 dosing.
+- **Aggression** `0.7–1.3` (1.0) — scales the **CONFIRMED catch-up shot** (the state machine's one
+  discretionary dose); routine holds are bounded by the caps below, not this knob.
 - **HypoCaution** `1.0–2.0` (1.0) — scales the aggression budget down; higher = more hypo-defensive.
 - **Sensitivity** `0.8–1.2` (1.0) — fine sensitivity multiplier on top of DynISF.
 - **CONFIRMED dose cap** `0–7.5 U` (2.5) — hard limit on the meal-confirm commit shot.
 - **COMMITTED dose cap** `0–2.5 U` (0.5) — hard limit on the per-cycle holding SMB.
-- **Cumulative SMB cap / 60 min** `0–5 U` (1.5) — rolling-hour ceiling across all SMBs.
+- **Cumulative SMB cap / 60 min** `0–10 U` (10) — rolling-hour ceiling across all SMBs. The factory
+  default is deliberately non-binding; auto-config (§4) tightens it to your history. `0` disables it.
 - **Max IOB** `0.1–12 U` and **Bolus cap** `0.1–10 U` — overall Boost insulin limits.
 - **Fast-carb confirm** (on) — single-cycle confirm on a sharp, accelerating, score-corroborated rise.
 
@@ -291,9 +303,14 @@ This is the point people most often get wrong about Boost, so it's stated plainl
 - **The dose decision is a deterministic, rule-based state machine.** It is *not* a model trained to
   output insulin. Nothing in the dosing path is fit to data, learned online, or a black box. Given the
   same inputs it produces the same dose, and every branch is readable in source.
-- **The only trained model is the hypo-risk score, and it can only *reduce* insulin.** It is a small
-  on-device gradient-boosted tree (validated **leave-one-user-out**, so it is scored on users it never
-  saw in training) that throttles the aggression budget. It can never *add* a dose or relax a limit.
+- **Two small on-device trained models feed the decision — neither outputs insulin.** The
+  **hypo-risk score** (a gradient-boosted tree validated **leave-one-user-out**, so it is scored on
+  users it never saw in training) throttles the aggression budget and can only ever *reduce*
+  delivery. The **meal-likelihood score** is one bounded input (weight 0.20, renormalised away when
+  the model is unavailable) into the otherwise rule-based meal-confirm score — it can help the state
+  machine recognise a meal *earlier*, but every dose that follows passes the same caps and gates, and
+  in non-meal states V6 remains capped at what V1 would do. Neither model can *add* a dose or relax a
+  limit.
 - **Personalisation ≠ training.** Auto-config (§4) and the learned baselines (§6) derive *suggestions*
   from **your own history** — they tune settings, they do not learn the dose. Auto-config is
   suggestion-only, one-shot, and only ever tightens safety knobs.
