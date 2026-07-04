@@ -103,6 +103,9 @@ data class RT(
     var boostV5_confirmGate: String? = null,     // "pass" | "blocked" | "n/a" — OBSERVING→CONFIRMED dose-adequacy gate outcome this cycle
     var boostV5_prospectiveShot: Double? = null, // velocity-scaled prospective confirm shot (budget × CONFIRMED mult × velocityFactor), U — what the gate compares to the floor
     var boostV5_aggressionKnob: Double? = null,  // user's Aggression knob value (context for reading prospectiveShot)
+    // 2026-07-04 post-rescue meal-state cap telemetry — logged every cycle (shadow + active) so the
+    // 2026-07-10 live review can audit cap windows without CGM reconstruction.
+    var boostV5_postRescueWindow: Boolean? = null, // true when recentLowBG45Min < 75 — V1 tiers hypo-restrained AND V6 meal-state exemption suppressed (CONFIRMED/COMMITTED capped at V1's would-dose)
 
     // HR + sleep telemetry (2026-06-02) — emitted into NS devicestatus for retrospective
     // sleep-model tuning. Cadence = one observation per Boost cycle (~5 min), which

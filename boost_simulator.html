@@ -1477,26 +1477,36 @@ function v6FreshState() { return { state: 'IDLE', age: 0, maxScore: 0, maxOffset
 //  • asleep / boost-inactive → the override is SKIPPED and V1's base SMB is delivered (NOT 0 U);
 //  • rolling-60-min cumulative SMB cap reached → 0 U this cycle (cap 0 = disabled);
 //  • non-meal-state cap (2026-07-02): unless state is CONFIRMED or COMMITTED, the V6 dose is
-//    clamped to V1's would-dose — V6 may only OUT-dose V1 when it holds a meal hypothesis.
+//    clamped to V1's would-dose — V6 may only OUT-dose V1 when it holds a meal hypothesis;
+//  • post-rescue meal-state cap (2026-07-04): inside the post-rescue window the meal-state
+//    exemption is suppressed — CONFIRMED/COMMITTED are ALSO clamped to V1's would-dose, which
+//    V1's aligned tier guard (same 75 mg/dL threshold) has already hypo-restrained. NOTE: the
+//    app computes the window from a 45-min rolling BG minimum (recentLowBG45Min); the sim only
+//    has the 60-min "Lowest BG" slider, so we model it as recentLowBg < 75 — an approximation
+//    in the conservative direction (a low 45-60 min ago keeps the sim's cap on slightly longer).
 function v6Override(v6dec, v1WouldDose, opts) {
   opts = opts || {};
   if (opts.asleep) {
-    return { dose: v1WouldDose, mode: 'sleep', overridden: false, nonMealCapped: false,
+    return { dose: v1WouldDose, mode: 'sleep', overridden: false, nonMealCapped: false, postRescueCapped: false,
              note: `V6 override suppressed (sleep/night engaged) — V1 base SMB ${v1WouldDose.toFixed(2)}U delivered` };
   }
   if (opts.boostInactive) {
-    return { dose: v1WouldDose, mode: 'boost-inactive', overridden: false, nonMealCapped: false,
+    return { dose: v1WouldDose, mode: 'boost-inactive', overridden: false, nonMealCapped: false, postRescueCapped: false,
              note: `V6 override skipped (Boost inactive) — V1 base SMB ${v1WouldDose.toFixed(2)}U retained` };
   }
   if (opts.cumSmbCap > 0 && (opts.recentSmbVolume60Min || 0) >= opts.cumSmbCap) {
-    return { dose: 0, mode: 'cum-cap', overridden: true, nonMealCapped: false,
+    return { dose: 0, mode: 'cum-cap', overridden: true, nonMealCapped: false, postRescueCapped: false,
              note: `V6 suppressed — cumulative 60-min SMB cap reached (${(opts.recentSmbVolume60Min || 0).toFixed(2)}U ≥ ${opts.cumSmbCap.toFixed(2)}U)` };
   }
   const inMealState = v6dec.state === 'CONFIRMED' || v6dec.state === 'COMMITTED';
-  const dose = inMealState ? v6dec.finalDose : Math.min(v6dec.finalDose, v1WouldDose);
-  const nonMealCapped = dose < v6dec.finalDose - 1e-9;
-  return { dose, mode: 'override', overridden: true, inMealState, nonMealCapped,
-           note: nonMealCapped ? `non-meal-capped from ${v6dec.finalDose.toFixed(2)}U to V1's would-dose ${v1WouldDose.toFixed(2)}U (state ${v6dec.state})` : null };
+  const inPostRescueWindow = opts.recentLowBg != null && opts.recentLowBg < 75;
+  const dose = (inMealState && !inPostRescueWindow) ? v6dec.finalDose : Math.min(v6dec.finalDose, v1WouldDose);
+  const capped = dose < v6dec.finalDose - 1e-9;
+  const postRescueCapped = capped && inMealState;
+  const nonMealCapped = capped && !inMealState;
+  return { dose, mode: 'override', overridden: true, inMealState, inPostRescueWindow, nonMealCapped, postRescueCapped,
+           note: postRescueCapped ? `post-rescue capped from ${v6dec.finalDose.toFixed(2)}U to V1's ${v1WouldDose.toFixed(2)}U (recent low ${opts.recentLowBg.toFixed(0)})`
+               : nonMealCapped   ? `non-meal-capped from ${v6dec.finalDose.toFixed(2)}U to V1's would-dose ${v1WouldDose.toFixed(2)}U (state ${v6dec.state})` : null };
 }
 
 // Build the per-cycle V6 measurement bundle from sim inputs + a calcAll result.
@@ -2230,6 +2240,7 @@ function renderV6Tab(inp, r) {
   const ov = v6Override(v6, v1WouldDose, {
     asleep: m.asleep, boostInactive: false,
     cumSmbCap: inp.cumSmbCap, recentSmbVolume60Min: 0,
+    recentLowBg: inp.recentLowBg,
   });
 
   // Status pills
@@ -2242,6 +2253,7 @@ function renderV6Tab(inp, r) {
   if (v6.hard) pills.push({ text: `HARD GATE: ${v6.hard}`, cls: 'pill-red' });
   if (v6.gates.length) pills.push({ text: v6.gates.join(' · '), cls: 'pill-yellow' });
   if (ov.nonMealCapped) pills.push({ text: `non-meal-capped from ${fmt(v6.finalDose, 2)} U`, cls: 'pill-yellow' });
+  if (ov.postRescueCapped) pills.push({ text: ov.note, cls: 'pill-red' });
   if (ov.mode === 'cum-cap') pills.push({ text: 'cumulative 60-min SMB cap reached', cls: 'pill-red' });
   if (v6.renorm) pills.push({ text: 'ML null ≥3 cycles — weights renormalized ×1.25', cls: 'pill-gray' });
   else if (m.mlMealLikely == null) pills.push({ text: 'ML null (<3 cycles) — ML term contributes 0', cls: 'pill-gray' });
@@ -2836,6 +2848,7 @@ function computeProjection(inp, r) {
     const ov = v6Override(v6dec, v1WouldHere, {
       asleep, boostInactive: false,
       cumSmbCap: inp.cumSmbCap, recentSmbVolume60Min: vol60(v6Events, t),
+      recentLowBg: inp.recentLowBg,
     });
     if (ov.mode === 'cum-cap') v6CapHit = true;
     if (ov.dose >= 0.05) {

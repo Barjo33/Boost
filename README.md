@@ -132,15 +132,18 @@ Two risk inputs pull dosing back *before* trouble, not after:
   insulin (it can only ever reduce delivery — see §7), and
 - a **recent-low penalty** damps the meal-confirm score for a window after any low.
 
-Three further guards (July 2026) bound the state machine's edges:
+Four further guards (July 2026) bound the state machine's edges:
 
 - in **non-meal states** (IDLE / OBSERVING / RECOVERING) V6 **never doses more than V1 would** on the
   same inputs — only a confirmed meal hypothesis can out-dose V1;
 - the one-per-meal CONFIRMED catch-up shot is only spent when the velocity-scaled dose would **beat a
   routine hold cycle** — otherwise V6 keeps observing rather than burning its confirm on a trivial
-  upswing; and
+  upswing;
 - the single-cycle **fast-carb confirm is suppressed for an hour after any BG below 80**, so a
-  rescue-carb rebound is never treated as a new meal.
+  rescue-carb rebound is never treated as a new meal; and
+- for **45 minutes after any BG below 75**, even a confirmed meal hypothesis **can't out-dose the
+  hypo-restrained V1 base** — a rescue-carb rebound inherits V1's post-rescue restraint instead of
+  drawing a full V6 catch-up shot.
 
 Every stock AndroidAPS safety gate still runs underneath — most importantly the hard
 **`minGuardBG ≥ 80`** gate, which blocks dosing into a projected low regardless of any Boost setting.
