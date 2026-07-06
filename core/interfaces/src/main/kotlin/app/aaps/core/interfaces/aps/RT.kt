@@ -111,6 +111,11 @@ data class RT(
     // floor-rounding doses to zero mid-meal (Episode B: BG 268-277, six zero cycles). Read-only shadow
     // window to validate F=0.25 before activation.
     var boostV5_floorWouldAdd: Double? = null,   // extra U the Phase-3 composed floor (F=0.25) would have added this cycle; null = floor conditions unmet
+    // 2026-07-06 cumulative-cap telemetry gap: the rolling-60-min anti-stacking cap (enforced inside V1
+    // AND re-checked at the V6 override seam) was invisible in NS — a cap suppression was
+    // indistinguishable from a zero-dose decision. Written every Boost cycle at the override seam.
+    var boostV5_cumulativeCapU: Double? = null,  // operative rolling-60-min cumulative SMB cap (U, ApsBoostCumulativeSmbCap60Min); 0 = cap disabled
+    var boostV5_smbVol60Min: Double? = null,     // SMB volume delivered in the trailing 60 min (U) — the value the cap compares against (fail-closed: set AT cap on DB error)
 
     // HR + sleep telemetry (2026-06-02) — emitted into NS devicestatus for retrospective
     // sleep-model tuning. Cadence = one observation per Boost cycle (~5 min), which

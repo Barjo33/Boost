@@ -1312,6 +1312,13 @@ open class OpenAPSBoostPlugin @Inject constructor(
             // so the 2026-07-10 live review can audit windows without CGM reconstruction.
             val inPostRescueWindow = recentLowBG45Min < DetermineBasalBoost.POST_RESCUE_LOW_THRESHOLD_MGDL
             it.boostV5_postRescueWindow = inPostRescueWindow
+            // Cumulative-cap telemetry (2026-07-06): the rolling-60-min anti-stacking cap and the
+            // volume it compares against were previously invisible in NS — a cap suppression looked
+            // identical to a zero-dose decision (2026-07-06 forensic). Written EVERY Boost cycle
+            // (shadow + active); the same recentSmbVolume60Min already computed above (fail-closed
+            // to at-cap on DB error, so the telemetry mirrors the operative value exactly).
+            it.boostV5_cumulativeCapU = cumulativeSmbCap60Min
+            it.boostV5_smbVol60Min = recentSmbVolume60Min
             val v5decision = try {
                 boostV5Plugin.get().runShadow(
                     rT = it,
