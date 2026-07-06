@@ -72,6 +72,15 @@ data class V5Inputs(
     /** Fast-carb fast-path toggle (ApsBoostV5FastCarbConfirm). Single-cycle confirm on sharp+accel+score. */
     val fastCarbConfirmEnabled: Boolean = false,
     val sensorQualityOk: Boolean = true,
+    /** True when inside the post-rescue window (recentLowBG45Min < 75, computed at the override
+     *  seam — same source/threshold as V1's Fix A v2 tier guard). Gates the composed-floor
+     *  SHADOW off ([composedFloorWouldAdd], 2026-07-06); no dosing-path use here. */
+    val postRescueWindow: Boolean = false,
+    /** V1's would-dose SMB this cycle (rT.units BEFORE any V6 override), U. Used ONLY by the
+     *  composed-floor shadow: RECOVERING is a non-meal state capped at V1's would-dose at the
+     *  override seam (2026-07-02 non-meal-state cap), so the shadow bounds its floored dose the
+     *  same way. Null = bound unavailable (not applied). */
+    val v1WouldDoseU: Double? = null,
 
     // Reset triggers
     val profileSwitched: Boolean = false,
@@ -126,6 +135,11 @@ data class V5Decision(
     /** Velocity-scaled prospective confirm shot (budget × CONFIRMED mult × velocityFactor), U —
      *  the exact quantity the adequacy gate compares to the floor. → `boostV5_prospectiveShot`. */
     val prospectiveConfirmShot: Double = 0.0,
+    /** SHADOW-ONLY (2026-07-06): extra U the composed Phase-3 floor (F = [PHASE3_COMPOSED_FLOOR])
+     *  would have added this cycle vs the actual pipeline output; null when the floor conditions
+     *  are unmet. Never affects [finalDose]. See [composedFloorWouldAdd].
+     *  → `boostV5_floorWouldAdd`. */
+    val floorWouldAdd: Double? = null,
 )
 
 @Singleton
@@ -267,6 +281,24 @@ class DetermineBasalBoostV5 @Inject constructor() {
             mlHypoRisk = inputs.mlHypoRisk,
         ))
 
+        // 2026-07-06 composed Phase-3 floor — SHADOW ONLY, zero dosing-path effect. Computed here
+        // because this is the one place the whole composed multiplier stack (state mult ×
+        // velocityFactor × iobHeadroomBrake × decelerationBrake) has already been applied
+        // (phase3.finalDose). See composedFloorWouldAdd for the defect + backtest evidence.
+        val floorWouldAdd = composedFloorWouldAdd(
+            state = newHypothesisState.state,
+            bg = inputs.bg,
+            eventualBg = inputs.eventualBg,
+            targetBg = inputs.targetBg,
+            asleep = inputs.asleep,
+            postRescueWindow = inputs.postRescueWindow,
+            budgetU = budget.budget,
+            committedCapU = inputs.committedCapU,
+            v1WouldDoseU = inputs.v1WouldDoseU,
+            hardGateFired = phase3.reductions.hardGateFired != null,
+            actualFinalDose = phase3.finalDose,
+        )
+
         return V5Decision(
             finalDose = phase3.finalDose,
             score = scoreResult.score,
@@ -286,6 +318,7 @@ class DetermineBasalBoostV5 @Inject constructor() {
             ),
             confirmGate = confirmGate,
             prospectiveConfirmShot = prospectiveConfirmShot,
+            floorWouldAdd = floorWouldAdd,
         )
     }
 }
@@ -364,4 +397,82 @@ internal fun applyStateDoseCap(
     MealHypothesis.CONFIRMED -> dose.coerceAtMost(confirmedCapU)
     MealHypothesis.COMMITTED -> dose.coerceAtMost(committedCapU)
     else -> dose
+}
+
+// ===== 2026-07-06 composed Phase-3 floor (F = 0.25) — SHADOW ONLY =====
+
+/**
+ * Floor fraction of the (mlHypoRisk-damped) AggressionBudget the composed multiplier stack may
+ * not push the dose below on a meal-session high cycle.
+ *
+ * 2026-07-06 forensic + 40,180-cycle cohort backtest: on meal-session high cycles
+ * (CONFIRMED/COMMITTED/RECOVERING ∧ BG > 160 ∧ eventualBG > target+20 ∧ awake ∧ budget > 0) the
+ * composed post-budget multiplier — stateMult × velocityFactor × iobHeadroomBrake ×
+ * decelerationBrake — has MEDIAN 0.037. That is the V4-era "multiplicative brake stack"
+ * reassembled from individually-sane gates: each brake is calibrated alone, but their product
+ * drives the dose below one pump step, so it floor-rounds to ZERO for 30+ minutes mid-meal.
+ * Tim's Episode B: BG 268–277, six consecutive zero-dose cycles, ended 297 + a manual bolus.
+ * This is a pipeline defect (independent brakes multiplying), not a calibration issue.
+ *
+ * F = 0.25 backtests at +0.76 U/user-day with 16.6% pre-low incidence — the base rate, i.e. no
+ * added hypo exposure. SHADOW window first: [composedFloorWouldAdd] logs what the floor WOULD
+ * have added (`boostV5_floorWouldAdd`) to validate live before activation; delivered dosing is
+ * untouched.
+ */
+internal const val PHASE3_COMPOSED_FLOOR = 0.25
+
+/** Composed-floor shadow: BG must exceed this (mg/dL) — "high cycle" condition. */
+internal const val COMPOSED_FLOOR_MIN_BG_MGDL = 160.0
+
+/** Composed-floor shadow: eventualBG must exceed target by more than this (mg/dL). */
+internal const val COMPOSED_FLOOR_MIN_EVENTUAL_OFFSET_MGDL = 20.0
+
+/**
+ * SHADOW-ONLY: the extra insulin (U) the composed Phase-3 floor would have added this cycle,
+ * or null when the floor conditions are unmet. See [PHASE3_COMPOSED_FLOOR] for the 2026-07-06
+ * forensic/backtest rationale. Never touches the delivered dose.
+ *
+ * Conditions (ALL required, else null): meal session (CONFIRMED/COMMITTED/RECOVERING) ∧
+ * bg > 160 ∧ eventualBg > targetBg + 20 ∧ !asleep ∧ !postRescueWindow ∧ budget > 0. The
+ * budget > 0 condition makes the Episode-A guard hold BY CONSTRUCTION: a zero budget (e.g.
+ * baseInsulinReq = 0 near target, or a fully-damped hypo-risk cycle) can never produce a
+ * floored dose.
+ *
+ * Floored dose = min(budget × F, committedCapU) — one routine hold is the ceiling. Two honesty
+ * bounds so the shadow can't overstate what activation would deliver:
+ * - a fired Phase-3 HARD gate zeroes the dose regardless of any multiplier floor → wouldAdd 0;
+ * - RECOVERING is a NON-meal state at the override seam (capped at V1's would-dose since the
+ *   2026-07-02 non-meal-state cap) → the floored dose is bounded at [v1WouldDoseU] there.
+ */
+internal fun composedFloorWouldAdd(
+    state: MealHypothesis,
+    bg: Double,
+    eventualBg: Double,
+    targetBg: Double,
+    asleep: Boolean,
+    postRescueWindow: Boolean,
+    budgetU: Double,
+    committedCapU: Double,
+    v1WouldDoseU: Double?,
+    hardGateFired: Boolean,
+    actualFinalDose: Double,
+): Double? {
+    val mealSession = state == MealHypothesis.CONFIRMED ||
+        state == MealHypothesis.COMMITTED ||
+        state == MealHypothesis.RECOVERING
+    val conditionsMet = mealSession &&
+        bg > COMPOSED_FLOOR_MIN_BG_MGDL &&
+        eventualBg > targetBg + COMPOSED_FLOOR_MIN_EVENTUAL_OFFSET_MGDL &&
+        !asleep &&
+        !postRescueWindow &&
+        budgetU > 0.0
+    if (!conditionsMet) return null
+    // Hard gates (enableSMB pre-checks, minGuardBG, maxDelta) zero the dose regardless of any
+    // multiplier floor — the floored pipeline would deliver 0 too, so the floor adds nothing.
+    if (hardGateFired) return 0.0
+    val flooredDose = minOf(budgetU * PHASE3_COMPOSED_FLOOR, committedCapU)
+    // RECOVERING: v1-bound where applicable (non-meal-state cap at the override seam).
+    val bounded = if (state == MealHypothesis.RECOVERING && v1WouldDoseU != null)
+        minOf(flooredDose, v1WouldDoseU) else flooredDose
+    return kotlin.math.max(0.0, bounded - actualFinalDose)
 }

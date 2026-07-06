@@ -337,10 +337,13 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         microBolusAllowed: Boolean = true,
         flatBGsDetected: Boolean = false,
         asleep: Boolean = false,
+        // 2026-07-06: post-rescue window flag (recentLowBG45Min < 75), computed by the engine at
+        // the override seam. Gates the composed-floor SHADOW off; no dosing-path use in V5.
+        postRescueWindow: Boolean = false,
     ): V5Decision? {
         return try {
             val priorState = stateStore.load()
-            val inputs = buildInputs(rT, glucoseStatus, iobArray, oapsProfile, pumpBolusStep, activeMode, microBolusAllowed, flatBGsDetected, asleep)
+            val inputs = buildInputs(rT, glucoseStatus, iobArray, oapsProfile, pumpBolusStep, activeMode, microBolusAllowed, flatBGsDetected, asleep, postRescueWindow)
             val decision = determineBasalBoostV5.decide(inputs, priorState)
             stateStore.save(decision.newPersistedState)
 
@@ -366,6 +369,10 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             rT.boostV5_confirmGate = decision.confirmGate
             rT.boostV5_prospectiveShot = decision.prospectiveConfirmShot
             rT.boostV5_aggressionKnob = aggressionKnob
+            // 2026-07-06 composed-floor SHADOW — extra U the Phase-3 floor (F=0.25) would have
+            // added this cycle; null = floor conditions unmet. Read-only; validates the
+            // multiplicative-brake-stack fix before activation (see composedFloorWouldAdd KDoc).
+            rT.boostV5_floorWouldAdd = decision.floorWouldAdd
 
             val rtJson = v5DecisionToRtJson(decision)
             aapsLogger.info(LTag.APS, "BoostV5_RT: ${rtJson} actual_smb=${rT.units ?: 0.0} actual_insulinReq=${rT.insulinReq ?: 0.0} activeMode=$activeMode")
@@ -418,6 +425,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         microBolusAllowed: Boolean,
         flatBGsDetected: Boolean,
         asleep: Boolean,
+        postRescueWindow: Boolean,
     ): V5Inputs {
         // delta_accl with V3's denominator floor — `max(|shortAvgDelta|, 2.0)` — carried over
         // verbatim from V3 input preprocessing.
@@ -495,6 +503,10 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             exerciseActive = opb.v5_exerciseActive,
             inPostExerciseWindow = opb.v5_inPostExerciseWindow,
             asleep = asleep,
+            // 2026-07-06 composed-floor shadow inputs (see V5Inputs KDoc — SHADOW-only, no dosing use):
+            postRescueWindow = postRescueWindow,
+            // rT.units here is V1's dose — runShadow runs before the engine's V6 override seam.
+            v1WouldDoseU = rT.units,
             fastCarbConfirmEnabled = preferences.get(BooleanKey.ApsBoostV5FastCarbConfirm),
             sensorQualityOk = if (activeMode) !flatBGsDetected else true,
             profileSwitched = false,           // deferred reset trigger (microBolusAllowed gates actual dosing)

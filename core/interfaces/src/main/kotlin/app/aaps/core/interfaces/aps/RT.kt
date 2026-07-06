@@ -106,6 +106,11 @@ data class RT(
     // 2026-07-04 post-rescue meal-state cap telemetry — logged every cycle (shadow + active) so the
     // 2026-07-10 live review can audit cap windows without CGM reconstruction.
     var boostV5_postRescueWindow: Boolean? = null, // true when recentLowBG45Min < 75 — V1 tiers hypo-restrained AND V6 meal-state exemption suppressed (CONFIRMED/COMMITTED capped at V1's would-dose)
+    // 2026-07-06 composed-floor SHADOW — pipeline-defect fix candidate: on meal-session high cycles the
+    // composed post-budget multiplier (stateMult × velocity × iobBrake × decelBrake) has median 0.037,
+    // floor-rounding doses to zero mid-meal (Episode B: BG 268-277, six zero cycles). Read-only shadow
+    // window to validate F=0.25 before activation.
+    var boostV5_floorWouldAdd: Double? = null,   // extra U the Phase-3 composed floor (F=0.25) would have added this cycle; null = floor conditions unmet
 
     // HR + sleep telemetry (2026-06-02) — emitted into NS devicestatus for retrospective
     // sleep-model tuning. Cadence = one observation per Boost cycle (~5 min), which

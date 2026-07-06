@@ -1304,6 +1304,14 @@ open class OpenAPSBoostPlugin @Inject constructor(
             // Prior-cycle sleep state (updated end-of-invoke). Passed into V5 so the fast-carb
             // fast-path is gated OFF overnight, and reused below for the dose-level sleep gate.
             val v5Asleep = sleepStateCached.state == SleepStateDetector.SleepState.SLEEPING
+            // Post-rescue window (2026-07-04; hoisted above runShadow 2026-07-06 so V5's composed-floor
+            // shadow can read it) — the SAME source value (recentLowBG45Min, computed once in step 6
+            // above and passed into determine_basal) and the SAME shared threshold as V1's Fix A v2
+            // post-rescue tier guard, so this flag is true exactly when V1's own dose is the
+            // hypo-restrained one. Logged every cycle as boostV5_postRescueWindow (shadow and active)
+            // so the 2026-07-10 live review can audit windows without CGM reconstruction.
+            val inPostRescueWindow = recentLowBG45Min < DetermineBasalBoost.POST_RESCUE_LOW_THRESHOLD_MGDL
+            it.boostV5_postRescueWindow = inPostRescueWindow
             val v5decision = try {
                 boostV5Plugin.get().runShadow(
                     rT = it,
@@ -1314,7 +1322,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     activeMode = v5Active,
                     microBolusAllowed = microBolusAllowed,
                     flatBGsDetected = flatBGsDetected,
-                    asleep = v5Asleep
+                    asleep = v5Asleep,
+                    postRescueWindow = inPostRescueWindow
                 )
             } catch (t: Throwable) {
                 aapsLogger.error(LTag.APS, "V5 shadow invocation failed", t)
@@ -1329,13 +1338,6 @@ open class OpenAPSBoostPlugin @Inject constructor(
             // returns — so re-check the SAME cap here (same prior-volume semantics as V1) or V5 could
             // deliver on a cycle V1 suspended for cumulative volume. (Review 2026-06-26, MEDIUM.)
             val cumulativeCapReached = cumulativeSmbCap60Min > 0.0 && recentSmbVolume60Min >= cumulativeSmbCap60Min
-            // Post-rescue window (2026-07-04) — the SAME source value (recentLowBG45Min, computed once
-            // in step 6 above and passed into determine_basal) and the SAME shared threshold as V1's
-            // Fix A v2 post-rescue tier guard, so this flag is true exactly when V1's own dose is the
-            // hypo-restrained one. Logged every cycle as boostV5_postRescueWindow (shadow and active)
-            // so the 2026-07-10 live review can audit windows without CGM reconstruction.
-            val inPostRescueWindow = recentLowBG45Min < DetermineBasalBoost.POST_RESCUE_LOW_THRESHOLD_MGDL
-            it.boostV5_postRescueWindow = inPostRescueWindow
             // Boost-inactive gate (2026-07-02): the V6/V5 override may replace the SMB ONLY when Boost
             // is active this cycle. When boostActive is false — night/sleep period, high temp target, or
             // the step-based sleep-in has fired — fall back to V1's base oref1 SMB (which respects night
