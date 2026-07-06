@@ -180,7 +180,9 @@ class DetermineBasalBoostV5 @Inject constructor() {
         // velocityFactor is hoisted here (pure fn of inputs) and reused by Phase 2.5 below.
         val velocityFactor = velocityScaledDoseFactor(inputs.cumulativeRise30min)
         val prospectiveConfirmShot = budget.budget * mealActionMultiplier(MealHypothesis.CONFIRMED, inputs.aggressionUserKnob) * velocityFactor
-        val confirmDoseFloor = minOf(inputs.committedCapU, CONFIRM_DOSE_FLOOR_MAX_FRAC_OF_CONFIRMED_CAP * inputs.confirmedCapU)
+        // 2026-07-06: committedCap term of the floor is PINNED at the factory default (0.5 U) so a
+        // user-raised committedCap can't silently tighten the confirm gate — see confirmDoseFloorU.
+        val confirmDoseFloor = confirmDoseFloorU(inputs.committedCapU, inputs.confirmedCapU)
         val confirmDoseAdequate = prospectiveConfirmShot > confirmDoseFloor
 
         // 2026-07-03 sustained-score early confirm input: was LAST cycle's score already

@@ -123,6 +123,36 @@ internal const val CONFIRM_MIN_OBSERVING_AGE_SCORE_READY = CONFIRM_MIN_OBSERVING
 // of confirmedCapU so a manual committedCap ≥ confirmedCap can't make the gate unsatisfiable (which
 // would silently disable V6's meal response). See DetermineBasalBoostV5.decide().
 internal const val CONFIRM_DOSE_FLOOR_MAX_FRAC_OF_CONFIRMED_CAP = 0.8
+
+/**
+ * 2026-07-06 confirm-floor pin: the committedCapU term of the confirm dose floor is pinned at
+ * the FACTORY default COMMITTED cap (0.5 U — `DoubleKey.ApsBoostV5CommittedCapU` default),
+ * regardless of the live preference value.
+ *
+ * The floor's job is "the commit-shot must beat one ROUTINE hold". A user-RAISED committedCap
+ * describes a bigger PERMITTED hold, not a bigger routine one — so it must not move the floor.
+ * Without the pin, raising committedCap silently TIGHTENS the confirm gate: the 2026-07-06
+ * backtest on live telemetry showed a 0.5 → 1.0 cap raise would newly block ~18% of confirms
+ * (prospective shots ≤ 1.0 U) — exactly the mid-meal starvation the gate exists to prevent.
+ * A user-LOWERED committedCap still lowers the floor (min semantics preserved — see
+ * [confirmDoseFloorU]).
+ */
+internal const val CONFIRM_FLOOR_COMMITTED_TERM_MAX = 0.5
+
+/**
+ * The OBSERVING→CONFIRMED dose-adequacy floor (U):
+ * `min(min(committedCapU, CONFIRM_FLOOR_COMMITTED_TERM_MAX), 0.8 × confirmedCapU)`.
+ *
+ * The committedCap term is pinned at the factory default ([CONFIRM_FLOOR_COMMITTED_TERM_MAX])
+ * so raising the COMMITTED cap can't tighten the confirm gate (2026-07-06 — see the pin KDoc);
+ * lowering it below the pin still lowers the floor. The confirmedCap clamp
+ * ([CONFIRM_DOSE_FLOOR_MAX_FRAC_OF_CONFIRMED_CAP], 2026-07-02) keeps the gate satisfiable.
+ */
+internal fun confirmDoseFloorU(committedCapU: Double, confirmedCapU: Double): Double =
+    minOf(
+        minOf(committedCapU, CONFIRM_FLOOR_COMMITTED_TERM_MAX),
+        CONFIRM_DOSE_FLOOR_MAX_FRAC_OF_CONFIRMED_CAP * confirmedCapU,
+    )
 internal const val FALL_BACK_TO_IDLE_SCORE = 0.36               // calibrated: 0.30 → 0.36
 internal const val FALL_BACK_TO_IDLE_AGE = 2                    // hysteresis: falls back when TOTAL OBSERVING age ≥ 2 AND the CURRENT cycle is below threshold (not "2 consecutive below" — one sub-threshold blip after age 2 exits)
 internal const val CONFIRMED_TO_COMMITTED_AGE = 0               // 2026-05-26 Fix 6: 1 → 0 (true single-cycle commit; previously CONFIRMED stayed for 2 invokes due to age semantics, allowing 2× CONFIRMED-mult doses)

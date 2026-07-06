@@ -58,6 +58,32 @@ class MealHypothesisDoseGateTest {
         assertThat(confirmEligibleExceptDoseGate(observedReady().copy(ageCycles = 1), score, eventualBg, targetBg)).isFalse()
     }
 
+    // ── 2026-07-06 confirm-floor pin (confirmDoseFloorU) ───────────────────────────────────────
+    // The committedCap term is pinned at the FACTORY default (CONFIRM_FLOOR_COMMITTED_TERM_MAX =
+    // 0.5 U): the floor means "shot must beat one ROUTINE hold" — a user-RAISED committedCap is a
+    // bigger PERMITTED hold, not a bigger routine one. Backtest 2026-07-06: without the pin, a
+    // 0.5 → 1.0 cap raise would newly block ~18% of live confirms.
+
+    @Test fun `floor unchanged at the factory committedCap (0_5)`() {
+        // 0.8 × confirmedCap (2.5) = 2.0 does not bind; committedCap term = min(0.5, pin 0.5) = 0.5.
+        assertThat(confirmDoseFloorU(committedCapU = 0.5, confirmedCapU = 2.5)).isWithin(1e-12).of(0.5)
+    }
+
+    @Test fun `RAISED committedCap does NOT raise the floor (pin binds)`() {
+        // A 0.5 → 1.0 cap raise: without the pin the floor would double to 1.0 and newly block
+        // every confirm shot ≤ 1.0 U. With the pin it stays at the factory 0.5.
+        assertThat(confirmDoseFloorU(committedCapU = 1.0, confirmedCapU = 2.5)).isWithin(1e-12).of(0.5)
+    }
+
+    @Test fun `LOWERED committedCap still lowers the floor (min semantics preserved)`() {
+        assertThat(confirmDoseFloorU(committedCapU = 0.3, confirmedCapU = 2.5)).isWithin(1e-12).of(0.3)
+    }
+
+    @Test fun `confirmedCap clamp still binds when smaller than the pinned term`() {
+        // 0.8 × confirmedCap (0.5) = 0.4 < pinned committedCap term (0.5) → floor 0.4.
+        assertThat(confirmDoseFloorU(committedCapU = 0.5, confirmedCapU = 0.5)).isWithin(1e-12).of(0.4)
+    }
+
     @Test fun `fast-carb path is NOT gated by dose adequacy`() {
         // Sharp, corroborated rise with the toggle on still confirms in one cycle even when
         // confirmDoseAdequate=false — the fast-path is intentionally exempt.
