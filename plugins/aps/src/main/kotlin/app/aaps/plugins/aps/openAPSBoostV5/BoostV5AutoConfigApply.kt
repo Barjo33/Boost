@@ -223,6 +223,62 @@ internal object BoostV5AutoConfigApply {
     }
 
     /**
+     * Auto-config persistence schema version — THE single hook future re-migrations plug into
+     * (extend the `if (storedVersion < N)` chain in [runSchemaMigrations] and bump this).
+     *
+     * Why it exists (the promoted-APK-window incident, 2026-07-06): the per-knob resolution
+     * (b2c0705e5e) shipped in the promoted APK `Boost-V6-experimental-promoted-2026-07-06.apk`
+     * WITHOUT the historical-factory amendments in this file. That build's era-blind [isUserTuned]
+     * classifies a stored OLD-era factory value (committedCap 0.25 / confirmedCap 1.0 /
+     * cumulative 6.0) as "user-tuned" and persists the knob's resolved flag — terminally, since
+     * resolved knobs are never revisited. Installing the amended build afterwards would NOT rescue
+     * them without this: on startup, when the stored schema version is < 2, every resolved knob
+     * whose stored value now classifies as at-factory (any era) has its resolved flag CLEARED so
+     * the normal per-knob derivation picks it up next cycle; genuinely off-all-factories values
+     * stay resolved. Then the current version is stamped. Idempotent; a fresh install just stamps.
+     *
+     * Versions: 0 = pre-versioning (everything up to and incl. the promoted 2026-07-06 APK);
+     * 2 = historical-factory re-audit of persisted resolved flags. (1 is skipped so the version
+     * mirrors the amendment generation; nothing ever stamped 1.)
+     */
+    const val AUTO_CONFIG_SCHEMA_VERSION = 2
+
+    /**
+     * Versioned re-migration of persisted per-knob resolution state (see
+     * [AUTO_CONFIG_SCHEMA_VERSION] for the incident that motivated it). The b2c0705e5e-era
+     * persistence shape stores ONLY a boolean resolved flag per knob
+     * (`boost_v5_autoconfig_resolved_<prefKey>`) with no outcome detail, so applied and
+     * kept-user-tuned are indistinguishable — the audit therefore re-runs the (now
+     * historical-factory-aware) [isUserTuned] on every resolved knob's stored value and clears the
+     * flag when the value is at ANY era's factory. A knob auto-APPLIED at a factory-coincident
+     * value (e.g. Aggression 1.0) gets re-opened too, which is harmless: re-derivation is
+     * suggestion-only and still respects tuned values.
+     *
+     * Runs at most once per schema bump: no-op (empty result, no version write) when the stored
+     * version is current; otherwise clears + stamps [AUTO_CONFIG_SCHEMA_VERSION]. Returns the
+     * re-opened keys for logging. Pure — the lambdas inject preference I/O.
+     */
+    fun runSchemaMigrations(
+        storedVersion: Int,
+        keys: List<DoubleKey>,
+        isResolved: (DoubleKey) -> Boolean,
+        storedValue: (DoubleKey) -> Double?,
+        clearResolved: (DoubleKey) -> Unit,
+        setVersion: (Int) -> Unit
+    ): List<DoubleKey> {
+        if (storedVersion >= AUTO_CONFIG_SCHEMA_VERSION) return emptyList()
+        val cleared = mutableListOf<DoubleKey>()
+        if (storedVersion < 2) {
+            // v2: re-open knobs the era-blind isUserTuned mis-resolved at an old factory value.
+            cleared += keys.filter { isResolved(it) && !isUserTuned(it, storedValue(it)) }
+                .onEach(clearResolved)
+        }
+        // Future re-migrations: add `if (storedVersion < 3) { ... }` here and bump the constant.
+        setVersion(AUTO_CONFIG_SCHEMA_VERSION)
+        return cleared
+    }
+
+    /**
      * One-time migration from the legacy global "auto-config done" flag to per-key resolution.
      * Called when the legacy flag is found set: marks as resolved ONLY the keys whose stored value
      * differs from every factory default the key ever shipped with (they were plausibly applied by

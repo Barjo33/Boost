@@ -31,6 +31,7 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanComposedKey
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.validators.preferences.AdaptiveDoublePreference
@@ -180,6 +181,24 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             }
             preferences.put(BooleanKey.ApsBoostV5AutoConfigDone, false)
             aapsLogger.info(LTag.APS, "BoostV5 auto-config: migrated legacy done-flag → per-key; resolved=$migrated")
+        }
+
+        // Versioned re-migration of the persisted resolved flags (idempotent; stamps the schema
+        // version; MUST run before the steady-state early-return — a stranded install has every
+        // knob resolved). v2 rescues knobs the promoted 2026-07-06 APK's era-blind isUserTuned
+        // mis-resolved at OLD factory values — see BoostV5AutoConfigApply.AUTO_CONFIG_SCHEMA_VERSION.
+        BoostV5AutoConfigApply.runSchemaMigrations(
+            storedVersion = preferences.get(IntNonKey.BoostV5AutoConfigSchemaVersion),
+            keys = BoostV5AutoConfigApply.managedDoubleKeys,
+            isResolved = { isResolved(it.key) },
+            storedValue = { preferences.getIfExists(it) },
+            clearResolved = { preferences.remove(BooleanComposedKey.BoostV5AutoConfigResolved, it.key) },
+            setVersion = { preferences.put(IntNonKey.BoostV5AutoConfigSchemaVersion, it) }
+        ).forEach {
+            aapsLogger.info(
+                LTag.APS,
+                "BoostV5 auto-config re-migration v2: ${it.key} value ${preferences.getIfExists(it)} matches historical factory — re-opened for derivation"
+            )
         }
 
         // Steady state: everything resolved → nothing to do (cheap check, no data pulls).

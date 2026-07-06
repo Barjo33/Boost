@@ -340,6 +340,78 @@ class BoostV5AutoConfigTest {
         assertThat(res.appliedKeys()).containsExactlyElementsIn(BoostV5AutoConfigApply.managedDoubleKeys)
     }
 
+    // ── Versioned re-migration (schema v2 — the promoted-APK-window incident, 2026-07-06) ──
+    // The b2c0705e5e build shipped WITHOUT historical-factory awareness: its era-blind isUserTuned
+    // resolved knobs stored at OLD factory values (0.25/1.0/6.0) as "kept-user-tuned" — terminally.
+    // The b2c0705e5e-era persistence is a bare boolean resolved flag per knob (no outcome detail),
+    // so the v2 audit re-runs the NEW isUserTuned on every resolved knob and re-opens the
+    // at-any-factory ones.
+
+    /** Runs the schema migration against a [FakeStore] with an explicit persisted version. */
+    private class VersionedStore(vararg preset: Pair<DoubleKey, Double>) {
+        val f = FakeStore(*preset)
+        var version = 0                                        // pre-versioning installs have no stamp
+        fun migrate() = BoostV5AutoConfigApply.runSchemaMigrations(
+            storedVersion = version,
+            keys = BoostV5AutoConfigApply.managedDoubleKeys,
+            isResolved = { it in f.resolved },
+            storedValue = { f.store[it] },
+            clearResolved = { f.resolved -= it },
+            setVersion = { version = it }
+        )
+    }
+
+    @Test fun `re-migration v2 re-opens a knob the era-blind build stranded at an old factory value`() {
+        // Stranded path: the promoted APK saw committedCap 0.25 (old-era factory), judged it
+        // user-tuned, and persisted the resolved flag. The v2 audit must clear the flag so the
+        // normal derivation applies the formula value on the next cycle.
+        val key = DoubleKey.ApsBoostV5CommittedCapU
+        val v = VersionedStore(key to 0.25)
+        v.f.resolved += key                                    // as persisted by the era-blind build
+        val cleared = v.migrate()
+        assertThat(cleared).containsExactly(key)
+        assertThat(v.f.resolved).doesNotContain(key)
+        assertThat(v.version).isEqualTo(BoostV5AutoConfigApply.AUTO_CONFIG_SCHEMA_VERSION)
+        // Next cycle: the ordinary per-knob path now derives and applies the formula value.
+        val s = BoostV5AutoConfig.compute(profile())!!
+        val res = v.f.apply(s, safeTbr)
+        assertThat(res.appliedKeys()).contains(key)
+        assertThat(v.f.store[key]).isEqualTo(s.committedCapU)
+    }
+
+    @Test fun `re-migration v2 keeps a genuinely user-tuned knob resolved`() {
+        val key = DoubleKey.ApsBoostV5CommittedCapU
+        val v = VersionedStore(key to 0.8)                     // 0.8 ∉ {0.25, 0.5} — really tuned
+        v.f.resolved += key
+        val cleared = v.migrate()
+        assertThat(cleared).isEmpty()
+        assertThat(v.f.resolved).contains(key)
+        assertThat(v.version).isEqualTo(BoostV5AutoConfigApply.AUTO_CONFIG_SCHEMA_VERSION)
+        // And the kept value survives the next cycle untouched.
+        v.f.apply(BoostV5AutoConfig.compute(profile())!!, safeTbr)
+        assertThat(v.f.store[key]).isEqualTo(0.8)
+    }
+
+    @Test fun `re-migration v2 is a no-op on a fresh install (still stamps the version)`() {
+        val v = VersionedStore()                               // nothing stored, nothing resolved
+        val cleared = v.migrate()
+        assertThat(cleared).isEmpty()
+        assertThat(v.f.resolved).isEmpty()
+        assertThat(v.f.store).isEmpty()
+        assertThat(v.version).isEqualTo(BoostV5AutoConfigApply.AUTO_CONFIG_SCHEMA_VERSION)
+    }
+
+    @Test fun `re-migration runs once — a stamped version is never re-audited`() {
+        val key = DoubleKey.ApsBoostV5CommittedCapU
+        val v = VersionedStore(key to 0.25)
+        v.f.resolved += key
+        assertThat(v.migrate()).containsExactly(key)           // first startup: cleared + stamped
+        // The knob resolves again at a factory-coincident value (e.g. auto-applied and later reset).
+        v.f.resolved += key
+        assertThat(v.migrate()).isEmpty()                      // second startup: version 2 → no re-clear
+        assertThat(v.f.resolved).contains(key)
+    }
+
     // ── Migration from the legacy global done-flag ──
 
     @Test fun `legacy-flag migration resolves only knobs off their factory default`() {
