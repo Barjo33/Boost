@@ -28,6 +28,7 @@ import app.aaps.core.interfaces.notifications.Notification
 import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.BooleanComposedKey
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.UnitDoubleKey
@@ -144,14 +145,43 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         openAPSBoostEngine.get().runEngine(initiator, tempBasalFallback, v5Active = true)
     }
 
+    /** Per-knob auto-config resolution marks (argument = the managed preference's key string). */
+    private fun isResolved(prefKey: String) = preferences.get(BooleanComposedKey.BoostV5AutoConfigResolved, prefKey)
+    private fun markResolved(prefKey: String) = preferences.put(BooleanComposedKey.BoostV5AutoConfigResolved, prefKey, value = true)
+
     /**
-     * Populate the V5 knobs from the user's last-14-day V1 dosing + glycaemia the first time V5 runs
-     * active. Suggestion-only: writes a knob ONLY if the user hasn't already set it (getIfExists ==
-     * null). If there isn't enough history yet, does nothing and leaves the flag UNSET so it retries
-     * on a later cycle once data accrues. Never changes the dosing path itself — only its settings.
+     * Populate the V5 knobs from the user's last-14-day V1 dosing + glycaemia when V5/V6 runs
+     * active. Suggestion-only: writes a knob ONLY while the user hasn't changed it from its factory
+     * default (a value merely *persisted at* the default — settings import, pref-dialog OK — does
+     * not block it). Each knob resolves individually (see [BoostV5AutoConfigApply]): applied once,
+     * or skipped-because-user-tuned, and then never revisited. If there isn't enough history yet,
+     * nothing resolves and every open knob retries on a later cycle once data accrues. Never
+     * changes the dosing path itself — only its settings.
      */
     private fun maybeAutoConfigure() {
-        if (preferences.get(BooleanKey.ApsBoostV5AutoConfigDone)) return
+        // Migration from the legacy global one-shot flag (raw read — get() would mask it in simple
+        // mode): mark resolved ONLY knobs whose stored value differs from the factory default (they
+        // were plausibly applied by the old run, or user-set — don't rewrite them). Knobs still AT
+        // factory default become eligible again — rescues installs where the old key-presence test
+        // or a consumed/imported flag wrongly skipped them (field case: Roman, committedCap stuck
+        // at factory 0.5 with a derived 1.24). Clearing the flag makes the migration one-shot.
+        if (preferences.getIfExists(BooleanKey.ApsBoostV5AutoConfigDone) == true) {
+            val migrated = BoostV5AutoConfigApply.migrateLegacyDoneFlag(
+                BoostV5AutoConfigApply.managedDoubleKeys,
+                storedValue = { preferences.getIfExists(it) },
+                markResolved = { markResolved(it.key) }
+            ).map { it.key }.toMutableList()
+            val fc = BooleanKey.ApsBoostV5FastCarbConfirm
+            if (preferences.getIfExists(fc).let { it != null && it != fc.defaultValue }) {
+                markResolved(fc.key); migrated += fc.key
+            }
+            preferences.put(BooleanKey.ApsBoostV5AutoConfigDone, false)
+            aapsLogger.info(LTag.APS, "BoostV5 auto-config: migrated legacy done-flag → per-key; resolved=$migrated")
+        }
+
+        // Steady state: everything resolved → nothing to do (cheap check, no data pulls).
+        val allKeys = BoostV5AutoConfigApply.managedDoubleKeys.map { it.key } + BooleanKey.ApsBoostV5FastCarbConfirm.key
+        if (allKeys.all { isResolved(it) }) return
 
         val now = dateUtil.now()
         val start = now - BoostV5AutoConfig.LOOKBACK_DAYS * 24L * 60 * 60 * 1000
@@ -189,24 +219,32 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             )
         )
         if (suggestion == null) {
+            // Nothing resolves here: every open knob stays eligible and genuinely retries next cycle.
             aapsLogger.info(LTag.APS, "BoostV5 auto-config: insufficient V1 history (days=$daysWithData, bg=$n) — will retry")
             return
         }
 
-        // Apply only knobs the user (or a preset) hasn't already set. Per-knob & independent — a
-        // preset value is KEPT and never blocks the others (see BoostV5AutoConfigApply, unit-tested).
+        // Apply only knobs the user (or a preset) hasn't TUNED (stored value differs from factory
+        // default). Per-knob & independent — a tuned value is KEPT and never blocks the others; each
+        // knob resolves (applied or skipped) exactly once (see BoostV5AutoConfigApply, unit-tested).
         val applied = mutableListOf<String>()
         BoostV5AutoConfigApply.applyAutoConfig(
             BoostV5AutoConfigApply.managedDoubleKnobs(suggestion),
-            isSet = { preferences.getIfExists(it) != null },
-            put = { key, value -> preferences.put(key, value) }
+            isResolved = { isResolved(it.key) },
+            storedValue = { preferences.getIfExists(it) },
+            put = { key, value -> preferences.put(key, value) },
+            markResolved = { markResolved(it.key) }
         ).forEach { (key, value) -> applied += "${key.name.removePrefix("ApsBoostV5").removePrefix("ApsBoost")}=$value" }
-        if (preferences.getIfExists(BooleanKey.ApsBoostV5FastCarbConfirm) == null) {
-            preferences.put(BooleanKey.ApsBoostV5FastCarbConfirm, suggestion.fastCarbConfirm)
-            applied += "fastCarbConfirm=${suggestion.fastCarbConfirm}"
+        val fc = BooleanKey.ApsBoostV5FastCarbConfirm
+        if (!isResolved(fc.key)) {
+            val stored = preferences.getIfExists(fc)
+            if (stored == null || stored == fc.defaultValue) {
+                preferences.put(fc, suggestion.fastCarbConfirm)
+                if (suggestion.fastCarbConfirm != fc.defaultValue) applied += "fastCarbConfirm=${suggestion.fastCarbConfirm}"
+            }
+            markResolved(fc.key)
         }
 
-        preferences.put(BooleanKey.ApsBoostV5AutoConfigDone, true)
         aapsLogger.info(LTag.APS, "BoostV5 auto-config applied [$applied]; rationale: ${suggestion.rationale}")
         // Only surface a banner if we ACTUALLY changed something. If every knob was already tuned by
         // the user, applyAutoConfig skips it (applied is empty) — announcing "configured" then

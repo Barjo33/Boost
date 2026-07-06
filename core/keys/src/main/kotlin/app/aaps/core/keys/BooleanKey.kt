@@ -96,8 +96,9 @@ enum class BooleanKey(
     // score-corroborated rise while awake & not exercising. Replay-validated (backtesting/replay.py).
     // Default ON (it's the fix for the 2026-06-16 fast-carb crash); toggle OFF = instant revert.
     ApsBoostV5FastCarbConfirm("boost_v5_fast_carb_confirm", true, defaultedBySM = true),
-    // Internal one-shot flag: set true once BoostV5AutoConfig has populated the V5 knobs from the
-    // user's V1 history on first activation. Not user-facing. 2026-06-26.
+    // LEGACY (2026-06-26..2026-07): global auto-config one-shot flag. Superseded by per-knob
+    // BooleanComposedKey.BoostV5AutoConfigResolved; kept only so existing installs migrate
+    // (OpenAPSBoostV5Plugin reads it raw once, marks tuned knobs resolved, then clears it).
     ApsBoostV5AutoConfigDone("boost_v5_autoconfig_done", false, defaultedBySM = true),
     ApsBoostPostExerciseRecoveryEnabled("boost_post_exercise_recovery_enabled", false, defaultedBySM = true),
     // Activity-load SHADOW (2026-06-16) — when ON, Boost reads HC steps, learns a personal daily-step

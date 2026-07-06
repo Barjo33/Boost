@@ -93,12 +93,27 @@ class BoostV5AutoConfigTest {
         assertThat(s.rationale.any { it.contains("Aggression") }).isTrue()
     }
 
-    // ── Application of the suggestion (BoostV5AutoConfigApply): the preset-skip invariant ──
-    // These exercise the SAME helper OpenAPSBoostV5Plugin.maybeAutoConfigure now uses, so they lock
-    // the behaviour Tim asked to confirm: presetting one V6 knob must not block the others.
+    // ── Application of the suggestion (BoostV5AutoConfigApply): per-key resolution ──
+    // These exercise the SAME helper OpenAPSBoostV5Plugin.maybeAutoConfigure uses, so they lock:
+    // tuning one V6 knob must not block the others; each knob resolves (applied once, or
+    // skipped-because-user-tuned) exactly once; insufficient data leaves knobs unresolved.
+
+    /** Minimal in-memory stand-in for the plugin's preference + resolution-mark I/O. */
+    private class FakeStore(vararg preset: Pair<DoubleKey, Double>) {
+        val store = linkedMapOf(*preset)
+        val resolved = mutableSetOf<DoubleKey>()
+        fun apply(knobs: List<Pair<DoubleKey, Double>>) = BoostV5AutoConfigApply.applyAutoConfig(
+            knobs,
+            isResolved = { it in resolved },
+            storedValue = { store[it] },
+            put = { k, v -> store[k] = v },
+            markResolved = { resolved += it }
+        )
+    }
 
     @Test fun `managed knobs cover exactly the auto-configured doubles`() {
         val keys = BoostV5AutoConfigApply.managedDoubleKnobs(BoostV5AutoConfig.compute(profile())!!).map { it.first }
+        assertThat(keys).containsExactlyElementsIn(BoostV5AutoConfigApply.managedDoubleKeys)
         assertThat(keys).containsExactly(
             DoubleKey.ApsBoostV5Aggression, DoubleKey.ApsBoostV5HypoCaution,
             DoubleKey.ApsBoostV5ConfirmedCapU, DoubleKey.ApsBoostV5CommittedCapU,
@@ -106,28 +121,119 @@ class BoostV5AutoConfigTest {
         )
     }
 
-    @Test fun `with nothing preset, every knob is configured`() {
-        val knobs = BoostV5AutoConfigApply.managedDoubleKnobs(BoostV5AutoConfig.compute(profile())!!)
-        val store = linkedMapOf<DoubleKey, Double>()
-        val applied = BoostV5AutoConfigApply.applyAutoConfig(knobs, isSet = { store.containsKey(it) }, put = { k, v -> store[k] = v })
+    @Test fun `with nothing preset, every knob is configured and resolved — including the cumulative cap`() {
+        val s = BoostV5AutoConfig.compute(profile())!!
+        val knobs = BoostV5AutoConfigApply.managedDoubleKnobs(s)
+        val f = FakeStore()
+        val applied = f.apply(knobs)
         assertThat(applied.map { it.first }).containsExactlyElementsIn(knobs.map { it.first })
-        assertThat(store.keys).containsExactlyElementsIn(knobs.map { it.first })
+        assertThat(f.store.keys).containsExactlyElementsIn(knobs.map { it.first })
+        assertThat(f.resolved).containsExactlyElementsIn(knobs.map { it.first })
+        // The cumulative 60-min SMB cap is derived, WRITTEN, and part of the applied (=notified) list.
+        assertThat(f.store[DoubleKey.ApsBoostCumulativeSmbCap60Min]).isEqualTo(s.cumulativeSmbCap60MinU)
+        assertThat(applied).contains(DoubleKey.ApsBoostCumulativeSmbCap60Min to s.cumulativeSmbCap60MinU)
     }
 
-    @Test fun `presetting one knob keeps it and still configures all the others`() {
+    @Test fun `tuning one knob keeps it (resolved-skipped) and still configures all the others`() {
         val knobs = BoostV5AutoConfigApply.managedDoubleKnobs(BoostV5AutoConfig.compute(profile())!!)
-        val preset = DoubleKey.ApsBoostCumulativeSmbCap60Min   // someone preset the SMB cap
+        val preset = DoubleKey.ApsBoostCumulativeSmbCap60Min   // user tuned the SMB cap (≠ default 10.0)
         val presetValue = 2.5
-        val store = linkedMapOf(preset to presetValue)         // already present in prefs
-        val applied = BoostV5AutoConfigApply.applyAutoConfig(
-            knobs, isSet = { store.containsKey(it) }, put = { k, v -> store[k] = v }
-        )
+        val f = FakeStore(preset to presetValue)
+        val applied = f.apply(knobs)
         val others = knobs.map { it.first }.filter { it != preset }
-        // preset knob NOT applied; every other knob IS
+        // tuned knob NOT applied; every other knob IS; tuned knob still RESOLVED (never revisited)
         assertThat(applied.map { it.first }).containsExactlyElementsIn(others)
         assertThat(applied.map { it.first }).doesNotContain(preset)
-        // preset value untouched; all others now written with the suggested value
-        assertThat(store[preset]).isEqualTo(presetValue)
-        knobs.filter { it.first != preset }.forEach { (k, v) -> assertThat(store[k]).isEqualTo(v) }
+        assertThat(f.resolved).contains(preset)
+        // tuned value untouched; all others now written with the suggested value
+        assertThat(f.store[preset]).isEqualTo(presetValue)
+        knobs.filter { it.first != preset }.forEach { (k, v) -> assertThat(f.store[k]).isEqualTo(v) }
+    }
+
+    @Test fun `a knob persisted AT its factory default does not block the suggestion`() {
+        // Roman's failure mode with the old presence test: committedCap existed in storage at the
+        // stock 0.5 (settings import / pref-dialog OK) and was skipped forever. Value == default
+        // means nobody objected — the suggestion must still be applied.
+        val s = BoostV5AutoConfig.compute(profile())!!
+        val knobs = BoostV5AutoConfigApply.managedDoubleKnobs(s)
+        val key = DoubleKey.ApsBoostV5CommittedCapU
+        val f = FakeStore(key to key.defaultValue)             // present, but stock
+        val applied = f.apply(knobs)
+        assertThat(applied.map { it.first }).contains(key)
+        assertThat(f.store[key]).isEqualTo(s.committedCapU)
+    }
+
+    @Test fun `once applied, a knob is resolved and never re-applied`() {
+        val knobs = BoostV5AutoConfigApply.managedDoubleKnobs(BoostV5AutoConfig.compute(profile())!!)
+        val f = FakeStore()
+        f.apply(knobs)
+        // User later sets a knob BACK to something (even the suggestion's own value re-derivation
+        // would overwrite differently) — a second run must not touch anything.
+        f.store[DoubleKey.ApsBoostV5CommittedCapU] = 0.33
+        val secondKnobs = knobs.map { (k, v) -> k to v * 2 }   // a different (re-derived) suggestion
+        val appliedAgain = f.apply(secondKnobs)
+        assertThat(appliedAgain).isEmpty()
+        assertThat(f.store[DoubleKey.ApsBoostV5CommittedCapU]).isEqualTo(0.33)
+    }
+
+    @Test fun `insufficient data resolves nothing so knobs genuinely retry`() {
+        // The caller gets no suggestion → applyAutoConfig is never invoked → no knob resolves.
+        assertThat(BoostV5AutoConfig.compute(profile(days = 5))).isNull()
+        val f = FakeStore()
+        assertThat(f.resolved).isEmpty()                        // still all eligible
+        // Once data accrues, the SAME store applies everything.
+        val knobs = BoostV5AutoConfigApply.managedDoubleKnobs(BoostV5AutoConfig.compute(profile())!!)
+        assertThat(f.apply(knobs).map { it.first }).containsExactlyElementsIn(knobs.map { it.first })
+    }
+
+    // ── Migration from the legacy global done-flag ──
+
+    @Test fun `legacy-flag migration resolves only knobs off their factory default`() {
+        val tuned = DoubleKey.ApsBoostV5ConfirmedCapU           // user/old-run value ≠ default 2.5
+        val stock = DoubleKey.ApsBoostV5CommittedCapU           // persisted AT default 0.5 (Roman)
+        val store = mapOf(tuned to 4.0, stock to stock.defaultValue)  // others absent
+        val resolved = mutableSetOf<DoubleKey>()
+        val migrated = BoostV5AutoConfigApply.migrateLegacyDoneFlag(
+            BoostV5AutoConfigApply.managedDoubleKeys,
+            storedValue = { store[it] },
+            markResolved = { resolved += it }
+        )
+        assertThat(migrated).containsExactly(tuned)             // off-default → left alone forever
+        assertThat(resolved).containsExactly(tuned)
+        // stock + absent keys stay UNRESOLVED → eligible for derivation again on the next cycle
+        assertThat(resolved).doesNotContain(stock)
+    }
+
+    @Test fun `roman regression — flag consumed, keys at defaults, rich history — caps get applied`() {
+        // Roman: V6-active 06-30, months of history, TDD ~50U; committedCap stuck at factory 0.5
+        // although his derived value is 1.24. After migration (nothing resolved because everything
+        // is at stock), the next cycle must apply BOTH the committed cap and the cumulative cap.
+        val roman = profile(
+            tdd = 49.6,                                          // 49.6/40 = 1.24 committed
+            smb = listOf(0.5, 0.5, 0.5, 0.5, 0.5),               // p75 clipped at the old 0.5 cap
+            manual = listOf(4.0, 5.0, 6.0, 6.0, 6.0)             // p90 = 6.0 → confirmedCap 6.0
+        )
+        val s = BoostV5AutoConfig.compute(roman)!!
+        assertThat(s.confirmedCapU).isEqualTo(6.0)
+        assertThat(s.committedCapU).isEqualTo(1.24)
+        // cumulative = clamp(6.0 + 2×1.24, 1.0, max(5.0, 6.0)) = clamp(8.48 → 6.0) = 6.0
+        assertThat(s.cumulativeSmbCap60MinU).isEqualTo(6.0)
+
+        // Storage as found in the field: managed knobs present at stock (or absent) after the old run.
+        val f = FakeStore(
+            DoubleKey.ApsBoostV5CommittedCapU to DoubleKey.ApsBoostV5CommittedCapU.defaultValue,
+            DoubleKey.ApsBoostCumulativeSmbCap60Min to DoubleKey.ApsBoostCumulativeSmbCap60Min.defaultValue
+        )
+        val migrated = BoostV5AutoConfigApply.migrateLegacyDoneFlag(
+            BoostV5AutoConfigApply.managedDoubleKeys, storedValue = { f.store[it] }, markResolved = { f.resolved += it }
+        )
+        assertThat(migrated).isEmpty()                           // nothing off-default → all eligible
+        val applied = f.apply(BoostV5AutoConfigApply.managedDoubleKnobs(s))
+        assertThat(applied.map { it.first }).contains(DoubleKey.ApsBoostV5CommittedCapU)
+        assertThat(applied.map { it.first }).contains(DoubleKey.ApsBoostCumulativeSmbCap60Min)
+        assertThat(f.store[DoubleKey.ApsBoostV5CommittedCapU]).isEqualTo(1.24)
+        assertThat(f.store[DoubleKey.ApsBoostCumulativeSmbCap60Min]).isEqualTo(6.0)
+        // Invariant: the suggestion never auto-raises Aggression above neutral.
+        assertThat(s.aggression).isAtMost(1.0)
     }
 }
