@@ -6,13 +6,16 @@ import org.junit.jupiter.api.Test
 
 /**
  * Tests for the V5 auto-config calculator: conservative, transparent derivation of V5 knobs from a
- * user's last-N-day V1 history. Pure-function tests on [BoostV5AutoConfig.compute].
+ * user's last-N-day V1 history. Pure-function tests on [BoostV5AutoConfig.compute] plus the apply
+ * layer ([BoostV5AutoConfigApply]) invariants.
  */
 class BoostV5AutoConfigTest {
 
+    // Default manual list has >= MIN_MANUAL_BOLUS_SAMPLES entries so the meal-bolus p90 term
+    // participates (p90 = 6.0); smaller fixtures exercise the min-sample fallback explicitly.
     private fun profile(
         days: Int = 14, bg: Int = 3500, tdd: Double = 40.0,
-        manual: List<Double> = listOf(3.0, 4.0, 5.0, 6.0),
+        manual: List<Double> = listOf(3.0, 3.5, 4.0, 4.0, 4.5, 5.0, 5.0, 5.5, 6.0, 6.0),
         smb: List<Double> = listOf(0.2, 0.3, 0.4, 0.6, 0.8),
         tbr70: Double = 3.0, sev54: Double = 0.4, meanBg: Double = 130.0,
         maxIob: Double = 8.0, maxBolus: Double = 10.0
@@ -47,29 +50,71 @@ class BoostV5AutoConfigTest {
     }
 
     @Test fun `caps derive from dose distribution and clamp to ranges`() {
-        val s = BoostV5AutoConfig.compute(profile(manual = listOf(2.0, 3.0, 4.0, 5.0), smb = listOf(0.3, 0.5, 0.7)))!!
+        val s = BoostV5AutoConfig.compute(
+            profile(
+                manual = listOf(2.0, 2.5, 3.0, 3.0, 3.5, 4.0, 4.0, 4.5, 5.0, 5.0),
+                smb = listOf(0.3, 0.5, 0.7)
+            )
+        )!!
         assertThat(s.confirmedCapU).isAtLeast(1.5)
         assertThat(s.confirmedCapU).isAtMost(7.5)
         assertThat(s.committedCapU).isAtLeast(0.25)
         assertThat(s.committedCapU).isAtMost(2.5)
         assertThat(s.cumulativeSmbCap60MinU).isAtLeast(1.0)
-        assertThat(s.cumulativeSmbCap60MinU).isAtMost(5.0)
+        assertThat(s.cumulativeSmbCap60MinU).isAtMost(BoostV5AutoConfig.CUMULATIVE_CAP_MAX_U)
         // cumulative cap is never below a single confirm shot (it must allow ≥1 confirm)
         assertThat(s.cumulativeSmbCap60MinU).isAtLeast(s.confirmedCapU - 1e-9)
     }
 
     @Test fun `confirmed cap covers a big-meal bolus user`() {
-        val big = BoostV5AutoConfig.compute(profile(manual = listOf(5.0, 7.0, 9.0, 11.0)))!!
-        val small = BoostV5AutoConfig.compute(profile(manual = listOf(1.0, 1.5, 2.0)))!!
+        val big = BoostV5AutoConfig.compute(
+            profile(manual = listOf(5.0, 5.0, 6.0, 6.0, 7.0, 7.0, 8.0, 9.0, 10.0, 11.0))
+        )!!
+        val small = BoostV5AutoConfig.compute(
+            profile(manual = listOf(1.0, 1.0, 1.5, 1.5, 1.5, 2.0, 2.0, 2.0, 2.0, 2.0))
+        )!!
         assertThat(big.confirmedCapU).isGreaterThan(small.confirmedCapU)
     }
 
     @Test fun `cumulative cap is never below a single confirmed shot, even for a big-meal user`() {
         // Big eater: confirmedCap clamps to its 7.5 ceiling. The hourly cumulative budget must not
         // saturate below that (was clamped to 5.0 before the 2026-06-26 fix).
-        val s = BoostV5AutoConfig.compute(profile(manual = listOf(5.0, 7.0, 9.0, 11.0)))!!
+        val s = BoostV5AutoConfig.compute(
+            profile(manual = listOf(5.0, 6.0, 7.0, 7.0, 8.0, 9.0, 9.0, 10.0, 11.0, 11.0))
+        )!!
         assertThat(s.confirmedCapU).isEqualTo(7.5)
         assertThat(s.cumulativeSmbCap60MinU).isAtLeast(s.confirmedCapU - 1e-9)
+    }
+
+    @Test fun `cumulative budget keeps its two holds for a big-confirm user`() {
+        // 2026-07-06 amendment: the old max(5.0, confirmedCap) ceiling collapsed "one confirm +
+        // two holds" to "confirm + ~0 holds" for big-confirm users (cohort: 6 of one user's 8
+        // projected suppressions; another landed cumulative == confirmedCap exactly). New clamp is
+        // the pref range max (10.0): conf 6.0 + 2×1.26 = 8.52 → 8.5, NOT 6.0.
+        val s = BoostV5AutoConfig.compute(
+            profile(
+                tdd = 50.4,                                       // 50.4/40 = 1.26 committed
+                manual = listOf(4.0, 4.0, 5.0, 5.0, 5.0, 6.0, 6.0, 6.0, 6.0, 6.0)  // p90 = 6.0
+            )
+        )!!
+        assertThat(s.confirmedCapU).isEqualTo(6.0)
+        assertThat(s.committedCapU).isEqualTo(1.26)
+        assertThat(s.cumulativeSmbCap60MinU).isEqualTo(8.5)
+    }
+
+    @Test fun `confirmed cap ignores manual-bolus p90 when the sample is too small`() {
+        // 2026-07-06 amendment (min-sample guard): one cohort user's derived confirmedCap 6.8
+        // rested on a p90 of FOUR manual boluses, one an 8U outlier. With
+        // n < MIN_MANUAL_BOLUS_SAMPLES the cap must come from the SMB p95 alone.
+        val fourWithOutlier = listOf(2.0, 3.0, 4.0, 8.0)
+        val smbs = listOf(0.3, 0.4, 0.5, 0.5, 0.6)
+        val s = BoostV5AutoConfig.compute(profile(manual = fourWithOutlier, smb = smbs))!!
+        // SMB p95 ≈ 0.58 → clamped to the 1.5 floor; the 8U outlier must NOT reach the cap.
+        assertThat(s.confirmedCapU).isEqualTo(1.5)
+        // Same doses with an honest sample size DO drive the cap.
+        val tenManual = listOf(2.0, 2.0, 3.0, 3.0, 3.0, 4.0, 4.0, 4.0, 8.0, 8.0)
+        val s10 = BoostV5AutoConfig.compute(profile(manual = tenManual, smb = smbs))!!
+        assertThat(s10.confirmedCapU).isGreaterThan(1.5)
     }
 
     @Test fun `maxIob and bolus cap are carried and clamped`() {
@@ -91,25 +136,35 @@ class BoostV5AutoConfigTest {
         assertThat(s.rationale).isNotEmpty()
         assertThat(s.rationale.any { it.contains("HypoCaution") }).isTrue()
         assertThat(s.rationale.any { it.contains("Aggression") }).isTrue()
+        // Amendment 2026-07-06 (#6): the committedCap rationale is honest about BOTH terms — the
+        // TDD/40 floor binds for most cohort users, not just "routine SMB size".
+        assertThat(s.rationale.any { it.contains("Committed cap") && it.contains("TDD/40") }).isTrue()
     }
 
     // ── Application of the suggestion (BoostV5AutoConfigApply): per-key resolution ──
     // These exercise the SAME helper OpenAPSBoostV5Plugin.maybeAutoConfigure uses, so they lock:
     // tuning one V6 knob must not block the others; each knob resolves (applied once, or
-    // skipped-because-user-tuned) exactly once; insufficient data leaves knobs unresolved.
+    // skipped-because-user-tuned, or held as a TBR suggestion) exactly once; insufficient data
+    // leaves knobs unresolved; the cumulative cap is recomputed from the OPERATIVE per-shot caps.
+
+    private val safeTbr = 2.0   // below the raise-guard threshold: raises apply normally
 
     /** Minimal in-memory stand-in for the plugin's preference + resolution-mark I/O. */
     private class FakeStore(vararg preset: Pair<DoubleKey, Double>) {
         val store = linkedMapOf(*preset)
         val resolved = mutableSetOf<DoubleKey>()
-        fun apply(knobs: List<Pair<DoubleKey, Double>>) = BoostV5AutoConfigApply.applyAutoConfig(
-            knobs,
+        fun apply(s: BoostV5AutoConfig.V5Suggestion, tbr: Double) = BoostV5AutoConfigApply.applyAutoConfig(
+            s,
+            tbrBelow70Pct = tbr,
             isResolved = { it in resolved },
             storedValue = { store[it] },
             put = { k, v -> store[k] = v },
             markResolved = { resolved += it }
         )
     }
+
+    private fun List<BoostV5AutoConfigApply.Resolution>.appliedKeys() =
+        filter { it.outcome == BoostV5AutoConfigApply.Outcome.APPLIED }.map { it.key }
 
     @Test fun `managed knobs cover exactly the auto-configured doubles`() {
         val keys = BoostV5AutoConfigApply.managedDoubleKnobs(BoostV5AutoConfig.compute(profile())!!).map { it.first }
@@ -123,31 +178,32 @@ class BoostV5AutoConfigTest {
 
     @Test fun `with nothing preset, every knob is configured and resolved — including the cumulative cap`() {
         val s = BoostV5AutoConfig.compute(profile())!!
-        val knobs = BoostV5AutoConfigApply.managedDoubleKnobs(s)
         val f = FakeStore()
-        val applied = f.apply(knobs)
-        assertThat(applied.map { it.first }).containsExactlyElementsIn(knobs.map { it.first })
-        assertThat(f.store.keys).containsExactlyElementsIn(knobs.map { it.first })
-        assertThat(f.resolved).containsExactlyElementsIn(knobs.map { it.first })
-        // The cumulative 60-min SMB cap is derived, WRITTEN, and part of the applied (=notified) list.
+        val res = f.apply(s, safeTbr)
+        assertThat(res.appliedKeys()).containsExactlyElementsIn(BoostV5AutoConfigApply.managedDoubleKeys)
+        assertThat(f.store.keys).containsExactlyElementsIn(BoostV5AutoConfigApply.managedDoubleKeys)
+        assertThat(f.resolved).containsExactlyElementsIn(BoostV5AutoConfigApply.managedDoubleKeys)
+        // With both per-shot caps applied, the cumulative recompute equals the derivation's value.
         assertThat(f.store[DoubleKey.ApsBoostCumulativeSmbCap60Min]).isEqualTo(s.cumulativeSmbCap60MinU)
-        assertThat(applied).contains(DoubleKey.ApsBoostCumulativeSmbCap60Min to s.cumulativeSmbCap60MinU)
     }
 
     @Test fun `tuning one knob keeps it (resolved-skipped) and still configures all the others`() {
-        val knobs = BoostV5AutoConfigApply.managedDoubleKnobs(BoostV5AutoConfig.compute(profile())!!)
-        val preset = DoubleKey.ApsBoostCumulativeSmbCap60Min   // user tuned the SMB cap (≠ default 10.0)
+        val s = BoostV5AutoConfig.compute(profile())!!
+        val preset = DoubleKey.ApsBoostCumulativeSmbCap60Min   // user tuned the SMB cap (≠ any factory: 2.5 ∉ {1.5, 6, 10})
         val presetValue = 2.5
         val f = FakeStore(preset to presetValue)
-        val applied = f.apply(knobs)
-        val others = knobs.map { it.first }.filter { it != preset }
+        val res = f.apply(s, safeTbr)
+        val others = BoostV5AutoConfigApply.managedDoubleKeys.filter { it != preset }
         // tuned knob NOT applied; every other knob IS; tuned knob still RESOLVED (never revisited)
-        assertThat(applied.map { it.first }).containsExactlyElementsIn(others)
-        assertThat(applied.map { it.first }).doesNotContain(preset)
+        assertThat(res.appliedKeys()).containsExactlyElementsIn(others)
+        assertThat(res.appliedKeys()).doesNotContain(preset)
         assertThat(f.resolved).contains(preset)
+        assertThat(res.single { it.key == preset }.outcome).isEqualTo(BoostV5AutoConfigApply.Outcome.KEPT_USER_TUNED)
+        assertThat(res.single { it.key == preset }.reason).contains("kept-user-tuned value=2.5")
         // tuned value untouched; all others now written with the suggested value
         assertThat(f.store[preset]).isEqualTo(presetValue)
-        knobs.filter { it.first != preset }.forEach { (k, v) -> assertThat(f.store[k]).isEqualTo(v) }
+        assertThat(f.store[DoubleKey.ApsBoostV5ConfirmedCapU]).isEqualTo(s.confirmedCapU)
+        assertThat(f.store[DoubleKey.ApsBoostV5CommittedCapU]).isEqualTo(s.committedCapU)
     }
 
     @Test fun `a knob persisted AT its factory default does not block the suggestion`() {
@@ -155,24 +211,122 @@ class BoostV5AutoConfigTest {
         // stock 0.5 (settings import / pref-dialog OK) and was skipped forever. Value == default
         // means nobody objected — the suggestion must still be applied.
         val s = BoostV5AutoConfig.compute(profile())!!
-        val knobs = BoostV5AutoConfigApply.managedDoubleKnobs(s)
         val key = DoubleKey.ApsBoostV5CommittedCapU
         val f = FakeStore(key to key.defaultValue)             // present, but stock
-        val applied = f.apply(knobs)
-        assertThat(applied.map { it.first }).contains(key)
+        val res = f.apply(s, safeTbr)
+        assertThat(res.appliedKeys()).contains(key)
         assertThat(f.store[key]).isEqualTo(s.committedCapU)
     }
 
-    @Test fun `once applied, a knob is resolved and never re-applied`() {
-        val knobs = BoostV5AutoConfigApply.managedDoubleKnobs(BoostV5AutoConfig.compute(profile())!!)
+    // ── Historical factory defaults (2026-07-06 amendment #1) ──
+    // Factories changed across build eras: committedCap 0.25→0.5, confirmedCap 1.0→2.5,
+    // cumulative 1.5→6.0→10.0 (verified from git history — see BoostV5AutoConfigApply KDoc). A
+    // stored OLD factory value must read as at-factory/derivable, or old-build users are frozen
+    // at the tightest-ever values (cohort users C/D).
+
+    @Test fun `every historical factory value is recognised as at-factory, off-factory values as tuned`() {
+        val committed = DoubleKey.ApsBoostV5CommittedCapU
+        val confirmed = DoubleKey.ApsBoostV5ConfirmedCapU
+        val cumulative = DoubleKey.ApsBoostCumulativeSmbCap60Min
+        // every value each key ever shipped as its default → NOT user-tuned
+        listOf(0.25, 0.5).forEach { assertThat(BoostV5AutoConfigApply.isUserTuned(committed, it)).isFalse() }
+        listOf(1.0, 2.5).forEach { assertThat(BoostV5AutoConfigApply.isUserTuned(confirmed, it)).isFalse() }
+        listOf(1.5, 6.0, 10.0).forEach { assertThat(BoostV5AutoConfigApply.isUserTuned(cumulative, it)).isFalse() }
+        // genuinely tuned values still detected
+        assertThat(BoostV5AutoConfigApply.isUserTuned(committed, 1.24)).isTrue()
+        assertThat(BoostV5AutoConfigApply.isUserTuned(confirmed, 4.0)).isTrue()
+        assertThat(BoostV5AutoConfigApply.isUserTuned(cumulative, 2.5)).isTrue()
+        // absent value is never "tuned"
+        assertThat(BoostV5AutoConfigApply.isUserTuned(committed, null)).isFalse()
+    }
+
+    @Test fun `a knob stranded at an OLD era's factory default is still derivable`() {
+        // Old-build user: committedCap persisted at the ORIGINAL factory 0.25, confirmedCap at 1.0,
+        // cumulative at the 6.0 era. All must be treated as never-touched and re-derived.
+        val s = BoostV5AutoConfig.compute(profile())!!
+        val f = FakeStore(
+            DoubleKey.ApsBoostV5CommittedCapU to 0.25,
+            DoubleKey.ApsBoostV5ConfirmedCapU to 1.0,
+            DoubleKey.ApsBoostCumulativeSmbCap60Min to 6.0
+        )
+        val res = f.apply(s, safeTbr)
+        assertThat(res.appliedKeys()).containsExactlyElementsIn(BoostV5AutoConfigApply.managedDoubleKeys)
+        assertThat(f.store[DoubleKey.ApsBoostV5CommittedCapU]).isEqualTo(s.committedCapU)
+        assertThat(f.store[DoubleKey.ApsBoostV5ConfirmedCapU]).isEqualTo(s.confirmedCapU)
+    }
+
+    // ── Cumulative cap from RESOLVED values (2026-07-06 amendment #3) ──
+
+    @Test fun `cumulative cap is computed from the OPERATIVE caps, not the derivation's`() {
+        // Cohort user E: derivation suggested confirmedCap 4.65 but his operative (user-tuned) cap
+        // was 2.0 — the cumulative budget must be sized from what actually applies.
+        val s = BoostV5AutoConfig.compute(profile(tdd = 49.6, smb = listOf(0.5, 0.5, 0.5, 0.5, 0.5)))!!
+        assertThat(s.committedCapU).isEqualTo(1.24)            // derived, will apply
+        val keptConfirmed = 2.0                                 // user-tuned (≠ factories 1.0/2.5)
+        val f = FakeStore(DoubleKey.ApsBoostV5ConfirmedCapU to keptConfirmed)
+        f.apply(s, safeTbr)
+        // cumulative = clamp(2.0 + 2×1.24, 1, 10) = 4.48 → 4.5 — from the KEPT 2.0, not derived 6.0
+        assertThat(f.store[DoubleKey.ApsBoostV5ConfirmedCapU]).isEqualTo(keptConfirmed)
+        assertThat(f.store[DoubleKey.ApsBoostCumulativeSmbCap60Min]).isEqualTo(4.5)
+        assertThat(f.store[DoubleKey.ApsBoostCumulativeSmbCap60Min]).isNotEqualTo(s.cumulativeSmbCap60MinU)
+    }
+
+    // ── TBR raise-guard on dose caps (2026-07-06 amendment #5, cohort user B) ──
+
+    @Test fun `dose-cap RAISE with elevated TBR is held as a suggestion, not applied`() {
+        val s = BoostV5AutoConfig.compute(profile(tbr70 = 4.3))!!
+        assertThat(s.committedCapU).isGreaterThan(DoubleKey.ApsBoostV5CommittedCapU.defaultValue)
         val f = FakeStore()
-        f.apply(knobs)
+        val res = f.apply(s, tbr = 4.3)
+        val held = res.single { it.key == DoubleKey.ApsBoostV5CommittedCapU }
+        assertThat(held.outcome).isEqualTo(BoostV5AutoConfigApply.Outcome.SUGGESTED_NOT_APPLIED_TBR)
+        assertThat(held.suggestedValue).isEqualTo(s.committedCapU)   // suggestion recorded for the notification
+        assertThat(held.reason).contains("suggested-not-applied (TBR)")
+        assertThat(f.store).doesNotContainKey(DoubleKey.ApsBoostV5CommittedCapU)
+        assertThat(f.resolved).contains(DoubleKey.ApsBoostV5CommittedCapU)  // resolved: not retried forever
+        // The confirmed cap (also a raise: 6.0 > factory 2.5) is held too...
+        assertThat(res.single { it.key == DoubleKey.ApsBoostV5ConfirmedCapU }.outcome)
+            .isEqualTo(BoostV5AutoConfigApply.Outcome.SUGGESTED_NOT_APPLIED_TBR)
+        // ...while non-cap knobs still apply (hypo-protective tightenings must never be blocked).
+        assertThat(res.appliedKeys()).contains(DoubleKey.ApsBoostV5Aggression)
+        assertThat(res.appliedKeys()).contains(DoubleKey.ApsBoostV5HypoCaution)
+        // The cumulative cap TIGHTENS (from factory 10.0 down to the operative-cap budget) → applied.
+        assertThat(res.appliedKeys()).contains(DoubleKey.ApsBoostCumulativeSmbCap60Min)
+        assertThat(f.store[DoubleKey.ApsBoostCumulativeSmbCap60Min]!!).isLessThan(10.0)
+    }
+
+    @Test fun `dose-cap LOWERING applies even with elevated TBR`() {
+        // Tightenings are exactly what a TBR-heavy user needs — the guard must never block them.
+        // Small-dose user: confirmedCap derives to the 1.5 floor, below the factory 2.5.
+        val s = BoostV5AutoConfig.compute(
+            profile(tbr70 = 4.3, manual = listOf(0.5, 0.5, 0.5, 0.5), smb = listOf(0.2, 0.2, 0.3))
+        )!!
+        assertThat(s.confirmedCapU).isEqualTo(1.5)
+        val f = FakeStore()
+        val res = f.apply(s, tbr = 4.3)
+        assertThat(res.appliedKeys()).contains(DoubleKey.ApsBoostV5ConfirmedCapU)
+        assertThat(f.store[DoubleKey.ApsBoostV5ConfirmedCapU]).isEqualTo(1.5)
+    }
+
+    @Test fun `dose-cap RAISE applies normally when TBR is at target`() {
+        val s = BoostV5AutoConfig.compute(profile(tbr70 = 2.0))!!
+        assertThat(s.committedCapU).isGreaterThan(DoubleKey.ApsBoostV5CommittedCapU.defaultValue)
+        val f = FakeStore()
+        val res = f.apply(s, tbr = 2.0)
+        assertThat(res.appliedKeys()).contains(DoubleKey.ApsBoostV5CommittedCapU)
+        assertThat(f.store[DoubleKey.ApsBoostV5CommittedCapU]).isEqualTo(s.committedCapU)
+    }
+
+    @Test fun `once applied, a knob is resolved and never re-applied`() {
+        val s = BoostV5AutoConfig.compute(profile())!!
+        val f = FakeStore()
+        f.apply(s, safeTbr)
         // User later sets a knob BACK to something (even the suggestion's own value re-derivation
         // would overwrite differently) — a second run must not touch anything.
         f.store[DoubleKey.ApsBoostV5CommittedCapU] = 0.33
-        val secondKnobs = knobs.map { (k, v) -> k to v * 2 }   // a different (re-derived) suggestion
-        val appliedAgain = f.apply(secondKnobs)
-        assertThat(appliedAgain).isEmpty()
+        val rederived = s.copy(committedCapU = 2.0, confirmedCapU = 7.0)   // a different suggestion
+        val resAgain = f.apply(rederived, safeTbr)
+        assertThat(resAgain).isEmpty()
         assertThat(f.store[DoubleKey.ApsBoostV5CommittedCapU]).isEqualTo(0.33)
     }
 
@@ -182,26 +336,28 @@ class BoostV5AutoConfigTest {
         val f = FakeStore()
         assertThat(f.resolved).isEmpty()                        // still all eligible
         // Once data accrues, the SAME store applies everything.
-        val knobs = BoostV5AutoConfigApply.managedDoubleKnobs(BoostV5AutoConfig.compute(profile())!!)
-        assertThat(f.apply(knobs).map { it.first }).containsExactlyElementsIn(knobs.map { it.first })
+        val res = f.apply(BoostV5AutoConfig.compute(profile())!!, safeTbr)
+        assertThat(res.appliedKeys()).containsExactlyElementsIn(BoostV5AutoConfigApply.managedDoubleKeys)
     }
 
     // ── Migration from the legacy global done-flag ──
 
     @Test fun `legacy-flag migration resolves only knobs off their factory default`() {
-        val tuned = DoubleKey.ApsBoostV5ConfirmedCapU           // user/old-run value ≠ default 2.5
+        val tuned = DoubleKey.ApsBoostV5ConfirmedCapU           // user/old-run value ≠ any factory (1.0/2.5)
         val stock = DoubleKey.ApsBoostV5CommittedCapU           // persisted AT default 0.5 (Roman)
-        val store = mapOf(tuned to 4.0, stock to stock.defaultValue)  // others absent
+        val oldEra = DoubleKey.ApsBoostCumulativeSmbCap60Min    // persisted at the OLD 6.0 factory era
+        val store = mapOf(tuned to 4.0, stock to stock.defaultValue, oldEra to 6.0)  // others absent
         val resolved = mutableSetOf<DoubleKey>()
         val migrated = BoostV5AutoConfigApply.migrateLegacyDoneFlag(
             BoostV5AutoConfigApply.managedDoubleKeys,
             storedValue = { store[it] },
             markResolved = { resolved += it }
         )
-        assertThat(migrated).containsExactly(tuned)             // off-default → left alone forever
+        assertThat(migrated).containsExactly(tuned)             // off-every-factory → left alone forever
         assertThat(resolved).containsExactly(tuned)
-        // stock + absent keys stay UNRESOLVED → eligible for derivation again on the next cycle
+        // stock, historical-factory and absent keys stay UNRESOLVED → eligible for derivation again
         assertThat(resolved).doesNotContain(stock)
+        assertThat(resolved).doesNotContain(oldEra)
     }
 
     @Test fun `roman regression — flag consumed, keys at defaults, rich history — caps get applied`() {
@@ -211,13 +367,14 @@ class BoostV5AutoConfigTest {
         val roman = profile(
             tdd = 49.6,                                          // 49.6/40 = 1.24 committed
             smb = listOf(0.5, 0.5, 0.5, 0.5, 0.5),               // p75 clipped at the old 0.5 cap
-            manual = listOf(4.0, 5.0, 6.0, 6.0, 6.0)             // p90 = 6.0 → confirmedCap 6.0
+            manual = listOf(4.0, 4.0, 5.0, 5.0, 5.0, 6.0, 6.0, 6.0, 6.0, 6.0)  // p90 = 6.0 → confirmedCap 6.0
         )
         val s = BoostV5AutoConfig.compute(roman)!!
         assertThat(s.confirmedCapU).isEqualTo(6.0)
         assertThat(s.committedCapU).isEqualTo(1.24)
-        // cumulative = clamp(6.0 + 2×1.24, 1.0, max(5.0, 6.0)) = clamp(8.48 → 6.0) = 6.0
-        assertThat(s.cumulativeSmbCap60MinU).isEqualTo(6.0)
+        // cumulative = clamp(6.0 + 2×1.24, 1.0, 10.0) = 8.48 → 8.5. (2026-07-06 amendment #2:
+        // previously the max(5.0, conf) ceiling collapsed this to 6.0 — confirm + ~0 holds.)
+        assertThat(s.cumulativeSmbCap60MinU).isEqualTo(8.5)
 
         // Storage as found in the field: managed knobs present at stock (or absent) after the old run.
         val f = FakeStore(
@@ -228,11 +385,11 @@ class BoostV5AutoConfigTest {
             BoostV5AutoConfigApply.managedDoubleKeys, storedValue = { f.store[it] }, markResolved = { f.resolved += it }
         )
         assertThat(migrated).isEmpty()                           // nothing off-default → all eligible
-        val applied = f.apply(BoostV5AutoConfigApply.managedDoubleKnobs(s))
-        assertThat(applied.map { it.first }).contains(DoubleKey.ApsBoostV5CommittedCapU)
-        assertThat(applied.map { it.first }).contains(DoubleKey.ApsBoostCumulativeSmbCap60Min)
+        val res = f.apply(s, tbr = 3.0)                          // Roman's TBR<70 3.0% < guard 4.0%
+        assertThat(res.appliedKeys()).contains(DoubleKey.ApsBoostV5CommittedCapU)
+        assertThat(res.appliedKeys()).contains(DoubleKey.ApsBoostCumulativeSmbCap60Min)
         assertThat(f.store[DoubleKey.ApsBoostV5CommittedCapU]).isEqualTo(1.24)
-        assertThat(f.store[DoubleKey.ApsBoostCumulativeSmbCap60Min]).isEqualTo(6.0)
+        assertThat(f.store[DoubleKey.ApsBoostCumulativeSmbCap60Min]).isEqualTo(8.5)
         // Invariant: the suggestion never auto-raises Aggression above neutral.
         assertThat(s.aggression).isAtMost(1.0)
     }

@@ -23,8 +23,22 @@ import kotlin.math.abs
  * The fix: each managed knob is tracked individually as RESOLVED once it has either been applied
  * once or been skipped because the user tuned it (stored value differs from the factory default).
  * Insufficient data resolves nothing, so unresolved knobs genuinely retry on later cycles.
- * "User tuned it" now means *value differs from the key's factory default* — mere presence in
- * storage no longer blocks a suggestion (value == default means nobody objected).
+ * "User tuned it" now means *value differs from every factory default the key has ever shipped
+ * with* — mere presence in storage no longer blocks a suggestion (value == a factory default means
+ * nobody objected).
+ *
+ * ── 2026-07-06 amendments (7-user migration-cohort backtest) ─────────────────────────────────
+ *  - Historical factory defaults: the at-factory test must recognise the defaults of EVERY build
+ *    era, or a user whose prefs persisted an OLD factory value reads as "user-tuned" and is frozen
+ *    at the tightest-ever values (cohort users C/D: committedCap 0.25 / confirmedCap 1.0 /
+ *    cumulative 6.0 eras). See [historicalFactoryDefaults].
+ *  - The cumulative 60-min cap is recomputed here from the FINAL operative per-shot caps
+ *    (kept-or-derived), not taken verbatim from the derivation (cohort user E incoherence).
+ *  - TBR raise-guard: a dose-cap RAISE is priced badly for a TBR-heavy user, and value==factory
+ *    cannot distinguish "never touched" from "deliberately reverted to factory". See
+ *    [TBR_RAISE_GUARD_PCT].
+ *  - Every knob's classification is returned as a [Resolution] with a human-readable reason, so
+ *    field diagnosis never needs inference again.
  */
 internal object BoostV5AutoConfigApply {
 
@@ -33,6 +47,54 @@ internal object BoostV5AutoConfigApply {
      * (AdaptiveDoublePreference persists floats), so exact Double equality would be fragile.
      */
     private const val DEFAULT_EPS = 1e-4
+
+    /**
+     * Max acceptable 14-day time-below-70 (%) for auto-APPLYING a dose-cap RAISE. At or below this,
+     * raises apply as normal; above it they are only *suggested* (surfaced in the notification and
+     * the log) and the knob resolves without being written.
+     *
+     * Backtest evidence (7-user migration cohort, 2026-07-06 — cohort user B, TBR<70 4.26%): the
+     * insulin his raised caps would have added priced at 44.7% delivered within 3 h of a <70 mg/dL
+     * reading, vs 32.8% for his baseline dosing — a raise is exactly the wrong medicine for a
+     * TBR-heavy user. LOWERINGS and non-cap tightenings (HypoCaution, Aggression ≤ 1.0,
+     * FastCarbConfirm OFF, the cumulative cap when it tightens) always apply. 4.0% is the
+     * international consensus TBR<70 target the derivation already uses.
+     */
+    const val TBR_RAISE_GUARD_PCT = 4.0
+
+    /**
+     * Every factory default each managed key has EVER shipped with, beyond the current one.
+     * Verified from git history across all branches (2026-07-06, `git log --all -p -G<key>` on
+     * core/keys/DoubleKey.kt; the keys never lived anywhere else):
+     *  - boost_v5_confirmed_cap_u: 1.0 (introduced bcda0a68d4) → 2.5 (ae1f263a24, 2026-06-26)
+     *  - boost_v5_committed_cap_u: 0.25 (introduced bcda0a68d4) → 0.5 (ae1f263a24, 2026-06-26)
+     *  - boost_cumulative_smb_cap_60min: 1.5 (introduced 780f5769) → 6.0 (1114e387a9,
+     *    Boost-ML-Beta-2 era, 2026-06-16) → 10.0 (20d7b8b54c, 2026-06-29)
+     * The other managed keys (Aggression 1.0, HypoCaution 1.0, MaxIob 1.0, Bolus 2.5) have never
+     * changed default. A stored value matching ANY of these (±[DEFAULT_EPS]) is at-factory, i.e.
+     * derivable — without this, a user whose old build persisted an old factory value reads as
+     * "user-tuned" and is frozen at the tightest-ever values (cohort users C/D).
+     */
+    private val historicalFactoryDefaults: Map<String, List<Double>> = mapOf(
+        DoubleKey.ApsBoostV5ConfirmedCapU.key to listOf(1.0),
+        DoubleKey.ApsBoostV5CommittedCapU.key to listOf(0.25),
+        DoubleKey.ApsBoostCumulativeSmbCap60Min.key to listOf(1.5, 6.0)
+    )
+
+    /** Current + historical factory defaults for [key] (current first). */
+    fun factoryDefaults(key: DoubleKey): List<Double> =
+        listOf(key.defaultValue) + (historicalFactoryDefaults[key.key] ?: emptyList())
+
+    /**
+     * The dose-cap knobs subject to the [TBR_RAISE_GUARD_PCT] raise-guard. MaxIob/Bolus are NOT
+     * here: they mirror the user's own existing AAPS constraints, so "raising" them only matches a
+     * limit the user already runs elsewhere.
+     */
+    val doseCapKeys: Set<DoubleKey> = setOf(
+        DoubleKey.ApsBoostV5ConfirmedCapU,
+        DoubleKey.ApsBoostV5CommittedCapU,
+        DoubleKey.ApsBoostCumulativeSmbCap60Min
+    )
 
     /** The double-valued V5 knobs auto-config manages (stable order). */
     val managedDoubleKeys: List<DoubleKey> = listOf(
@@ -57,55 +119,118 @@ internal object BoostV5AutoConfigApply {
     )
 
     /**
-     * "User (or preset) has tuned this knob": a value exists in storage AND it differs from the
-     * key's factory default. A missing value, or a value persisted AT the default (settings-screen
-     * visit, import of stock settings), does NOT count as tuned — nobody objected to the default,
-     * so the suggestion may still be applied.
+     * "User (or preset) has tuned this knob": a value exists in storage AND it differs from every
+     * factory default the key has ever shipped with ([factoryDefaults]). A missing value, or a
+     * value persisted AT any-era factory default (settings-screen visit, import of stock settings,
+     * an old build's default), does NOT count as tuned — nobody objected to a default, so the
+     * suggestion may still be applied.
      */
     fun isUserTuned(key: DoubleKey, storedValue: Double?): Boolean =
-        storedValue != null && abs(storedValue - key.defaultValue) > DEFAULT_EPS
+        storedValue != null && factoryDefaults(key).none { abs(storedValue - it) <= DEFAULT_EPS }
+
+    /** How a knob was classified by [applyAutoConfig] this run. */
+    enum class Outcome { APPLIED, KEPT_USER_TUNED, SUGGESTED_NOT_APPLIED_TBR }
+
+    /**
+     * Per-knob classification record. [suggestedValue] is the final derived value for the knob
+     * (for the cumulative cap: recomputed from the operative per-shot caps); [operativeValue] is
+     * what governs dosing after this run; [reason] is the human-readable classification the plugin
+     * logs verbatim so field diagnosis never needs inference.
+     */
+    data class Resolution(
+        val key: DoubleKey,
+        val outcome: Outcome,
+        val suggestedValue: Double,
+        val operativeValue: Double,
+        val reason: String
+    )
 
     /**
      * Apply the suggestion with per-knob resolution. For each knob, in order:
-     *  - already RESOLVED (applied or skipped in an earlier run) → untouched;
-     *  - user-tuned ([isUserTuned]) → kept, marked resolved (never revisited);
+     *  - already RESOLVED (applied or skipped in an earlier run) → untouched (no [Resolution]);
+     *  - user-tuned ([isUserTuned], any-era factory-aware) → kept, marked resolved (never revisited);
+     *  - a dose-cap ([doseCapKeys]) whose derived value would RAISE the operative value while the
+     *    14-day TBR<70 exceeds [TBR_RAISE_GUARD_PCT] → NOT written, marked resolved, returned as
+     *    [Outcome.SUGGESTED_NOT_APPLIED_TBR] so the caller can surface the suggestion;
      *  - otherwise → suggested value written, marked resolved.
-     * Per-knob and independent — presetting one never blocks the others. Returns the knobs actually
-     * written (for the "configured N setting(s)" notification). Pure: the lambdas inject the
-     * preference I/O so all skip/resolve behaviour is testable without the plugin/DI.
+     *
+     * The cumulative 60-min cap is recomputed HERE from the FINAL operative per-shot caps
+     * (kept-or-derived-or-guard-held), via [BoostV5AutoConfig.cumulativeCap60Min] — never taken
+     * verbatim from the derivation, whose caps may not be the ones that apply.
+     *
+     * Per-knob and independent — presetting one never blocks the others. Pure: the lambdas inject
+     * the preference I/O so all skip/resolve behaviour is testable without the plugin/DI.
      *
      * NOT called when there is insufficient history (the caller gets no suggestion), so unresolved
      * knobs remain eligible and genuinely retry on a later cycle.
      */
     fun applyAutoConfig(
-        knobs: List<Pair<DoubleKey, Double>>,
+        suggestion: BoostV5AutoConfig.V5Suggestion,
+        tbrBelow70Pct: Double,
         isResolved: (DoubleKey) -> Boolean,
         storedValue: (DoubleKey) -> Double?,
         put: (DoubleKey, Double) -> Unit,
         markResolved: (DoubleKey) -> Unit
-    ): List<Pair<DoubleKey, Double>> {
-        val applied = mutableListOf<Pair<DoubleKey, Double>>()
-        for ((key, value) in knobs) {
-            if (isResolved(key)) continue
-            if (isUserTuned(key, storedValue(key))) {
-                markResolved(key)                      // user value kept; never revisit
-                continue
+    ): List<Resolution> {
+        val resolutions = mutableListOf<Resolution>()
+        val operative = mutableMapOf<DoubleKey, Double>()
+
+        fun resolve(key: DoubleKey, derived: Double) {
+            val stored = storedValue(key)
+            val current = stored ?: key.defaultValue
+            if (isResolved(key)) {
+                operative[key] = current                    // untouched; feeds the cumulative recompute
+                return
             }
-            put(key, value)
+            if (isUserTuned(key, stored)) {
+                markResolved(key)                           // user value kept; never revisit
+                operative[key] = current
+                resolutions += Resolution(key, Outcome.KEPT_USER_TUNED, derived, current, "kept-user-tuned value=$current (suggested $derived)")
+                return
+            }
+            if (key in doseCapKeys && derived > current + DEFAULT_EPS && tbrBelow70Pct > TBR_RAISE_GUARD_PCT) {
+                markResolved(key)                           // suggestion surfaced, not written
+                operative[key] = current
+                resolutions += Resolution(
+                    key, Outcome.SUGGESTED_NOT_APPLIED_TBR, derived, current,
+                    "suggested-not-applied (TBR): suggested=$derived current=$current TBR<70=$tbrBelow70Pct% > $TBR_RAISE_GUARD_PCT%"
+                )
+                return
+            }
+            put(key, derived)
             markResolved(key)
-            applied += key to value
+            operative[key] = derived
+            resolutions += Resolution(key, Outcome.APPLIED, derived, derived, "applied $derived")
         }
-        return applied
+
+        resolve(DoubleKey.ApsBoostV5Aggression, suggestion.aggression)
+        resolve(DoubleKey.ApsBoostV5HypoCaution, suggestion.hypoCaution)
+        resolve(DoubleKey.ApsBoostV5ConfirmedCapU, suggestion.confirmedCapU)
+        resolve(DoubleKey.ApsBoostV5CommittedCapU, suggestion.committedCapU)
+        // Cumulative cap from the FINAL operative per-shot caps (kept-or-derived), never the
+        // derivation's own caps (cohort user E: budget sized from a derived confirmedCap 4.65 that
+        // never applied while his operative cap was 2.0).
+        resolve(
+            DoubleKey.ApsBoostCumulativeSmbCap60Min,
+            BoostV5AutoConfig.cumulativeCap60Min(
+                operative.getValue(DoubleKey.ApsBoostV5ConfirmedCapU),
+                operative.getValue(DoubleKey.ApsBoostV5CommittedCapU)
+            )
+        )
+        resolve(DoubleKey.ApsBoostMaxIob, suggestion.maxIobU)
+        resolve(DoubleKey.ApsBoostBolus, suggestion.bolusCapU)
+        return resolutions
     }
 
     /**
      * One-time migration from the legacy global "auto-config done" flag to per-key resolution.
      * Called when the legacy flag is found set: marks as resolved ONLY the keys whose stored value
-     * differs from the factory default (they were plausibly applied by the old run, or user-set —
-     * either way they must not be rewritten). Keys still AT their factory default stay UNRESOLVED
-     * and become eligible for derivation again — this is what rescues installs where the old
-     * presence-test (or a consumed flag) wrongly skipped them; suggestion-only still holds because
-     * value == default means nobody objected. Returns the keys marked resolved.
+     * differs from every factory default the key ever shipped with (they were plausibly applied by
+     * the old run, or user-set — either way they must not be rewritten). Keys still AT a factory
+     * default (current or any historical era) stay UNRESOLVED and become eligible for derivation
+     * again — this is what rescues installs where the old presence-test (or a consumed flag)
+     * wrongly skipped them; suggestion-only still holds because value == default means nobody
+     * objected. Returns the keys marked resolved.
      */
     fun migrateLegacyDoneFlag(
         keys: List<DoubleKey>,

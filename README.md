@@ -181,8 +181,9 @@ history + glycaemia.
 
 **The guard-rails:**
 - Runs **once**, in the background, the first cycle V6 is active (one-shot flag).
-- **Suggestion-only** — writes a setting **only if you haven't already changed it** from the factory
-  default. It never overrides anything you've tuned.
+- **Suggestion-only** — writes a setting **only if you haven't already changed it** from a factory
+  default (*any* factory default that setting ever shipped with, so a value carried over from an
+  older build still counts as untouched). It never overrides anything you've tuned.
 - Needs **≥ 7 days of data and ≥ 1500 CGM readings**; otherwise does nothing and **retries later**.
 - **Never auto-raises aggression** above neutral on day one; safety knobs only ever *tighten*.
 - **Wrapped so any failure is logged and swallowed** — it can never block or alter the dose path.
@@ -198,11 +199,16 @@ limits. Then:
 |---|---|
 | **HypoCaution** (1.0–2.0) | `clamp(1.0 + max(0, TBR<70% − 4)/4 + max(0, TBR<54% − 1)×0.5, 1.0, 2.0)` — climbs above 1.0 only as time-low exceeds the consensus targets (4% / 1%). |
 | **Aggression** (0.7–1.3) | `0.85` if hypo-prone; `0.92` if TBR<70% > 4%; else **1.0**. Never set above 1.0. |
-| **Confirmed cap** (0–7.5 U) | `clamp(max(p90 of meal boluses, p95 of SMBs), 1.5, 7.5)` — covers your biggest *typical* single dose so real meals aren't clipped. |
-| **Committed cap** (0–2.5 U) | `clamp(max(p75 of SMBs, TDD/40), 0.25, 2.5)` — your routine per-cycle hold. |
-| **Cumulative SMB cap / 60 min** (≥ 1 U) | `clamp(Confirmed cap + 2×Committed cap, 1.0, max(5.0, Confirmed cap))` — bounds dose *frequency*; the ceiling tracks the Confirmed cap so a big-meal user's hourly budget is never below a single confirmed shot. |
+| **Confirmed cap** (0–7.5 U) | `clamp(max(p90 of meal boluses, p95 of SMBs), 1.5, 7.5)` — covers your biggest *typical* single dose so real meals aren't clipped. The meal-bolus p90 only participates with **≥ 10 manual boluses** in the window (a percentile of a handful of boluses is noise, not a habit); below that the cap comes from the SMB p95 alone. |
+| **Committed cap** (0–2.5 U) | `clamp(max(p75 of SMBs, TDD/40), 0.25, 2.5)` — your routine per-cycle hold (whichever of the two terms is larger). |
+| **Cumulative SMB cap / 60 min** (≥ 1 U) | `clamp(Confirmed cap + 2×Committed cap, 1.0, 10.0)` — bounds dose *frequency*: one confirm shot plus two holds per hour, clamped only to the preference range. Computed from the **final operative** per-shot caps (kept-or-derived), so a kept user value sizes the hourly budget, not a derivation that never applied. |
 | **Max IOB / Bolus cap** | carried from your existing limits (clamped to range). |
 | **Fast-carb confirm** | **off** if hypo-prone, otherwise on. |
+
+**TBR raise-guard:** a dose-cap **raise** (Confirmed / Committed / Cumulative going *up* from the
+current value) is **not auto-applied when 14-day time-below-70 exceeds 4%** — it is surfaced as a
+suggestion in the notification instead (set manually in Advanced if desired). Lowerings and all
+non-cap tightenings always apply.
 
 "Hypo-prone" = TBR<54% > 1.5% **or** TBR<70% > 6%. A well-controlled user lands on a fully neutral
 config (Aggression 1.0, HypoCaution 1.0, fast-carb on); a low-prone user gets gentler aggression, more

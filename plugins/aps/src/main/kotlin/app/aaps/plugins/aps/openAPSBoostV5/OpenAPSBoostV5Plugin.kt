@@ -151,12 +151,15 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
 
     /**
      * Populate the V5 knobs from the user's last-14-day V1 dosing + glycaemia when V5/V6 runs
-     * active. Suggestion-only: writes a knob ONLY while the user hasn't changed it from its factory
-     * default (a value merely *persisted at* the default — settings import, pref-dialog OK — does
-     * not block it). Each knob resolves individually (see [BoostV5AutoConfigApply]): applied once,
-     * or skipped-because-user-tuned, and then never revisited. If there isn't enough history yet,
-     * nothing resolves and every open knob retries on a later cycle once data accrues. Never
-     * changes the dosing path itself — only its settings.
+     * active. Suggestion-only: writes a knob ONLY while the user hasn't changed it from a factory
+     * default — ANY factory default the key ever shipped with, so old-build users aren't frozen at
+     * an old era's value (a value merely *persisted at* a default — settings import, pref-dialog
+     * OK — does not block it). Dose-cap RAISES are additionally held back (surfaced as suggestions)
+     * when the 14-day TBR<70 exceeds [BoostV5AutoConfigApply.TBR_RAISE_GUARD_PCT]. Each knob
+     * resolves individually (see [BoostV5AutoConfigApply]): applied once, or skipped, and then
+     * never revisited. If there isn't enough history yet, nothing resolves and every open knob
+     * retries on a later cycle once data accrues. Never changes the dosing path itself — only its
+     * settings.
      */
     private fun maybeAutoConfigure() {
         // Migration from the legacy global one-shot flag (raw read — get() would mask it in simple
@@ -224,17 +227,25 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             return
         }
 
-        // Apply only knobs the user (or a preset) hasn't TUNED (stored value differs from factory
-        // default). Per-knob & independent — a tuned value is KEPT and never blocks the others; each
-        // knob resolves (applied or skipped) exactly once (see BoostV5AutoConfigApply, unit-tested).
-        val applied = mutableListOf<String>()
-        BoostV5AutoConfigApply.applyAutoConfig(
-            BoostV5AutoConfigApply.managedDoubleKnobs(suggestion),
+        // Apply only knobs the user (or a preset) hasn't TUNED (stored value differs from EVERY
+        // factory default the key ever shipped with). Per-knob & independent — a tuned value is
+        // KEPT and never blocks the others; each knob resolves (applied / kept-user-tuned /
+        // suggested-not-applied) exactly once (see BoostV5AutoConfigApply, unit-tested). Dose-cap
+        // RAISES are held back (suggestion-only) when TBR<70 exceeds the guard threshold; the
+        // cumulative cap is recomputed inside from the final operative per-shot caps.
+        val resolutions = BoostV5AutoConfigApply.applyAutoConfig(
+            suggestion,
+            tbrBelow70Pct = tbr70,
             isResolved = { isResolved(it.key) },
             storedValue = { preferences.getIfExists(it) },
             put = { key, value -> preferences.put(key, value) },
             markResolved = { markResolved(it.key) }
-        ).forEach { (key, value) -> applied += "${key.name.removePrefix("ApsBoostV5").removePrefix("ApsBoost")}=$value" }
+        )
+        // Log every classification verbatim so field diagnosis never needs inference.
+        fun shortName(key: DoubleKey) = key.name.removePrefix("ApsBoostV5").removePrefix("ApsBoost")
+        resolutions.forEach { aapsLogger.info(LTag.APS, "BoostV5 auto-config: ${it.key.key} → ${it.reason}") }
+        val applied = resolutions.filter { it.outcome == BoostV5AutoConfigApply.Outcome.APPLIED }
+            .map { "${shortName(it.key)}=${it.suggestedValue}" }.toMutableList()
         val fc = BooleanKey.ApsBoostV5FastCarbConfirm
         if (!isResolved(fc.key)) {
             val stored = preferences.getIfExists(fc)
@@ -246,11 +257,17 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         }
 
         aapsLogger.info(LTag.APS, "BoostV5 auto-config applied [$applied]; rationale: ${suggestion.rationale}")
-        // Only surface a banner if we ACTUALLY changed something. If every knob was already tuned by
-        // the user, applyAutoConfig skips it (applied is empty) — announcing "configured" then
-        // changing nothing was the confusing behaviour Tim hit. One concise, readable line per knob.
-        if (applied.isNotEmpty()) {
-            val pretty = applied.joinToString("\n") { "• $it" }
+        // Only surface a banner if we ACTUALLY changed something or have a held-back suggestion to
+        // show. If every knob was already tuned by the user, applyAutoConfig skips it — announcing
+        // "configured" then changing nothing was the confusing behaviour Tim hit. One concise,
+        // readable line per knob; TBR-held cap raises are surfaced as manual suggestions.
+        val heldSuggestions = resolutions.filter { it.outcome == BoostV5AutoConfigApply.Outcome.SUGGESTED_NOT_APPLIED_TBR }
+            .map {
+                "${shortName(it.key)}: suggested ${it.suggestedValue} U from your history — not auto-applied because " +
+                    "time-below-70 is ${Math.round(tbr70 * 10.0) / 10.0}%; set manually in Advanced if desired"
+            }
+        if (applied.isNotEmpty() || heldSuggestions.isNotEmpty()) {
+            val pretty = (applied + heldSuggestions).joinToString("\n") { "• $it" }
             uiInteraction.addNotification(
                 Notification.USER_MESSAGE,
                 "Boost V6 set ${applied.size} setting(s) from your last 14 days (your other settings were kept):\n$pretty",

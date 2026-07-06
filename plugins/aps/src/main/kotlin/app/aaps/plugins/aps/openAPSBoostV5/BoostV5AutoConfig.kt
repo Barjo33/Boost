@@ -39,6 +39,22 @@ object BoostV5AutoConfig {
     const val LOOKBACK_DAYS = 14L
     private const val SEV54_TARGET = 1.0      // % time <54 mg/dL
 
+    /**
+     * Minimum manual (NORMAL) boluses in the window before their p90 may drive the Confirmed cap.
+     * Backtest evidence (7-user migration cohort, 2026-07-06): one user's derived confirmedCap of
+     * 6.8 U rested on a p90 of just FOUR manual boluses — one of them an 8 U outlier. A percentile
+     * of n=4 is noise, not a dose habit. Below this floor the Confirmed cap falls back to the SMB
+     * p95 alone (still clamped to [1.5, 7.5]).
+     */
+    const val MIN_MANUAL_BOLUS_SAMPLES = 10
+
+    /**
+     * Upper clamp of the derived rolling-60-min cumulative SMB cap — the preference range max of
+     * ApsBoostCumulativeSmbCap60Min (0..10). The cap formula is "one confirm shot + two holds"; the
+     * clamp only stops it exceeding what the preference can express.
+     */
+    const val CUMULATIVE_CAP_MAX_U = 10.0
+
     /** What the plugin gathers from the user's last-N-day V1 history. */
     data class V1Profile(
         val daysWithData: Int,
@@ -90,23 +106,23 @@ object BoostV5AutoConfig {
         )
         reasons += "Aggression $aggression (start ${if (aggression < 1.0) "gentle — hypo history" else "neutral"}; refines after shadow period)"
 
-        // Confirmed cap [1.5..7.5]: cover their biggest typical single dose (meal bolus p90 or SMB p95).
+        // Confirmed cap [1.5..7.5]: cover their biggest typical single dose (meal bolus p90 or SMB
+        // p95). The manual-bolus p90 participates only with a statistically honest sample
+        // (>= MIN_MANUAL_BOLUS_SAMPLES in the window) — see the constant's KDoc for the n=4 case.
+        val manualP90 =
+            if (p.manualBolusesU.size >= MIN_MANUAL_BOLUS_SAMPLES) percentile(p.manualBolusesU, 90.0) else 0.0
         val confirmedCapU = round2(
-            max(percentile(p.manualBolusesU, 90.0), percentile(p.smbAmountsU, 95.0)).coerceIn(1.5, 7.5)
+            max(manualP90, percentile(p.smbAmountsU, 95.0)).coerceIn(1.5, 7.5)
         )
         reasons += "Confirmed cap ${confirmedCapU}U (≈ your biggest typical single dose)"
 
-        // Committed cap [0.25..2.5]: routine per-cycle hold ≈ typical SMB (p75), floored.
+        // Committed cap [0.25..2.5]: routine per-cycle hold = max(typical SMB p75, TDD/40), floored.
         val committedCapU = round2(
             max(percentile(p.smbAmountsU, 75.0), p.tddMedianU / 40.0).coerceIn(0.25, 2.5)
         )
-        reasons += "Committed cap ${committedCapU}U (≈ your routine SMB size)"
+        reasons += "Committed cap ${committedCapU}U (max of your routine SMB size and TDD/40)"
 
-        // Rolling-60-min cumulative SMB cap: bounds dose *frequency* (the per-shot caps only bound
-        // magnitude). Allow ~one confirm shot plus a couple of holds per hour. Upper bound is at
-        // least confirmedCapU so the hourly budget can never sit BELOW a single confirmed shot for a
-        // big-meal user (confirmedCap up to 7.5). (Review 2026-06-26, LOW correctness.)
-        val cumulativeSmbCap60MinU = round1((confirmedCapU + 2.0 * committedCapU).coerceIn(1.0, max(5.0, confirmedCapU)))
+        val cumulativeSmbCap60MinU = cumulativeCap60Min(confirmedCapU, committedCapU)
         reasons += "Cumulative SMB cap/60min ${cumulativeSmbCap60MinU}U (limits dose frequency)"
 
         // Carry proven constraints.
@@ -126,6 +142,26 @@ object BoostV5AutoConfig {
             fastCarbConfirm = fastCarbConfirm, rationale = reasons
         )
     }
+
+    /**
+     * Rolling-60-min cumulative SMB cap: bounds dose *frequency* (the per-shot caps only bound
+     * magnitude). Budget = one confirm shot plus two holds per hour, clamped only to the
+     * preference's expressible range [1.0, 10.0].
+     *
+     * History: the previous ceiling was `max(5.0, confirmedCap)`, which collapsed
+     * "one confirm + 2 holds" to "confirm + ~0 holds" for any big-confirm user (the 2026-07-06
+     * 7-user migration backtest attributed 6 of one user's 8 projected suppressions to exactly
+     * this, and left another user's cumulative == confirmedCap so a single confirm exhausted the
+     * hour). The clamp is now the pref range max: the formula is the policy, the clamp is only a
+     * bound.
+     *
+     * Exposed separately from [compute] because the apply layer must recompute it from the FINAL
+     * operative per-shot caps (kept-user-tuned or derived), not from the derivation's own caps —
+     * a cumulative budget sized from a derived confirmedCap that never applies is incoherent
+     * (cohort user E: cumulative sized from derived 4.65 while his operative cap was 2.0).
+     */
+    fun cumulativeCap60Min(confirmedCapU: Double, committedCapU: Double): Double =
+        round1((confirmedCapU + 2.0 * committedCapU).coerceIn(1.0, CUMULATIVE_CAP_MAX_U))
 
     // ── helpers ──────────────────────────────────────────────────────────────────────────────
     /** Linear-interpolated percentile (0..100) of a value list; 0.0 if empty. */
