@@ -1203,7 +1203,7 @@ const V6 = {
   // ── MealSignalScore.kt weights (sum 1.07) ──
   W_DELTA: 0.30, W_DELTA_ACCL: 0.16, W_ML: 0.20, W_NOT_LOW: 0.12,
   W_MEAL_TOD: 0.10, W_NOT_EX: 0.04, W_SUSTAINED: 0.15,
-  ML_RENORM_FACTOR: 1.0 / (1.0 - 0.20),  // ≈1.25 when ML weight dropped
+  ML_RENORM_FACTOR: 1.07 / (1.07 - 0.20), // ≈1.2299 — weights sum to 1.07 not 1.0 (2026-07-06 parity fix; matches Kotlin/Trio)
   ML_RENORM_AFTER_CYCLES: 3,             // renorm only after ≥3 consecutive null-ML cycles
   NOT_LOW_FLOOR: 0.4,                    // notRecentlyLow floor (continuous term, MealSignalScore.kt:183-186)
   // ── MealHypothesis.kt thresholds ──
