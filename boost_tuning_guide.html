@@ -1638,6 +1638,14 @@
         <div class="setting-top"><span class="setting-name">Pre-meal target</span><span class="setting-key">ApsBoostV6PreMealTarget</span></div>
         <div class="setting-desc">Anticipatory target-lowering ahead of a learned meal time. Off by default.</div>
       </div>
+      <div class="setting">
+        <div class="setting-top"><span class="setting-name">Phase-3 composed brake floor</span><span class="setting-key">ApsBoostV5ComposedFloorActive — default OFF</span></div>
+        <div class="setting-desc">Enforces a 25% floor on the composed soft-brake multiplier during active meal sessions
+        above 160 mg/dL with eventualBG above target — fixes the soft-brake stack compounding to sub-pump-step zero
+        doses mid-meal (July 2026). All hard gates and dose caps still apply. <b>Per-user activation only:</b> this is
+        an aggression lever, not a guard — enable it only if your trailing 14-day time-below-range is within consensus
+        targets (&lt;70&nbsp;mg/dL below 3.5%, &lt;54&nbsp;mg/dL below 0.8%); do not enable outside those.</div>
+      </div>
     </div>
   </div>
 

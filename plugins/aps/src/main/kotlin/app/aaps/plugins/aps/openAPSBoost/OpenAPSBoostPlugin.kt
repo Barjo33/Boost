@@ -1373,6 +1373,18 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 it.units = overrideDose
                 it.reason.append("V6-ACTIVE drove SMB ${Round.roundTo(overrideDose, 0.001)}U (base would=${Round.roundTo(v1WouldDose, 0.001)}U, state=${v5decision.mealHypothesis}${caps.capNote}); ")
                 aapsLogger.info(LTag.APS, "V6-ACTIVE override: SMB ${v1WouldDose} → ${overrideDose} state=${v5decision.mealHypothesis}${caps.capNote}")
+                // 2026-07 composed brake-floor breadcrumb: when the Advanced toggle is ON,
+                // decision.floorWouldAdd carries the uplift the floor actually APPLIED (active
+                // semantics — see V5Decision KDoc). Log the un-floored→floored delivery so a
+                // floored cycle is auditable straight from the reason line. Whenever the uplift
+                // is > 0 the floored dose is inside every seam cap by construction (RECOVERING
+                // v1-bound + !postRescueWindow are conditions of the floor itself), so
+                // overrideDose == v5decision.finalDose here and X→Y is the delivered truth.
+                val floorUplift = if (preferences.get(BooleanKey.ApsBoostV5ComposedFloorActive)) v5decision.floorWouldAdd ?: 0.0 else 0.0
+                if (floorUplift > 0.0) {
+                    it.reason.append("brake-floor applied: ${Round.roundTo(v5decision.finalDose - floorUplift, 0.001)}→${Round.roundTo(v5decision.finalDose, 0.001)} U; ")
+                    aapsLogger.info(LTag.APS, "V6 brake-floor applied: ${Round.roundTo(v5decision.finalDose - floorUplift, 0.001)}→${Round.roundTo(v5decision.finalDose, 0.001)} U")
+                }
             } else if (v5Active && v5decision != null && cumulativeCapReached) {
                 it.units = 0.0
                 it.reason.append("V6 suppressed (cumulative SMB cap ${Round.roundTo(recentSmbVolume60Min, 0.01)}U/${Round.roundTo(cumulativeSmbCap60Min, 0.01)}U reached); ")

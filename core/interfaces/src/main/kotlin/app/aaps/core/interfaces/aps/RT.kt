@@ -106,11 +106,16 @@ data class RT(
     // 2026-07-04 post-rescue meal-state cap telemetry — logged every cycle (shadow + active) so the
     // 2026-07-10 live review can audit cap windows without CGM reconstruction.
     var boostV5_postRescueWindow: Boolean? = null, // true when recentLowBG45Min < 75 — V1 tiers hypo-restrained AND V6 meal-state exemption suppressed (CONFIRMED/COMMITTED capped at V1's would-dose)
-    // 2026-07-06 composed-floor SHADOW — pipeline-defect fix candidate: on meal-session high cycles the
-    // composed post-budget multiplier (stateMult × velocity × iobBrake × decelBrake) has median 0.037,
-    // floor-rounding doses to zero mid-meal (Episode B: BG 268-277, six zero cycles). Read-only shadow
-    // window to validate F=0.25 before activation.
-    var boostV5_floorWouldAdd: Double? = null,   // extra U the Phase-3 composed floor (F=0.25) would have added this cycle; null = floor conditions unmet
+    // 2026-07-06 composed-floor — pipeline-defect fix: on meal-session high cycles the composed
+    // post-budget multiplier (stateMult × velocity × iobBrake × decelBrake) has median 0.037,
+    // floor-rounding doses to zero mid-meal (Episode B: BG 268-277, six zero cycles). DUAL semantics
+    // keyed on the per-user Advanced toggle (ApsBoostV5ComposedFloorActive, default OFF, TBR-gated):
+    //  - toggle OFF (shadow): extra U the Phase-3 floor (F=0.25) WOULD have added this cycle —
+    //    read-only, delivered dosing untouched (the 2026-07-06 validation-window semantics);
+    //  - toggle ON (activation, 2026-07): the uplift actually APPLIED to the delivered dose
+    //    (delivered-with-floor − what-unfloored-would-have-delivered; 0 when no uplift).
+    // Null = floor conditions unmet either way, so the 2026-07-10 review reads one field regardless.
+    var boostV5_floorWouldAdd: Double? = null,   // U — would-add (toggle OFF) / applied uplift (toggle ON); null = floor conditions unmet
     // 2026-07-06 cumulative-cap telemetry gap: the rolling-60-min anti-stacking cap (enforced inside V1
     // AND re-checked at the V6 override seam) was invisible in NS — a cap suppression was
     // indistinguishable from a zero-dose decision. Written every Boost cycle at the override seam.

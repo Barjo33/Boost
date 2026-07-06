@@ -250,6 +250,11 @@ All Boost settings live under the plugin preferences. Defaults shown; most are a
   default is deliberately non-binding; auto-config (§4) tightens it to your history. `0` disables it.
 - **Max IOB** `0.1–12 U` and **Bolus cap** `0.1–10 U` — overall Boost insulin limits.
 - **Fast-carb confirm** (on) — single-cycle confirm on a sharp, accelerating, score-corroborated rise.
+- **Phase-3 composed brake floor** (off) — enforces a 25% floor on the composed soft-brake multiplier
+  during active meal sessions above 160 mg/dL with eventualBG above target, fixing the soft-brake
+  stack compounding to sub-pump-step zero doses mid-meal (July 2026). All hard gates and dose caps
+  still apply. **Per-user activation only**: enable only if trailing 14-day time-below-range is
+  within consensus targets (<70 mg/dL below 3.5%, <54 mg/dL below 0.8%) — do not enable outside those.
 
 **V6 DynISF / `future_sens`**
 - **DynISF normal target** (99 mg/dL), **BG cap** (210), **velocity** (100), **adjustment factor** —

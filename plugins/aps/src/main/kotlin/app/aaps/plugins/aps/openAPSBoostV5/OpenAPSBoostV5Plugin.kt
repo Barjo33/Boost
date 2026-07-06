@@ -369,9 +369,11 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             rT.boostV5_confirmGate = decision.confirmGate
             rT.boostV5_prospectiveShot = decision.prospectiveConfirmShot
             rT.boostV5_aggressionKnob = aggressionKnob
-            // 2026-07-06 composed-floor SHADOW — extra U the Phase-3 floor (F=0.25) would have
-            // added this cycle; null = floor conditions unmet. Read-only; validates the
-            // multiplicative-brake-stack fix before activation (see composedFloorWouldAdd KDoc).
+            // 2026-07-06 composed floor — DUAL semantics keyed on the Advanced toggle (see
+            // composedFloorTargetDose + V5Decision.floorWouldAdd KDocs): toggle OFF = SHADOW,
+            // extra U the Phase-3 floor (F=0.25) WOULD have added this cycle; toggle ON (per-user
+            // activation) = the uplift actually APPLIED to finalDose. Null = floor conditions
+            // unmet either way, so the 07-10 review reads one field regardless.
             rT.boostV5_floorWouldAdd = decision.floorWouldAdd
 
             val rtJson = v5DecisionToRtJson(decision)
@@ -503,10 +505,15 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             exerciseActive = opb.v5_exerciseActive,
             inPostExerciseWindow = opb.v5_inPostExerciseWindow,
             asleep = asleep,
-            // 2026-07-06 composed-floor shadow inputs (see V5Inputs KDoc — SHADOW-only, no dosing use):
+            // 2026-07-06 composed-floor inputs (see V5Inputs KDocs):
             postRescueWindow = postRescueWindow,
             // rT.units here is V1's dose — runShadow runs before the engine's V6 override seam.
             v1WouldDoseU = rT.units,
+            // 2026-07 composed brake-floor ACTIVATION — Advanced toggle, default OFF, PER-USER
+            // TBR-gated (see the key's KDoc). Additionally gated on activeMode so the floor can
+            // only ever alter finalDose when V6 is the selected doser (the delivered-dose path);
+            // in shadow mode the field keeps its pre-activation would-add semantics regardless.
+            composedFloorActive = activeMode && preferences.get(BooleanKey.ApsBoostV5ComposedFloorActive),
             fastCarbConfirmEnabled = preferences.get(BooleanKey.ApsBoostV5FastCarbConfirm),
             sensorQualityOk = if (activeMode) !flatBGsDetected else true,
             profileSwitched = false,           // deferred reset trigger (microBolusAllowed gates actual dosing)
@@ -620,6 +627,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5ConfirmedCapU, dialogMessage = R.string.boost_v5_confirmed_cap_summary, title = R.string.boost_v5_confirmed_cap_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5CommittedCapU, dialogMessage = R.string.boost_v5_committed_cap_summary, title = R.string.boost_v5_committed_cap_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostV5FastCarbConfirm, summary = R.string.boost_v5_fast_carb_confirm_summary, title = R.string.boost_v5_fast_carb_confirm_title))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostV5ComposedFloorActive, summary = R.string.boost_v5_composed_floor_summary, title = R.string.boost_v5_composed_floor_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostV6PreMealTarget, summary = R.string.boost_v6_pre_meal_target_summary, title = R.string.boost_v6_pre_meal_target_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV6PreMealTargetMgdl, dialogMessage = R.string.boost_v6_pre_meal_target_mgdl_summary, title = R.string.boost_v6_pre_meal_target_mgdl_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV6PreMealLeadMin, dialogMessage = R.string.boost_v6_pre_meal_lead_min_summary, title = R.string.boost_v6_pre_meal_lead_min_title))

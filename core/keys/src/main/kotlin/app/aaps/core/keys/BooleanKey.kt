@@ -96,6 +96,14 @@ enum class BooleanKey(
     // score-corroborated rise while awake & not exercising. Replay-validated (backtesting/replay.py).
     // Default ON (it's the fix for the 2026-06-16 fast-carb crash); toggle OFF = instant revert.
     ApsBoostV5FastCarbConfirm("boost_v5_fast_carb_confirm", true, defaultedBySM = true),
+    // 2026-07 composed Phase-3 brake floor (F = 0.25) — when ON (and V6 is the active doser), the
+    // delivered dose is floored at min(budget × 0.25, committedCapU) on meal-session high cycles
+    // (CONFIRMED/COMMITTED/RECOVERING ∧ BG > 160 ∧ eventualBG > target+20 ∧ awake ∧ not post-rescue ∧
+    // budget > 0) — fixes the soft-brake stack compounding to sub-pump-step zero doses mid-meal
+    // (Episode B). Default OFF; PER-USER activation gated on trailing-14d time-below-range being
+    // within consensus targets (TBR<70 < 3.5%, <54 < 0.8%) — the 2026-07 re-review excluded cohort
+    // users B/C/D whose TBR would cross those absolutes. All hard gates/caps still apply.
+    ApsBoostV5ComposedFloorActive("boost_v5_composed_floor_active", false, defaultedBySM = true),
     // LEGACY (2026-06-26..2026-07): global auto-config one-shot flag. Superseded by per-knob
     // BooleanComposedKey.BoostV5AutoConfigResolved; kept only so existing installs migrate
     // (OpenAPSBoostV5Plugin reads it raw once, marks tuned knobs resolved, then clears it).
