@@ -209,6 +209,47 @@ confirm already compensates. The one lever with residual value is **committedCap
 auto-applied) for the upper-tail holds; **confirmedCap should stay high (~6), not follow the auto-config
 formula**. The engine's CONFIRMED intent over-wants vs outcomes, so no case for *more* confirm aggression.
 
+# TARGET / MIN-GUARD effect on H — structural hypothesis REFUTED
+
+Tool: `target_effect.py H` → `out/H_minguard_blocked.csv` + `out/H_target_effect_summary.csv`.
+Threshold confirmed from reason lines: **min-guard/LGS = 5.5 mmol (99 mg/dL)**. His base target 80 IS
+below it — but the data shows that tension does **not** materialise.
+
+### 1. Min-guard costs him almost nothing when he wants to dose
+- All cycles blocked by `HARD:min_guard_bg`: **117/2011 = 5.8%** — but **only 2/602 (0.3%) of budget>0
+  cycles**, and 2/231 (0.9%) of budget>0-AND-rising. 115 of the 117 blocks are on budget≈0 cycles (nothing
+  wanted anyway → the block is a no-op).
+- **Intended insulin lost to min-guard: 1.0U total = 0.13 U/day** (upper bound). Negligible.
+
+### 2. The blocks are IOB-prediction crashes at RAISED targets — NOT his base target
+- **0 of 117 blocked cycles are at his base target 80** (the structural hypothesis predicted these). **74
+  are at RAISED targets ≥110** (activity/eating-soon TTs), 43 at mid (85–109).
+- minGuardBG avg **−18 mg/dL** (predictions crashing; 50/117 negative). **IOBpredBG is the binding minimum
+  on 116/117 (99%)** — the block is driven by IOB aboard (avg 1.18U, >2U on 27) while BG sits *below a
+  raised target* (99/117 below-target) and flat/declining. The min-guard is correctly protecting against
+  an exercise/IOB-driven low, at a *raised* target. His low base target is irrelevant to these blocks.
+
+### 3. Counterfactual — raise base target 80 → 100 (the two effects OPPOSE; data decides)
+| effect | U/day |
+|---|---|
+| (a) budget: higher target → lower insulinReq (−20/ISF ≈ −0.75U/cyc on 83 base-target dosing cycles) | **−7.78** |
+| (b) min-guard unblock (blocks at base target = **0**) | **+0.00** |
+| **NET delivered direction** | **−7.78 U/day (LESS aggressive)** |
+
+Raising his target **cuts budget hard** (his ISF is low ~33, so +20 mg/dL is a big insulinReq change) and
+**unblocks nothing** (his min-guard blocks aren't at the base target). Net: unambiguously **less** dosing —
+the opposite of his complaint. (The budget figure is an upper bound on the delivered cut, but the min-guard
+benefit is exactly zero, so the sign is certain.) TBR<70 is already 0.6%, so the "safer lows" side of the
+trade buys almost nothing.
+
+### 4. Reframe + VERDICT
+He is well-controlled: **TIR 91.5%, TING 68.8%, TBR<70 0.6%, TAR>180 7.9%, mean 129**. **His target is NOT
+a useful lever for the "not aggressive enough" complaint — and raising it would make him LESS aggressive,
+not more.** The structural target-below-LGS finding, while true on paper (80 < 99), is **immaterial in his
+data**: min-guard blocks him on 0.3% of dose-wanting cycles, all at raised TTs via IOB-prediction crashes,
+not at his base target. His "small doses" trace to committedCap + budget-small (see §decomposition), not to
+the target/min-guard tension. **Leave his target as-is.**
+
 ## Comparability flags
 
 - **8×→1.5× window fixed**, but tim 12 d vs H 8 d still differ; glycemia/rates directional.
