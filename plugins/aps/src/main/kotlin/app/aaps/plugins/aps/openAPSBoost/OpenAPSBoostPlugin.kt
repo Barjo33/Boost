@@ -1202,7 +1202,19 @@ open class OpenAPSBoostPlugin @Inject constructor(
 
             // Debug context
             boostDebugReason = activityResult.debugReason,
-            isfDebugReason = isfResult.isfDebug
+            isfDebugReason = isfResult.isfDebug,
+
+            // V5/V6 exercise inputs (F2, 2026-07-07) — fill so OpenAPSBoostV5Plugin's decide() sees
+            // the live activity state. These fields were DEAD on the live path since the V6 plugin
+            // split: only the retired OpenAPSBoostV3MLG3Plugin ever set them, so V6's meal-score
+            // exercise damping (MealSignalScore.notExercisingTerm), the fastConfirm !exercising gate
+            // (MealHypothesis.step), and the AggressionBudget post-exercise damper had NEVER engaged
+            // live — the exercise-into-correction hypo class this batch targets. Mapping mirrors
+            // V3MLG3's exact block (OpenAPSBoostV3MLG3Plugin, v5_* assignments) via the shared
+            // helpers below ([v5ExerciseActive]/[v5InPostExerciseWindow]).
+            v5_exerciseActive = v5ExerciseActive(activityResult.activityState),
+            v5_inPostExerciseWindow = v5InPostExerciseWindow(postExerciseRecoveryEnabled, now, recoveryWindowEnd),
+            v5_exerciseSubclass = activityResult.activityState,
         )
 
         aapsLogger.debug(LTag.APS, ">>> Invoking determine_basal Boost <<<")
@@ -2087,3 +2099,31 @@ open class OpenAPSBoostPlugin @Inject constructor(
         }
     }
 }
+
+// ── V5/V6 exercise-input mapping (F2, 2026-07-07) ───────────────────────────────────────────────
+// Pure top-level helpers so the live profile build's mapping is unit-testable. They MUST stay
+// bit-identical to the retired V3MLG3 block (OpenAPSBoostV3MLG3Plugin.kt, `v5_exerciseActive =
+// activityResult.activityState in setOf(...)` / `v5_inPostExerciseWindow =
+// postExerciseRecoveryEnabled && now < recoveryWindowEnd`) — V5's consumers were calibrated
+// against that mapping while V5 shadowed V4.4.1.
+
+/**
+ * Activity states that count as "exercising" for V5/V6 ([OapsProfileBoost.v5_exerciseActive]).
+ * Consumed by MealSignalScore's notExercisingTerm and MealHypothesis' fastConfirm !exercising gate.
+ * NOTE: includes "STRESS" (as V3MLG3 did) — a high-HR no-steps state should damp meal confirmation
+ * just like exercise. Distinct from the plugin's post-exercise `exerciseStateSet`, which
+ * deliberately EXCLUDES "STRESS" (stress shouldn't start a recovery window).
+ */
+internal val V5_EXERCISE_STATES = setOf(
+    "ACTIVE", "VIGOROUS_AEROBIC", "MODERATE_AEROBIC", "LIGHT_AEROBIC", "RESISTANCE", "STRESS"
+)
+
+/** [OapsProfileBoost.v5_exerciseActive] from V1's activity classification. */
+internal fun v5ExerciseActive(activityState: String): Boolean = activityState in V5_EXERCISE_STATES
+
+/**
+ * [OapsProfileBoost.v5_inPostExerciseWindow] — true while the post-exercise recovery window is
+ * open. Feeds V5's AggressionBudget post-exercise damper (postExerciseRecoveryModifier).
+ */
+internal fun v5InPostExerciseWindow(postExerciseRecoveryEnabled: Boolean, nowMs: Long, recoveryWindowEndMs: Long): Boolean =
+    postExerciseRecoveryEnabled && nowMs < recoveryWindowEndMs
