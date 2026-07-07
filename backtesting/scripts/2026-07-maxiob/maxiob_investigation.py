@@ -59,7 +59,7 @@ print("\n=== PART B: counterfactual — brake sees correct maxIob=8 ===")
 MULT={"CONFIRMED":1.8,"COMMITTED":1.0,"RECOVERING":0.4,"OBSERVING":0.3,"IDLE":1.0}
 # use REAL caps (confirmedCap 4.0, committedCap ~1.2) that also unmask
 REAL_FCAP, REAL_CCAP = 4.0, 1.2
-knob=1.3  # roman's? unknown; use 1.0 conservative + note. Actually H knob:
+knob=1.3  # user H's unknown; use 1.0 conservative + note. Actually H knob:
 kn=pd.read_sql("SELECT boostv5_aggressionknob k FROM boost_decisions WHERE user_id='H' AND boostv5_aggressionknob IS NOT NULL ORDER BY ts_epoch DESC LIMIT 1",conn)
 knob=float(kn.k.iloc[0]) if len(kn) else 1.0
 print(f"(H aggression knob = {knob:.2f})")

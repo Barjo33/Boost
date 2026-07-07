@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Roman (user H) — early-insulin diagnosis. Dedupe per 5-min bucket, meal episodes,
+"""user H — early-insulin diagnosis. Dedupe per 5-min bucket, meal episodes,
 confirm latency, cap-clip split, glycaemia, base-vs-V6 comparison."""
 import re, json
 import numpy as np, pandas as pd, psycopg2
 
 conn = psycopg2.connect("dbname=oref")
-TZ = "Europe/Bratislava"
+TZ = "Etc/GMT-2"
 
 dec = pd.read_sql("""
   SELECT ts_utc, variant, cgm_mgdl, sug_eventualbg, sug_insulinreq, sug_cob, sug_iob,

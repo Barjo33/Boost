@@ -107,12 +107,12 @@ The earlier "tim 62 d / 10.8 U-day / mostly-shadow" figures are void. Corrected 
 Over matched V6-ACTIVE windows, the direction holds but numbers shift: **H doses MORE than tim** —
 16.1 vs **9.9** U/day (was 10.8), max shot **6.0 vs 3.0**, big-shot >2U 0.6% vs 0.3%; higher caps
 (confirmedCap 6.0 vs 3.0, committedCap 1.2 vs 0.5, maxIOB 8 vs 5). tim TBR<70 now **3.0%** (was 5.2 over
-the inflated window), TBR<54 0.5%. So "Roman gets no aggression" is still **not an aggregate reality** —
+the inflated window), TBR<54 0.5%. So "user H gets no aggression" is still **not an aggregate reality** —
 his complaint is the COMMITTED-hold pattern below, not overall dosing.
 
 ---
 
-# HEADLINE — why Roman's (H) COMMITTED/CONFIRMED give little (per-cycle decomposition)
+# HEADLINE — why user H's (H) COMMITTED/CONFIRMED give little (per-cycle decomposition)
 
 Tool: `decompose_meal_doses.py H` → `out/decompose_H_meal.csv`. Pipeline reconstructed per cycle
 (`budget × actionMult × velocityFactor × iobBrake × decelBrake → cap → maxIOB clamp → round`); brakes
@@ -203,7 +203,7 @@ maxIOB-mask event).
   His auto-config already moved him to **2.5 on 07-07** — self-correcting; the earlier 0.5 (factory/Simple-Mode
   default) was the real starver of the holds (see §decomposition).
 
-**Bottom line for Tim:** Roman's real meals are essentially covered at the episode level by the confirm
+**Bottom line for Tim:** user H's real meals are essentially covered at the episode level by the confirm
 shot (which matches retrospective need); his "tiny committed doses" are a per-cycle-hold artifact that the
 confirm already compensates. The one lever with residual value is **committedCap 1.2→~2.5** (already
 auto-applied) for the upper-tail holds; **confirmedCap should stay high (~6), not follow the auto-config

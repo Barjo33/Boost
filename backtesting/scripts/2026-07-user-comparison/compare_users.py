@@ -196,7 +196,7 @@ def main():
         report = a.report
     elif {A, B} == {"tim", "H"}:
         report = os.path.join(os.path.dirname(os.path.abspath(__file__)),"..","..","reports",
-                              "2026-07_tim_vs_roman_v6_comparison_REPORT.md")
+                              "2026-07_tim_vs_userH_v6_comparison_REPORT.md")
     else:
         report = os.path.join(os.path.dirname(os.path.abspath(__file__)),"..","..","reports",
                               f"2026-07_{A}_vs_{B}_v6_comparison_REPORT.md")

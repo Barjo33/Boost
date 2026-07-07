@@ -286,7 +286,7 @@ shadow-first with the gate coupling pinned. **Shipped:** `311703ddf5` (gate-floo
 
 ---
 
-## 9. User H (Roman) — budget-side investigation · CLOSED, correct by outcome (2026-07-05/06)
+## 9. User H (user H) — budget-side investigation · CLOSED, correct by outcome (2026-07-05/06)
 
 **Question.** User H (announces meals, TDD ~50 U, V6-ACTIVE since 06-30): "not enough insulin
 early." Diagnosis, then: why is AggressionBudget=0 on his climbs?
@@ -319,7 +319,7 @@ defensible for him (+1.6 U/day, historically harm-neutral) — upgraded to YES-f
 but must NOT ship as cohort default (thrice-rejected class for rebound-driven users).
 
 **Scripts:** `analyse_H.py`, `analyse_H2.py`, `analyse_H3.py`, `export_H_episodes.py`,
-`roman_budget.py` · **Shipped:** `b2c0705e5e` (+ §6 follow-ons).
+`userH_budget.py` · **Shipped:** `b2c0705e5e` (+ §6 follow-ons).
 
 ---
 

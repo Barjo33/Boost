@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backtest of the auto-config per-knob migration (Roman fix, b2c0705e5e) for users tim + E.
+"""Backtest of the auto-config per-knob migration (user-H migration fix, b2c0705e5e) for users tim + E.
 
 Read-only. Sources:
   - NS treatments/entries (14d/28d windows anchored at pull time 2026-07-06)

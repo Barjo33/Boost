@@ -1,4 +1,4 @@
-# maxIOB Path-Divergence Bug (Roman / user H) — 2026-07-07
+# maxIOB Path-Divergence Bug (user H) — 2026-07-07
 
 Scripts: `backtesting/scripts/2026-07-maxiob/maxiob_investigation.py` (CSV in `out/`).
 Data: TimescaleDB `oref` (H current to 21:19 today; the 17:00–20:00Z rise captured). Dedup: last row
@@ -8,7 +8,7 @@ per (user, 5-min bucket). Code refs: repo `Boost-AAPS-core`, branch `Boost-V6-ex
 
 ## PART A — MECHANISM (headline, resolved with certainty)
 
-**Roman's big CONFIRMED/COMMITTED shots are zeroed because SafetyGates receives `maxIob = 1.0`
+**user H's big CONFIRMED/COMMITTED shots are zeroed because SafetyGates receives `maxIob = 1.0`
 (the `ApsBoostMaxIob` factory default) instead of his configured 8 — during a percentage
 profile-switch window.** SafetyGates itself is correct; it is FED the wrong ceiling.
 
@@ -70,7 +70,7 @@ lands (6.0U on 07-07 14:54).**
 
 ## PART B — THE SINGLE FIX (correct boost_maxIOB), not a new lever
 
-**The velocity-budget "restore V1 aggression" lever is DEAD for Roman** — the DB side-by-side shows V6
+**The velocity-budget "restore V1 aggression" lever is DEAD for user H** — the DB side-by-side shows V6
 doses IDENTICALLY to V1_would for him (budget>4: both avg 0.514, both zero on 5/7; budget>2: 1.22 vs
 1.26), and his real V1-era never gave big shots either (max 2.15 when BG>180). There is no V1 aggression
 to restore. The right question is: **what single gate/setting, changed, lets his insulinReq 5.64 deliver?**
@@ -89,7 +89,7 @@ knob 1.30), through the true clamp+brake:
 | 17:49 | COMMITTED | 1.24 | 7.19 | 0.00 | **1.20** |
 
 **Delivered 0.00U → counterfactual 7.60U** (a 4.0U confirmed shot + three 1.2U holds) on a genuine rise
-(BG 148→177, eventualBG projected 310–331). This IS the "single big shot" Roman says he never gets — his
+(BG 148→177, eventualBG projected 310–331). This IS the "single big shot" user H says he never gets — his
 4U confirmedCap correction, killed by the maxIob=1.0 mask.
 
 **Test A (honest):** his 14d TBR is 0.65%/0.02% — enormous headroom; 4.0U is exactly his own configured
@@ -102,18 +102,18 @@ bounded by his own caps. Net: the bug is suppressing dosing he configured and th
 
 ## PART C — COHORT SCOPE + auto-config consistency
 
-### C1. The mask is NOT Roman-only — and user E is chronically throttled
+### C1. The mask is NOT user H-only — and user E is chronically throttled
 
 | user | maxIOB=1.0 cycles | during %-switch | maxIOB values seen | reading |
 |---|---|---|---|---|
 | **E** | **32,949 (94%)** | 26,211 (also 6,738 at ps=100) | 1.0, 8.0 | **chronic — E's V6 has been throttled ≈off for months, at ALL ps** (separate from the mask bug; E likely never raised maxIOB off default) |
 | D | 117 | 117 (all) | 1.0,4.0,4.5,5.0 | transient mask, rare |
-| H (Roman) | 13 | 13 (all) | 1.0…8.5 | **transient mask bug** (clean ps=130 signature) |
+| H (user H) | 13 | 13 (all) | 1.0…8.5 | **transient mask bug** (clean ps=130 signature) |
 | B | 9 | 9 (all) | 1.0…8.0 | transient mask, rare |
 | A | 4 | 4 (all) | 1.0,9.0,10.0 | transient mask, rare |
 | F / C / tim | 0 | — | 3.0–8.0 / 3.55 / 3–8 | unaffected |
 
-Two manifestations of the SAME Simple-Mode masking bug: (a) **Roman/A/B/D — transient** (`simple_mode`
+Two manifestations of the SAME Simple-Mode masking bug: (a) **H/A/B/D — transient** (`simple_mode`
 read true for a short window, zeroing big shots when a rise coincided); (b) **E — chronic**: E runs in
 Simple Mode, so `preferences.get(ApsBoostMaxIob)` returns 1.0 on ~94% of cycles regardless of ps — **E's
 V6 amplification has been read-suppressed the entire time** (the largest-impact instance; the occasional
@@ -138,7 +138,7 @@ never checks it against the derived confirmedCap. Per user (14d), `maxIOB_mode �
 pessimistic (confirm shots fire at meal onset when IOB is lower), so this overstates the everyday impact —
 but it confirms auto-config never validates maxIOB ≥ confirmedCap + margin. The consistency floor
 (`maxIOB := max(carriedMaxIob, confirmedCapU + typicalIObMargin)`) is a real latent gap; it is **not**
-Roman's cause (his 8 is adequate — the mask is), and would only tame the residual for H/B/F. Recommend it
+user H's cause (his 8 is adequate — the mask is), and would only tame the residual for H/B/F. Recommend it
 as a low-priority hardening, secondary to fixing the path-divergence.
 
 ---
@@ -174,7 +174,7 @@ engine, using `get()`, sees the masked defaults — a read-path divergence betwe
 **Trigger (temporal):** the masking is gated purely on `simple_mode` reading `true`. There is **no code
 linking a profile-switch percentage to `simple_mode`** (all `GeneralSimpleMode` writers are UI/setup only;
 profile-switch events only refresh caches). So the ps=130 correlation is coincidental to a 65-min window in
-which `simple_mode` read `true` for Roman (most likely an app restart re-initialising it, or a settings
+which `simple_mode` read `true` for user H (most likely an app restart re-initialising it, or a settings
 import; on-device, read the `simple_mode` boolean during vs outside the window to confirm). **The masking
 mechanism itself is certain; only the reason simple_mode flipped for those 65 min needs device confirmation.**
 
@@ -193,7 +193,7 @@ maxIOB=1.0 / committedCap=0.5 / confirmedCap=2.5 regardless of what they set.
 ## Caveats
 - Mechanism (Part A), root cause (Simple-Mode mask, `PreferencesImpl.kt:125` + `DoubleKey.kt:57/77/78`),
   and counterfactual (Part B) are certain from console_error + gate strings + clamp/brake arithmetic +
-  the code. The one residual unknown is WHY `simple_mode` read true for Roman's 65-min window (no code
+  the code. The one residual unknown is WHY `simple_mode` read true for user H's 65-min window (no code
   links it to the profile switch) — confirm on-device by reading the `simple_mode` boolean in vs out of
   the window; the masking itself does not depend on that answer.
 - Part B counterfactual excludes the decel brake (those cycles were CONFIRMED/COMMITTED still climbing,

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Backtest of the auto-config per-knob migration (Roman fix, b2c0705e5e) for users A and B.
+Backtest of the auto-config per-knob migration (user-H migration fix, b2c0705e5e) for users A and B.
 
 Mirrors BoostV5AutoConfig.kt (verified in Boost-AAPS-core @ b2c0705e5e):
   committedCap = round2(clamp(max(p75(SMB>0), TDDmed/40), 0.25, 2.5))
