@@ -173,6 +173,10 @@ data class RT(
     var boostActivitySource_resolved: String? = null,   // active source owning today's count: wear|garmin|hc:x|phone
     var boostActivitySource_states: String? = null,     // per-source freshness+coverage, best-trust first: "src(f,Nd)"
     var boostActivitySource_bridge: String? = null,     // donors bridging the baseline window (+"(raw)" if uncalibrated)
+    // Step-feed availability (F1, 2026-07-07): which live-capable feeds are actually reporting this
+    // cycle — "phone+wear" | "phone" | "wear" | "none". Written EVERY cycle; "none" marks the cycles
+    // where the INACTIVE branch and the steps-based sleep-in are suppressed (data absent ≠ sedentary).
+    var boostSteps_feed: String? = null,
     // Autosens / TDD-DynISF coordination telemetry (2026-06-16). Logs which sensitivity mechanism
     // is driving basal/target/CR scaling, plus the would-be alternative — so the
     // ApsBoostAutosensWhenNoTdd fix can be validated on real data before it's enabled.

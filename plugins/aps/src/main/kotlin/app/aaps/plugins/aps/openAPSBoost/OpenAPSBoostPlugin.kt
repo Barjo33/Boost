@@ -520,7 +520,10 @@ open class OpenAPSBoostPlugin @Inject constructor(
         val debugReason: String = "",
         // True when the step-based sleep-in (lie-in) gate is suppressing Boost this cycle. Cached by
         // the caller so isNightModeActiveImpl() applies night-mode SMB rules during a lie-in. (2026-07-02)
-        val sleepInActive: Boolean = false
+        val sleepInActive: Boolean = false,
+        // Which step feeds are live this cycle (F1, 2026-07-07): "phone+wear" | "phone" | "wear" |
+        // "none" — written to RT.boostSteps_feed every cycle so a dark feed is visible in NS.
+        val stepsFeed: String = "none"
     )
 
     private fun calculateBoostActivity(
@@ -564,12 +567,30 @@ open class OpenAPSBoostPlugin @Inject constructor(
 
         debug.append("\nSteps: 5m=$recentSteps5Min 15m=$recentSteps15Min 30m=$recentSteps30Min 60m=$recentSteps60Min")
 
+        // ── Step-source availability guard (F1, 2026-07-07) ──
+        // 0 steps from a feed that never reported is NOT sedentary — it's unknown. Available =
+        // phone pedometer LIVE this boot OR a wear SC row within the WearStepSource freshness
+        // window. When unavailable: no INACTIVE profile drop, no steps-based sleep-in, and the
+        // outage is breadcrumbed (debugReason + boostSteps_feed RT). See StepFeed KDoc.
+        val wearScRecent = try {
+            persistenceLayer.getStepsCountFromTimeToTime(now - WearStepSource.FRESH_MS, now)
+        } catch (t: Throwable) {
+            emptyList()
+        }
+        val stepFeed = StepFeed.State(
+            phoneLive = StepService.feedState() == StepService.FeedState.LIVE,
+            wearAgeMs = WearStepSource.latest(wearScRecent)?.let { now - it.timestamp }
+        )
+        val stepsAvailable = stepFeed.available
+        if (!stepsAvailable) debug.append("\n${stepFeed.unavailableNote()}")
+
         // Steps-based sleep-in (lie-in) — the FALSE-AWAKE backstop. In the first `sleepInHours` after
         // night end, 60-min steps below threshold ⇒ still lying in even if the HR sleep-state machine
         // wrongly reported AWAKE. Independent of the night-mode enabled flag so it protects regardless,
         // and surfaced (cached by the caller) so night mode applies its SMB rules during the lie-in.
-        // (2026-07-02)
-        val sleepInActive = (now in nightEndMs until (nightEndMs + sleepInMillis)) && recentSteps60Min < sleepInSteps
+        // (2026-07-02; gated on step-feed availability 2026-07-07 — night window + HR sleep detection
+        // still protect when the feed is dark.)
+        val sleepInActive = StepFeed.sleepInActive(stepsAvailable, now, nightEndMs, sleepInMillis, recentSteps60Min, sleepInSteps)
         if (boostActive && sleepInActive) {
             boostActive = false
             disableReason = "Sleep-in (60m steps $recentSteps60Min < threshold $sleepInSteps, within ${sleepInHours}h of night end)"
@@ -674,8 +695,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
                         debug.append("\nActivity detected (HR inconclusive: ${hrClassification.exerciseState}) → profile ${currentProfileSwitch}%, target $activityTargetBg")
                     }
                 }
-            } else if (currentProfileSwitch == 100 && recentSteps60Min < inactivitySteps) {
-                // Inactivity confirmed or no steps — check HR for stress
+            } else if (StepFeed.inactivityEligible(stepsAvailable, currentProfileSwitch, recentSteps60Min, inactivitySteps)) {
+                // Inactivity confirmed on a LIVE feed — check HR for stress. (F1 2026-07-07: a dark
+                // feed can no longer reach this branch — "no steps" must not mean "sedentary".)
                 if (hrStressDetection &&
                     hrClassification?.exerciseState == HrActivityCalculator.ExerciseState.STRESS &&
                     hrClassification.confidence != HrActivityCalculator.Confidence.LOW
@@ -725,6 +747,12 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 }
                 aapsLogger.debug(LTag.APS, "Stress detected via HR (${hrClassification.hrZone.label}): raising target")
                 debug.append("\nStress (HR-only, ${hrClassification.hrZone.label}) → target $activityTargetBg, profile unchanged")
+            } else if (!stepsAvailable) {
+                // F1 (2026-07-07): feed dark and no HR-only classification fired — profile stays
+                // 100%, no target change. isActive is necessarily false here (no step data), so
+                // this is exactly the cycle set that previously mis-read as INACTIVE.
+                activityState = "steps-unknown"
+                debug.append("\nActivity: steps-unknown (feed unavailable — no INACTIVE, profile unchanged)")
             } else {
                 activityState = "normal"
                 debug.append("\nActivity: normal (no adjustment)")
@@ -745,7 +773,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
             targetBg = activityTargetBg,
             activityState = activityState,
             debugReason = debug.toString(),
-            sleepInActive = sleepInActive
+            sleepInActive = sleepInActive,
+            stepsFeed = stepFeed.label
         )
     }
 
@@ -1418,6 +1447,10 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 aapsLogger.debug(LTag.APS, "V6 meal-time learner: recorded CONFIRMED @ ${dateUtil.dateAndTimeString(now)} (${mealTimeHistoryCached.events.size} events)")
             }
 
+            // Step-feed availability telemetry (F1, 2026-07-07) — written EVERY cycle so a dark
+            // feed is visible in NS ("none" = INACTIVE + sleep-in suppressed this cycle).
+            it.boostSteps_feed = activityResult.stepsFeed
+
             // 2026-06-02: Sleep state evaluation. Runs at end of invoke so we have
             // mlMealLikely from this cycle. State persists across plugin restarts via
             // StringKey.ApsBoostSleepState. Updates sleepStateCached so the next
@@ -1615,9 +1648,18 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     }
 
                     // ── Auto-resolve today's active source (no UI) ──
+                    // Wear "fresh" uses the RESOLUTION grace window (2026-07-07): strict 12-min
+                    // freshness flapped today's count wear↔phone every 2-3 cycles overnight (the
+                    // resolver prefers the highest-trust FRESH source, so each brief wear-quiet
+                    // spell handed the count to the live-but-tiny phone: 349↔32 in the 07-06/07
+                    // telemetry). The wear today-count is rebuilt from the day's SC rows, so it
+                    // stays valid across a short quiet spell. Phone "fresh" = the pedometer has
+                    // actually reported this boot (F9, 2026-07-07) — `phoneToday > 0` conflated
+                    // "no data" with "no steps yet today" (false at midnight, false after reboot
+                    // until the user moves, and never true on a phone whose sensor is dead).
                     val states = mutableListOf<StepSourceResolver.SourceState>()
-                    states += StepSourceResolver.SourceState(StepSourceResolver.WEAR, WearStepSource.isFresh(todaySc, now), multi.sources[StepSourceResolver.WEAR]?.days?.size ?: 0, wearToday)
-                    states += StepSourceResolver.SourceState(StepSourceResolver.PHONE, phoneToday > 0, multi.sources[StepSourceResolver.PHONE]?.days?.size ?: 0, phoneToday)
+                    states += StepSourceResolver.SourceState(StepSourceResolver.WEAR, WearStepSource.isRecentlyFresh(todaySc, now), multi.sources[StepSourceResolver.WEAR]?.days?.size ?: 0, wearToday)
+                    states += StepSourceResolver.SourceState(StepSourceResolver.PHONE, StepService.feedState() == StepService.FeedState.LIVE, multi.sources[StepSourceResolver.PHONE]?.days?.size ?: 0, phoneToday)
                     for ((rawSrc, t) in healthConnectStepsIngest.todayStepsBySource) {
                         val c = StepSourceResolver.canonical(rawSrc)
                         if (c == StepSourceResolver.WEAR || c == StepSourceResolver.PHONE) continue
