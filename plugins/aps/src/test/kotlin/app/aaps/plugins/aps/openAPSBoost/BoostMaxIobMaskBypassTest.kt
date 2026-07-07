@@ -24,7 +24,7 @@ import kotlin.math.max
  */
 class BoostMaxIobMaskBypassTest {
 
-    private val iob = 1.04   // Roman's 17:34 CONFIRMED cycle
+    private val iob = 1.04   // user H's 17:34 CONFIRMED cycle
 
     /** DetermineBasalBoost tier guard (`iob < boostMaxIOB`) + clamp (`boostMaxIOB − iob`, floored at 0). */
     private fun tierFiresAndHeadroom(boostMaxIob: Double): Pair<Boolean, Double> =

@@ -62,7 +62,7 @@ class BoostDosingPreferencesTest {
 
     // ── Engine-level FLIP: the masked ceiling zeroed the real SafetyGates dose path ──
     // applyPhase3 is the exact V6 function the report cites (hard clamp headroom = maxIob − iob,
-    // then iobHeadroomBrake fraction = iob / maxIob). Roman's 17:34 CONFIRMED cycle: iob 1.04,
+    // then iobHeadroomBrake fraction = iob / maxIob). user H's 17:34 CONFIRMED cycle: iob 1.04,
     // a 4.0U confirmed shot, on a genuine rise. Reproduces fd = 0 at masked maxIob 1.0 and the
     // real delivery at his stored maxIob 8.0 — the outcome flips solely on which value the doser reads.
 

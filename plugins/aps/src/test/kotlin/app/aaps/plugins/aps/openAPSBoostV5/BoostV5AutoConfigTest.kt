@@ -208,7 +208,7 @@ class BoostV5AutoConfigTest {
     }
 
     @Test fun `a knob persisted AT its factory default does not block the suggestion`() {
-        // Roman's failure mode with the old presence test: committedCap existed in storage at the
+        // user H's failure mode with the old presence test: committedCap existed in storage at the
         // stock 0.5 (settings import / pref-dialog OK) and was skipped forever. Value == default
         // means nobody objected — the suggestion must still be applied.
         val s = BoostV5AutoConfig.compute(profile())!!
@@ -458,7 +458,7 @@ class BoostV5AutoConfigTest {
 
     @Test fun `legacy-flag migration resolves only knobs off their factory default`() {
         val tuned = DoubleKey.ApsBoostV5ConfirmedCapU           // user/old-run value ≠ any factory (1.0/2.5)
-        val stock = DoubleKey.ApsBoostV5CommittedCapU           // persisted AT default 0.5 (Roman)
+        val stock = DoubleKey.ApsBoostV5CommittedCapU           // persisted AT default 0.5 (user H)
         val oldEra = DoubleKey.ApsBoostCumulativeSmbCap60Min    // persisted at the OLD 6.0 factory era
         val store = mapOf(tuned to 4.0, stock to stock.defaultValue, oldEra to 6.0)  // others absent
         val resolved = mutableSetOf<DoubleKey>()
@@ -475,7 +475,7 @@ class BoostV5AutoConfigTest {
     }
 
     @Test fun `roman regression — flag consumed, keys at defaults, rich history — caps get applied`() {
-        // Roman: V6-active 06-30, months of history, TDD ~50U; committedCap stuck at factory 0.5
+        // user H: V6-active 06-30, months of history, TDD ~50U; committedCap stuck at factory 0.5
         // although his derived value is 1.24. After migration (nothing resolved because everything
         // is at stock), the next cycle must apply BOTH the committed cap and the cumulative cap.
         val roman = profile(
@@ -499,7 +499,7 @@ class BoostV5AutoConfigTest {
             BoostV5AutoConfigApply.managedDoubleKeys, storedValue = { f.store[it] }, markResolved = { f.resolved += it }
         )
         assertThat(migrated).isEmpty()                           // nothing off-default → all eligible
-        val res = f.apply(s, tbr = 3.0)                          // Roman's TBR<70 3.0% < guard 4.0%
+        val res = f.apply(s, tbr = 3.0)                          // user H's TBR<70 3.0% < guard 4.0%
         assertThat(res.appliedKeys()).contains(DoubleKey.ApsBoostV5CommittedCapU)
         assertThat(res.appliedKeys()).contains(DoubleKey.ApsBoostCumulativeSmbCap60Min)
         assertThat(f.store[DoubleKey.ApsBoostV5CommittedCapU]).isEqualTo(1.24)

@@ -11,12 +11,12 @@ import kotlin.math.abs
  * unit-testable: presetting ONE V6 knob must NOT block the others — the preset value is kept and
  * every other unset knob is still configured.
  *
- * ── Per-key resolution (2026-07 fix, field evidence: Roman) ──────────────────────────────────
+ * ── Per-key resolution (2026-07 fix, field evidence: user H) ──────────────────────────────────
  * The original design used one global "did run" flag plus a raw `sp.contains(key)` presence test.
  * Two field failure modes:
  *  1. Presence false-positives: anything that persists a knob AT its factory default (settings
  *     import, opening the pref dialog and tapping OK) made auto-config skip it forever — the user
- *     never objected, yet kept the stock value (Roman: committedCap stuck at factory 0.5 while his
+ *     never objected, yet kept the stock value (user H: committedCap stuck at factory 0.5 while his
  *     derived value was 1.24).
  *  2. Global one-shot: once the flag was consumed (older build, or carried in via a settings
  *     import), settings ADDED to auto-config later were never derived for existing installs.
