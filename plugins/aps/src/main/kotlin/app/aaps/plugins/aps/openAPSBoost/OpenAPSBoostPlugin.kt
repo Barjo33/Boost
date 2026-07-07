@@ -295,6 +295,19 @@ open class OpenAPSBoostPlugin @Inject constructor(
     // Steps: boostSteps_feed transitions, reason-line only (no notification).
     @Volatile private var lastStepsFeed: String? = null
 
+    // ---- V7 shadow (2026-07) ----
+    // Read-only per-cycle V7 would-dose instrument (see openAPSBoostV7/V7_SHADOW.md). Constructed
+    // lazily with lambda seams (no DI module change); persistence = StringKey JSON blob, the
+    // V5StateStore idiom. Invoked at the seam below runShadow, wrapped in runCatching there.
+    private val v7Shadow by lazy {
+        app.aaps.plugins.aps.openAPSBoostV7.V7Shadow(
+            loadState = { preferences.get(StringKey.ApsBoostV7ResidualPools) },
+            saveState = { preferences.put(StringKey.ApsBoostV7ResidualPools, it) },
+            logInfo = { msg -> aapsLogger.info(LTag.APS, msg) },
+            logError = { msg, t -> aapsLogger.error(LTag.APS, msg, t) },
+        )
+    }
+
     // ---- Post-exercise recovery state ----
     @Volatile private var recoveryWindowEnd: Long = 0L
     @Volatile private var wasExerciseActive: Boolean = false
@@ -1384,6 +1397,36 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 aapsLogger.error(LTag.APS, "V5 shadow invocation failed", t)
                 null
             }
+            // ── V7 SHADOW (2026-07) — read-only instrument for the REVISED distributional-sizing
+            // formulation after the offline NO-GO (backtesting/reports/2026-07_v7_foundation_REPORT.md;
+            // see openAPSBoostV7/V7_SHADOW.md for the two acceptance criteria it instruments).
+            // Placement is load-bearing: AFTER V5's runShadow (so the V5 state/budget this cycle are
+            // available) and BEFORE the V6 override seam below (so it.units here is STILL V1's
+            // would-dose — the sizer's non-meal/post-rescue v1-bound). Writes ONLY boostV7_* telemetry
+            // + a reason breadcrumb when the R-doses differ; delivered dosing is bit-identical with or
+            // without it. Failure-swallowed twice (V7Shadow's own runCatching + this belt-and-braces
+            // one) — the shadow can NEVER break a loop cycle.
+            runCatching {
+                v7Shadow.runCycle(
+                    rT = it,
+                    bg = glucoseStatus.glucose,
+                    delta = glucoseStatus.delta,
+                    shortAvgDelta = glucoseStatus.shortAvgDelta,
+                    iobActivity = iobArray.firstOrNull()?.activity ?: 0.0,
+                    variableSens = it.variable_sens,
+                    profileSens = oapsProfile.sens,
+                    v5State = v5decision?.mealHypothesis,
+                    v5BudgetU = v5decision?.aggressionBudget?.budget,
+                    v1WouldDoseU = it.units,
+                    committedCapU = preferences.get(DoubleKey.ApsBoostV5CommittedCapU),
+                    confirmedCapU = preferences.get(DoubleKey.ApsBoostV5ConfirmedCapU),
+                    postRescueWindow = inPostRescueWindow,
+                    cumulativeCapU = cumulativeSmbCap60Min,
+                    smbVol60MinU = recentSmbVolume60Min,
+                    nowMs = now,
+                    hour = java.time.Instant.ofEpochMilli(now).atZone(java.time.ZoneId.systemDefault()).hour,
+                )
+            }.onFailure { t -> aapsLogger.error(LTag.APS, "V7 shadow invocation failed (swallowed)", t) }
             // Sleep gate (2026-06-14): do NOT let V5 drive the SMB while SLEEPING — fall back to V1's
             // (oref1/Boost) SMB, which already respects night mode. V5 still computes its shadow
             // telemetry above (runShadow ran), so the V5-vs-V1 comparison continues overnight; only
