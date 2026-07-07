@@ -30,14 +30,14 @@ def ep_metrics(t0):
 rows=[]
 for t in eps:
     m=ep_metrics(t)
-    if m: m["era"]="V6" if t>=V6S else ("V1-recent" if t>=V6S-pd.Timedelta(days=21) else "V1-older"); m["hr"]=t.tz_convert("Europe/Bratislava").hour; rows.append(m)
+    if m: m["era"]="V6" if t>=V6S else ("V1-recent" if t>=V6S-pd.Timedelta(days=21) else "V1-older"); m["hr"]=t.tz_convert("Etc/GMT-2").hour; rows.append(m)
 E=pd.DataFrame(rows)
 print("=== MEAL EPISODE OUTCOMES BY ERA (3h window) ===")
 print(E.groupby("era").agg(n=("peak","size"),peak_med=("peak","median"),peak_p75=("peak",lambda x:x.quantile(.75)),
       min180_med=("over180","median"),min180_mean=("over180","mean"),min140_mean=("over140","mean")).round(0))
 
 # daily V6 vs base totals (V6 era only)
-v6=dec[dec.variant=="boost-other"].copy(); v6["d"]=v6.bucket.dt.tz_convert("Europe/Bratislava").dt.date
+v6=dec[dec.variant=="boost-other"].copy(); v6["d"]=v6.bucket.dt.tz_convert("Etc/GMT-2").dt.date
 g=v6.groupby("d").agg(v6u=("v1_units",lambda x:x.fillna(0).sum()), baseu=("base_would",lambda x:x.fillna(0).sum()))
 print("\n=== DAILY SMB: V6 delivered vs base-would (V6 era) ===")
 print(g.round(1))

@@ -167,7 +167,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         // mode): mark resolved ONLY knobs whose stored value differs from the factory default (they
         // were plausibly applied by the old run, or user-set — don't rewrite them). Knobs still AT
         // factory default become eligible again — rescues installs where the old key-presence test
-        // or a consumed/imported flag wrongly skipped them (field case: Roman, committedCap stuck
+        // or a consumed/imported flag wrongly skipped them (field case: user H, committedCap stuck
         // at factory 0.5 with a derived 1.24). Clearing the flag makes the migration one-shot.
         if (preferences.getIfExists(BooleanKey.ApsBoostV5AutoConfigDone) == true) {
             val migrated = BoostV5AutoConfigApply.migrateLegacyDoneFlag(
