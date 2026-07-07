@@ -3,6 +3,7 @@ package app.aaps.plugins.aps.openAPSBoostV5
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.plugins.aps.getBoostDosing
 import org.json.JSONObject
 import java.util.Locale
 import kotlin.math.round
@@ -54,7 +55,10 @@ class V5StateStore(private val preferences: Preferences, private val aapsLogger:
         // 2026-05-26 Fix 6: prefer in-memory cache; SharedPreferences only on cold start.
         cached?.let { return it }
 
-        val raw = preferences.get(StringKey.ApsBoostV5State)
+        // getBoostDosing (not get): Simple Mode masks defaultedBySM StringKeys to their "" default,
+        // which would discard the persisted V5 state-machine on cold start (post app-restart) and
+        // reset OBSERVING→CONFIRMED progress. See BoostDosingPreferences.kt.
+        val raw = preferences.getBoostDosing(StringKey.ApsBoostV5State)
         if (raw.isBlank()) {
             // Cold start with no persisted state: seed cache with default IDLE so subsequent
             // reads in the same process are consistent.

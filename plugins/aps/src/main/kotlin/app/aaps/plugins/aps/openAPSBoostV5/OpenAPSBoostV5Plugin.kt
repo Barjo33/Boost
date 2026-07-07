@@ -34,6 +34,7 @@ import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.plugins.aps.getBoostDosing
 import app.aaps.core.validators.preferences.AdaptiveDoublePreference
 import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
 import app.aaps.core.validators.preferences.AdaptiveUnitPreference
@@ -369,8 +370,8 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             rT.boostV5_active = activeMode   // true => V5 is the selected/active doser (drives the V5 overview/widget)
             // Log the live per-user dose caps so the OBSERVING→CONFIRMED gate can be backtested against
             // REAL caps (not inferred/auto-formula estimates) and manual overrides are captured. (2026-07-02)
-            rT.boostV5_committedCap = preferences.get(DoubleKey.ApsBoostV5CommittedCapU)
-            rT.boostV5_confirmedCap = preferences.get(DoubleKey.ApsBoostV5ConfirmedCapU)
+            rT.boostV5_committedCap = preferences.getBoostDosing(DoubleKey.ApsBoostV5CommittedCapU)
+            rT.boostV5_confirmedCap = preferences.getBoostDosing(DoubleKey.ApsBoostV5ConfirmedCapU)
             // 2026-07-03 confirm-gate telemetry for the 2026-07-10 live gate review — a dose-adequacy
             // gate block was previously indistinguishable from a score fade in NS. Read-only.
             rT.boostV5_confirmGate = decision.confirmGate
@@ -520,8 +521,8 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             // TBR-gated (see the key's KDoc). Additionally gated on activeMode so the floor can
             // only ever alter finalDose when V6 is the selected doser (the delivered-dose path);
             // in shadow mode the field keeps its pre-activation would-add semantics regardless.
-            composedFloorActive = activeMode && preferences.get(BooleanKey.ApsBoostV5ComposedFloorActive),
-            fastCarbConfirmEnabled = preferences.get(BooleanKey.ApsBoostV5FastCarbConfirm),
+            composedFloorActive = activeMode && preferences.getBoostDosing(BooleanKey.ApsBoostV5ComposedFloorActive),
+            fastCarbConfirmEnabled = preferences.getBoostDosing(BooleanKey.ApsBoostV5FastCarbConfirm),
             sensorQualityOk = if (activeMode) !flatBGsDetected else true,
             profileSwitched = false,           // deferred reset trigger (microBolusAllowed gates actual dosing)
             pumpDisconnected = false,
@@ -530,8 +531,8 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             aggressionUserKnob = aggressionKnob,
             hypoCautionUserKnob = hypoCautionKnob,
             sensitivityUserKnob = sensitivityKnob,
-            confirmedCapU = preferences.get(DoubleKey.ApsBoostV5ConfirmedCapU),
-            committedCapU = preferences.get(DoubleKey.ApsBoostV5CommittedCapU),
+            confirmedCapU = preferences.getBoostDosing(DoubleKey.ApsBoostV5ConfirmedCapU),
+            committedCapU = preferences.getBoostDosing(DoubleKey.ApsBoostV5CommittedCapU),
         )
     }
 
@@ -577,8 +578,8 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
 
     /** V5's three HEADLINE tuning knobs (advanced settings — caps, fast-carb, pre-meal — live on
      *  the preference screen; these three are the per-user calibration surface). */
-    val aggressionKnob: Double get() = preferences.get(DoubleKey.ApsBoostV5Aggression)
-    val hypoCautionKnob: Double get() = preferences.get(DoubleKey.ApsBoostV5HypoCaution)
+    val aggressionKnob: Double get() = preferences.getBoostDosing(DoubleKey.ApsBoostV5Aggression)
+    val hypoCautionKnob: Double get() = preferences.getBoostDosing(DoubleKey.ApsBoostV5HypoCaution)
 
     /**
      * Sensitivity knob ∈ [0.8, 1.2] — per-user calibration multiplier on the aggression budget.
@@ -587,7 +588,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
      * resistant users) is warranted. This is the lever a future nightly per-user learner will
      * drive (loop deferred — see boost_v6_delivery_plan Phase 3). Default 1.0 = no change.
      */
-    val sensitivityKnob: Double get() = preferences.get(DoubleKey.ApsBoostV5Sensitivity)
+    val sensitivityKnob: Double get() = preferences.getBoostDosing(DoubleKey.ApsBoostV5Sensitivity)
 
     // Preference sub-screens this plugin may (re)build — the V5 root, the Advanced parent, and the
     // shared engine sub-screens (they live nested under "Advanced" and are rebuilt by key when
