@@ -35,6 +35,7 @@ import app.aaps.plugins.aps.openAPSSMB.GlucoseStatusCalculatorSMB
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.notifications.Notification
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
@@ -287,6 +288,12 @@ open class OpenAPSBoostPlugin @Inject constructor(
     private val postExerciseRecoveryTarget; get() = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.ApsBoostPostExerciseRecoveryTarget))
     private val postExerciseRecoveryScale; get() = preferences.get(DoubleKey.ApsBoostPostExerciseRecoveryScale)
     private val postExerciseMinDuration; get() = preferences.get(IntKey.ApsBoostPostExerciseMinDuration)
+
+    // ---- Feed-health edge detection (F4/F6, 2026-07-07) ----
+    // HR: fresh→dark transitions + one waking-hours notification per dark episode.
+    private val hrFeedDarkTracker = HrFeedDarkTracker()
+    // Steps: boostSteps_feed transitions, reason-line only (no notification).
+    @Volatile private var lastStepsFeed: String? = null
 
     // ---- Post-exercise recovery state ----
     @Volatile private var recoveryWindowEnd: Long = 0L
@@ -1450,6 +1457,15 @@ open class OpenAPSBoostPlugin @Inject constructor(
             // Step-feed availability telemetry (F1, 2026-07-07) — written EVERY cycle so a dark
             // feed is visible in NS ("none" = INACTIVE + sleep-in suppressed this cycle).
             it.boostSteps_feed = activityResult.stepsFeed
+            // F6 (2026-07-07): step-feed edge detection — reason-line only (steps degrade
+            // gracefully via F1's guard, so no notification; the transition just needs to be
+            // findable in NS next to the cycles it affected).
+            val prevStepsFeed = lastStepsFeed
+            if (prevStepsFeed != null && prevStepsFeed != activityResult.stepsFeed) {
+                it.reason.append("stepsFeed: $prevStepsFeed→${activityResult.stepsFeed}; ")
+                aapsLogger.info(LTag.APS, "Boost step feed changed: $prevStepsFeed → ${activityResult.stepsFeed}")
+            }
+            lastStepsFeed = activityResult.stepsFeed
 
             // 2026-06-02: Sleep state evaluation. Runs at end of invoke so we have
             // mlMealLikely from this cycle. State persists across plugin restarts via
@@ -1574,6 +1590,14 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 val avg15 = SleepStateDetector.averageHr(hrReadingsForSleep, now, 15)
                 if (avg5 != null) it.hrBpmAvg5m = Round.roundTo(avg5, 0.1)
                 if (avg15 != null) it.hrBpmAvg15m = Round.roundTo(avg15, 0.1)
+                // F5 (2026-07-07) transient visibility: 15-min averaging blunts hypo-tachycardia
+                // (+1.5 vs +13.6 bpm, 2026-07-06 analysis) — emit the 5-min extremes of the 1-min
+                // rows so the transient survives into NS for retrospective modelling.
+                val hrRows5m = hrReadingsForSleep.filter { hr -> hr.isValid && hr.timestamp > now - 5 * 60_000L }
+                if (hrRows5m.isNotEmpty()) {
+                    it.hrBpmMax5m = Round.roundTo(hrRows5m.maxOf { hr -> hr.beatsPerMinute }, 0.1)
+                    it.hrBpmMin5m = Round.roundTo(hrRows5m.minOf { hr -> hr.beatsPerMinute }, 0.1)
+                }
                 it.hrReadingsCount15m = hrReadingsForSleep.count { hr ->
                     hr.isValid && hr.timestamp > now - 15 * 60_000L
                 }
@@ -1584,6 +1608,23 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 )
                 it.hrSource_resolved = hrRes.active
                 it.hrSource_states = hrRes.note
+                // F4 phone side (2026-07-07): edge-detect the whole feed going dark (anyFresh
+                // true→false) — one reason-line note naming the last device + age — and after 60
+                // consecutive dark minutes during 08:00-22:00 local, one low-priority notification
+                // per dark episode (the wear watchdog re-registers the sensor; this covers every
+                // other silent-death mode: BT drop, Garmin app dead, watch off wrist).
+                val darkEvent = hrFeedDarkTracker.onCycle(hrRes, now, java.time.LocalTime.now().hour)
+                darkEvent.wentDarkNote?.let { note ->
+                    aapsLogger.warn(LTag.APS, note)
+                    it.reason.append("$note; ")
+                }
+                if (darkEvent.raiseNotification) {
+                    uiInteraction.addNotification(
+                        Notification.USER_MESSAGE,
+                        "Boost: heart-rate feed has been dark for ${darkEvent.darkMinutes} min — check the watch/Garmin connection",
+                        Notification.LOW
+                    )
+                }
 
                 it.reason.append("sleep=${sleepResult.newState.state}")
                 if (agg.sleepStartMinAvg != null) {

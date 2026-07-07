@@ -654,6 +654,10 @@ class DetermineBasalBoost @Inject constructor(
         var minCOBPredBG = 999.0
         var minUAMPredBG = 999.0
         var minGuardBG: Double = bg
+        // Which prediction curve produced minGuardBG (2026-07-07): "COB+UAM" (fraction-blended) |
+        // "COB" | "UAM" | "IOB". Appended wherever the reason line prints minGuardBG, so a
+        // guard-driven zero-temp / SMB-disable is attributable to its curve without log spelunking.
+        var minGuardBGSource = "IOB"
         var minCOBGuardBG = 999.0
         var minUAMGuardBG = 999.0
         var minIOBGuardBG = 999.0
@@ -852,13 +856,17 @@ class DetermineBasalBoost @Inject constructor(
         if ((cid > 0.0 || remainingCIpeak > 0)) {
             if (enableUAM) {
                 minGuardBG = fractionCarbsLeft * minCOBGuardBG + (1 - fractionCarbsLeft) * minUAMGuardBG
+                minGuardBGSource = "COB+UAM"
             } else {
                 minGuardBG = minCOBGuardBG
+                minGuardBGSource = "COB"
             }
         } else if (enableUAM) {
             minGuardBG = minUAMGuardBG
+            minGuardBGSource = "UAM"
         } else {
             minGuardBG = minIOBGuardBG
+            minGuardBGSource = "IOB"
         }
         minGuardBG = round(minGuardBG, 0)
         // Expose V1's computed minGuardBG on RT so V5's silent shadow can use the
@@ -906,7 +914,7 @@ class DetermineBasalBoost @Inject constructor(
         rT.reason.append(
             "COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2).withoutZeros()
-            }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
+            }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)} ($minGuardBGSource), IOBpredBG ${convert_bg(lastIOBpredBG)}"
         )
         if (lastCOBpredBG != null) {
             rT.reason.append(", COBpredBG " + convert_bg(lastCOBpredBG.toDouble()))
@@ -940,7 +948,7 @@ class DetermineBasalBoost @Inject constructor(
         }
 
         if (enableSMB && minGuardBG < threshold) {
-            consoleError.add("minGuardBG ${convert_bg(minGuardBG)} projected below ${convert_bg(threshold)} - disabling SMB")
+            consoleError.add("minGuardBG ${convert_bg(minGuardBG)} ($minGuardBGSource) projected below ${convert_bg(threshold)} - disabling SMB")
             enableSMB = false
         }
         // Boost uses 30% maxDelta threshold (vs 20% in standard)
@@ -974,7 +982,7 @@ class DetermineBasalBoost @Inject constructor(
             rT.reason.append("IOB ${iob_data.iob} < ${round(-profile.current_basal * 20 / 60, 2)}")
             rT.reason.append(" and minDelta ${convert_bg(minDelta)} > expectedDelta ${convert_bg(expectedDelta)}; ")
         } else if (bg < threshold || minGuardBG < threshold) {
-            rT.reason.append("minGuardBG ${convert_bg(minGuardBG)} < ${convert_bg(threshold)}")
+            rT.reason.append("minGuardBG ${convert_bg(minGuardBG)} ($minGuardBGSource) < ${convert_bg(threshold)}")
             bgUndershoot = target_bg - minGuardBG
             val worstCaseInsulinReq = bgUndershoot / sens
             var durationReq = round(60 * worstCaseInsulinReq / profile.current_basal)

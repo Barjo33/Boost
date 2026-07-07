@@ -129,6 +129,11 @@ data class RT(
     var hrBpmLatest: Double? = null,                 // most recent HR reading at cycle time
     var hrBpmAvg5m: Double? = null,                  // duration-weighted average over last 5 min
     var hrBpmAvg15m: Double? = null,                 // duration-weighted average over last 15 min
+    // F5 (2026-07-07) transient visibility: max/min of the 1-min HR rows in the last 5 min.
+    // 15-min averaging blunts hypo-tachycardia (+1.5 vs +13.6 bpm, 2026-07-06 analysis) — the
+    // extremes preserve the transient the averages erase, for retrospective hypo-HR modelling.
+    var hrBpmMax5m: Double? = null,                  // max 1-min HR row in last 5 min
+    var hrBpmMin5m: Double? = null,                  // min 1-min HR row in last 5 min
     var hrReadingsCount15m: Int? = null,             // number of HR records seen in 15-min window
     // HR source visibility (2026-06-28): which device feeds HR + per-source freshness (silent-death detection).
     var hrSource_resolved: String? = null,           // live HR source: garmin | worn:<model> | hc | null if feed died
