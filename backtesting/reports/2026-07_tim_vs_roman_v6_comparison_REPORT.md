@@ -160,6 +160,55 @@ bug, but as a persistent cap rather than the acute maxIOB=1.0 event.)
 - **cumulative cap: did not bind. cap_clamp on CONFIRMED: minor** (his confirmedCap 2.5–6 rarely binds).
 - **Routine 87% / rare-catastrophic 13%** (G3_HOLD + minGuardBG-HARD) for both states.
 
+# NEEDS breakdown — INTENDED vs RETROSPECTIVE-need vs DELIVERED (H)
+
+Tool: `needs_breakdown.py H` → `out/H_needs.csv` (per-cycle) + `out/H_needs_summary.csv`. INTENDED =
+budget×actionMult×velocityFactor (pre-cap/round). RETRO_NEED = max(0, (episode actual-peak − target)/ISF
+− IOB), per-cycle logged target & ISF (first-order, no absorption model). Real = episode BG sustained
+>180 ≥30 min; else fizzle. Small n (CONFIRMED 30 / COMMITTED 100 / 11 real episodes, 8 days).
+
+### Mean U per cycle (real meals only)
+
+| state/rise | intended | delivered | retro_need | delivered − need | interpretation |
+|---|---|---|---|---|---|
+| **CONFIRMED / real** | 3.37 | **2.08** | **2.13** | **−0.06** | delivered lands *on* the true need; intent over-wants (3.37) and caps correctly trim it |
+| CONFIRMED / fizzle | 1.61 | 1.35 | 0.79 | +0.56 | over-delivers on fizzles (expected) |
+| **COMMITTED / real** | 1.01 | **0.26** | **0.72** | **−0.46** | holds individually under-deliver vs need — the cap/brake gap |
+| COMMITTED / fizzle | 0.58 | 0.25 | 0.42 | −0.18 | mild under (fizzles) |
+
+### The headline — episode level, REAL meals (n=11)
+
+**delivered/episode med 3.55U vs retro_need/episode med 1.72U → median shortfall 0.00U.** Per-episode he is
+**NOT systematically starved**: the CONFIRMED shot (2.08U ≈ need 2.13) carries the meal; the small COMMITTED
+holds are cosmetic once the confirm has fired. Residual shortfall concentrates in a few tail episodes —
+**mean 0.38U, max 3.67U/episode** (the badly-short ones = confirm didn't fire big + holds capped, incl. the
+maxIOB-mask event).
+
+### Intended-vs-need divergence (flagged as requested)
+- **CONFIRMED/real: intended 3.37 >> retro_need 2.13 — the engine WANTS MORE than outcomes justify** (+1.24U).
+  The caps/brakes trimming the confirm toward 2.08 are doing the RIGHT thing, not harming.
+- COMMITTED/real: intended 1.01 vs need 0.72 — **aligned** (intent ≈ need; delivery is what lags).
+
+### Implied caps vs current vs auto-config formula
+
+| cap | to cover intended-on-real | to cover retro-NEED | current | auto-config formula |
+|---|---|---|---|---|
+| committedCap | p50 0.28 / p75 1.28 / **p90 2.13** | p90 3.05 | **1.2** | 1.21 (max(p75-SMB 0.35, TDD/40 1.21)) |
+| confirmedCap | p90 6.62 / max 10.15 | p90 **3.38** | **~6** | 1.50 (p95-SMB 1.0 clamp) — **too tight** |
+
+**Cap recommendation:**
+- **confirmedCap: keep ~6 — do NOT drop to the auto-config 1.5.** His real-meal confirm NEED is p90 3.4U;
+  a 1.5 cap would clamp genuine confirms below need. His current 6 comfortably passes the ~2.1U need.
+- **committedCap: 1.2 → ~2.0–2.5 closes the per-cycle hold tail** (covers p90 intended 2.13 / need p90 3.05).
+  His auto-config already moved him to **2.5 on 07-07** — self-correcting; the earlier 0.5 (factory/Simple-Mode
+  default) was the real starver of the holds (see §decomposition).
+
+**Bottom line for Tim:** Roman's real meals are essentially covered at the episode level by the confirm
+shot (which matches retrospective need); his "tiny committed doses" are a per-cycle-hold artifact that the
+confirm already compensates. The one lever with residual value is **committedCap 1.2→~2.5** (already
+auto-applied) for the upper-tail holds; **confirmedCap should stay high (~6), not follow the auto-config
+formula**. The engine's CONFIRMED intent over-wants vs outcomes, so no case for *more* confirm aggression.
+
 ## Comparability flags
 
 - **8×→1.5× window fixed**, but tim 12 d vs H 8 d still differ; glycemia/rates directional.
