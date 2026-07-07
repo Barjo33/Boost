@@ -1672,16 +1672,39 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     val wearToday = WearStepSource.stepsToday(todaySc, dayStartMs, now)
                     val phoneToday = StepService.getStepsToday(offsetMs)
 
-                    // The phone pedometer has no persistent daily feed; keep a rolling completed-day
-                    // ledger so it can serve as an active source with CALIBRATED bridging (else a phone
-                    // takeover after a watch dies would splice donor days raw and risk false inactivity).
-                    if (phoneDayCached != todayIdx) {
-                        if (phoneDayCached >= 0 && phoneMaxCached > 0)
-                            multi = DailyStepHistoryTracker.mergeSource(multi, StepSourceResolver.PHONE,
-                                listOf(DailyStepHistoryTracker.DailyTotal(phoneDayCached, phoneMaxCached, StepSourceResolver.PHONE)), todayIdx)
-                        phoneDayCached = todayIdx; phoneMaxCached = 0
+                    // ── Intraday running-max BANK (2026-07-07) — day-close never reads live counts.
+                    // The 07-06 recurrence (despite hold-higher): wear peaked 4142 at 22:58 BST,
+                    // the wear counter reset at DEVICE midnight 23:04, and the day closed at 739
+                    // (phone) — wear's candidate was already 0 at the moment of resolution. Bank
+                    // per-source maxima every cycle (wear/phone native units; HC sources only when
+                    // HC's today value is for the CURRENT local day); on rollover the completed
+                    // day is merged from the BANK. Persisted so an app restart keeps the peak.
+                    // Replaces the old phone-only in-memory ledger (phoneDayCached/phoneMaxCached).
+                    val bankCounts = LinkedHashMap<String, Int>()
+                    bankCounts[StepSourceResolver.WEAR] = wearToday
+                    bankCounts[StepSourceResolver.PHONE] = phoneToday
+                    if (healthConnectStepsIngest.todayStepsDay == todayIdx)
+                        for ((rawSrc, t) in healthConnectStepsIngest.todayStepsBySource) {
+                            val c = StepSourceResolver.canonical(rawSrc)
+                            if (c == StepSourceResolver.WEAR || c == StepSourceResolver.PHONE) continue
+                            bankCounts[c] = maxOf(bankCounts[c] ?: 0, t)
+                        }
+                    val banked = DailyStepHistoryTracker.bankCycle(stepBankCached, todayIdx, bankCounts)
+                    stepBankCached = banked.bank
+                    val bankSerialized = banked.bank.serialize()
+                    if (bankSerialized != lastStepBankSerialized) {
+                        preferences.put(StringKey.ApsBoostIntradayStepBank, bankSerialized)
+                        lastStepBankSerialized = bankSerialized
                     }
-                    if (phoneToday > phoneMaxCached) phoneMaxCached = phoneToday
+                    if (banked.closedDayTotals.isNotEmpty()) {
+                        for (t in banked.closedDayTotals)
+                            multi = DailyStepHistoryTracker.mergeSource(multi, t.source, listOf(t), todayIdx)
+                        // Breadcrumb AT the rollover cycle (the 07-06 close was silent): what each
+                        // source banked. The held-X-over-Y resolution line follows from
+                        // phoneAnchoredWindow below on this same cycle, now with banked values.
+                        it.reason.append("stepHistory: day-close banked ${banked.closedDayTotals.joinToString(", ") { t -> "${t.source} ${t.steps}" }}; ")
+                        aapsLogger.info(LTag.APS, "Boost step day-close (banked): ${banked.closedDayTotals.joinToString(", ") { t -> "${t.source} ${t.steps}" }}")
+                    }
 
                     if (multi.sources != multiStepHistoryCached.sources) {
                         multiStepHistoryCached = multi
@@ -1855,8 +1878,12 @@ open class OpenAPSBoostPlugin @Inject constructor(
     @Volatile private var multiStepHistoryCached: DailyStepHistoryTracker.MultiSourceHistory =
         DailyStepHistoryTracker.MultiSourceHistory.deserialize(preferences.get(StringKey.ApsBoostDailyStepHistory))
     @Volatile private var lastWearDailyMs = 0L          // throttle the 28-day Wear SC read to hourly
-    @Volatile private var phoneDayCached = -1L          // phone completed-day ledger (no persistent phone feed)
-    @Volatile private var phoneMaxCached = 0
+    // Intraday step bank (2026-07-07): per-source running max of today's counts, persisted so a
+    // mid-evening app restart keeps the day's peak. Day-close resolves from THIS, never from
+    // post-reset live reads (the 07-06 device-midnight wear reset undercount).
+    @Volatile private var stepBankCached: DailyStepHistoryTracker.IntradayStepBank =
+        DailyStepHistoryTracker.IntradayStepBank.deserialize(preferences.get(StringKey.ApsBoostIntradayStepBank))
+    @Volatile private var lastStepBankSerialized: String? = null   // write-avoidance cache
     // Cached learned daytime baseline (used by HrActivityCalculator in current cycle from prior
     // cycle's aggregate computation — 5-min lag is acceptable, baseline changes slowly).
     @Volatile private var hrLearnedDaytimeBpmCached: Int? = null
