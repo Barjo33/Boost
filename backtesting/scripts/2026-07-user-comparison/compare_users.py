@@ -5,8 +5,11 @@ Usage:
     python3 compare_users.py [USER_A] [USER_B]        # default: tim H
     python3 compare_users.py --out-dir out --report REPORT.md
 
-Deterministic. Dedup = last-invoke row per (user, floor(ts_epoch/300)). V6-era only
-(boostv5_state IS NOT NULL). Glycemia from boost_cgm (dense) over each user's V6-era range.
+Deterministic. Dedup = last-invoke row per (user, floor(ts_epoch/300)). V6-ACTIVE era only
+(boostv5_active = true — i.e. cycles where V6 actually DROVE the pump, not shadow). This matters:
+tim only went V6-active ~2026-06-26; his earlier boost-other history was V1/V3 acting with V6
+in shadow, so `boostv5_state IS NOT NULL` overstated his "V6 experience" ~13x. Glycemia from
+boost_cgm (dense) over each user's V6-ACTIVE range.
 Emits: <out>/comparison_<A>_vs_<B>.csv (machine-readable metric table) + a markdown report.
 
 Field-availability: gateReduction/confirmGate/console-maxIOB telemetry only exist ~post 07-02;
@@ -36,7 +39,7 @@ def load_decisions(conn, user):
       (console_error ~* 'SMB suppressed') smbsupp_console,
       variant
     FROM boost_decisions
-    WHERE user_id=%s AND boostv5_state IS NOT NULL
+    WHERE user_id=%s AND boostv5_active = true
     ORDER BY floor(ts_epoch/300.0), ts_epoch DESC
     """
     df = pd.read_sql(q, conn, params=(user,)).sort_values("ts_epoch").reset_index(drop=True)
