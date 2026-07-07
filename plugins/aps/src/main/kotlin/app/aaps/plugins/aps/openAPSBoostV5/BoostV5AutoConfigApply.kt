@@ -63,6 +63,18 @@ internal object BoostV5AutoConfigApply {
     const val TBR_RAISE_GUARD_PCT = 4.0
 
     /**
+     * Severe-hypo co-guard on the same raise-guard (2026-07-07): a dose-cap RAISE is also held
+     * (suggested-not-applied) when 14-day time-below-54 is at or above this. 1.0% is the
+     * international consensus <54 target the derivation already uses (SEV54_TARGET). Catches the
+     * user-B pattern the <70-only guard missed: TBR<70 3.83% (under the 4.0% line) but <54 1.01%
+     * (over the severe line) — severe exposure is the stronger contraindication for a raise, and a
+     * user can sit under the <70 gate while over the <54 one. Same suggested-not-applied
+     * notification path as [TBR_RAISE_GUARD_PCT]; lowerings and non-cap tightenings still always
+     * apply.
+     */
+    const val TBR54_RAISE_GUARD_PCT = 1.0
+
+    /**
      * Every factory default each managed key has EVER shipped with, beyond the current one.
      * Verified from git history across all branches (2026-07-06, `git log --all -p -G<key>` on
      * core/keys/DoubleKey.kt; the keys never lived anywhere else):
@@ -150,7 +162,8 @@ internal object BoostV5AutoConfigApply {
      *  - already RESOLVED (applied or skipped in an earlier run) → untouched (no [Resolution]);
      *  - user-tuned ([isUserTuned], any-era factory-aware) → kept, marked resolved (never revisited);
      *  - a dose-cap ([doseCapKeys]) whose derived value would RAISE the operative value while the
-     *    14-day TBR<70 exceeds [TBR_RAISE_GUARD_PCT] → NOT written, marked resolved, returned as
+     *    14-day TBR<70 exceeds [TBR_RAISE_GUARD_PCT] OR the 14-day time-below-54 is ≥
+     *    [TBR54_RAISE_GUARD_PCT] → NOT written, marked resolved, returned as
      *    [Outcome.SUGGESTED_NOT_APPLIED_TBR] so the caller can surface the suggestion;
      *  - otherwise → suggested value written, marked resolved.
      *
@@ -167,6 +180,7 @@ internal object BoostV5AutoConfigApply {
     fun applyAutoConfig(
         suggestion: BoostV5AutoConfig.V5Suggestion,
         tbrBelow70Pct: Double,
+        timeBelow54Pct: Double = 0.0,
         isResolved: (DoubleKey) -> Boolean,
         storedValue: (DoubleKey) -> Double?,
         put: (DoubleKey, Double) -> Unit,
@@ -174,6 +188,8 @@ internal object BoostV5AutoConfigApply {
     ): List<Resolution> {
         val resolutions = mutableListOf<Resolution>()
         val operative = mutableMapOf<DoubleKey, Double>()
+        // Raise-guard trigger: <70 over its line OR <54 at/over the consensus severe line (2026-07-07).
+        val raiseGuardTripped = tbrBelow70Pct > TBR_RAISE_GUARD_PCT || timeBelow54Pct >= TBR54_RAISE_GUARD_PCT
 
         fun resolve(key: DoubleKey, derived: Double) {
             val stored = storedValue(key)
@@ -188,12 +204,13 @@ internal object BoostV5AutoConfigApply {
                 resolutions += Resolution(key, Outcome.KEPT_USER_TUNED, derived, current, "kept-user-tuned value=$current (suggested $derived)")
                 return
             }
-            if (key in doseCapKeys && derived > current + DEFAULT_EPS && tbrBelow70Pct > TBR_RAISE_GUARD_PCT) {
+            if (key in doseCapKeys && derived > current + DEFAULT_EPS && raiseGuardTripped) {
                 markResolved(key)                           // suggestion surfaced, not written
                 operative[key] = current
                 resolutions += Resolution(
                     key, Outcome.SUGGESTED_NOT_APPLIED_TBR, derived, current,
-                    "suggested-not-applied (TBR): suggested=$derived current=$current TBR<70=$tbrBelow70Pct% > $TBR_RAISE_GUARD_PCT%"
+                    "suggested-not-applied (TBR): suggested=$derived current=$current " +
+                        "TBR<70=$tbrBelow70Pct% (guard >$TBR_RAISE_GUARD_PCT%) <54=$timeBelow54Pct% (guard ≥$TBR54_RAISE_GUARD_PCT%)"
                 )
                 return
             }

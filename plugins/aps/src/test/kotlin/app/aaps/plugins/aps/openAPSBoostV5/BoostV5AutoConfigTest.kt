@@ -153,9 +153,10 @@ class BoostV5AutoConfigTest {
     private class FakeStore(vararg preset: Pair<DoubleKey, Double>) {
         val store = linkedMapOf(*preset)
         val resolved = mutableSetOf<DoubleKey>()
-        fun apply(s: BoostV5AutoConfig.V5Suggestion, tbr: Double) = BoostV5AutoConfigApply.applyAutoConfig(
+        fun apply(s: BoostV5AutoConfig.V5Suggestion, tbr: Double, sev54: Double = 0.0) = BoostV5AutoConfigApply.applyAutoConfig(
             s,
             tbrBelow70Pct = tbr,
+            timeBelow54Pct = sev54,
             isResolved = { it in resolved },
             storedValue = { store[it] },
             put = { k, v -> store[k] = v },
@@ -315,6 +316,47 @@ class BoostV5AutoConfigTest {
         val res = f.apply(s, tbr = 2.0)
         assertThat(res.appliedKeys()).contains(DoubleKey.ApsBoostV5CommittedCapU)
         assertThat(f.store[DoubleKey.ApsBoostV5CommittedCapU]).isEqualTo(s.committedCapU)
+    }
+
+    // ── <54 severe co-guard on the raise-guard (2026-07-07, user-B pattern) ──
+    // TBR<70 alone missed user B: <70 3.83% sat under the 4.0% line while <54 1.01% sat over the
+    // 1.0% consensus severe line. A raise must also be held on severe exposure.
+
+    @Test fun `dose-cap RAISE held when below-54 trips even though below-70 is under its line`() {
+        val s = BoostV5AutoConfig.compute(profile(tbr70 = 3.8))!!
+        assertThat(s.committedCapU).isGreaterThan(DoubleKey.ApsBoostV5CommittedCapU.defaultValue)
+        val f = FakeStore()
+        val res = f.apply(s, tbr = 3.8, sev54 = 1.1)
+        val held = res.single { it.key == DoubleKey.ApsBoostV5CommittedCapU }
+        assertThat(held.outcome).isEqualTo(BoostV5AutoConfigApply.Outcome.SUGGESTED_NOT_APPLIED_TBR)
+        assertThat(held.reason).contains("<54=1.1%")
+        assertThat(f.store).doesNotContainKey(DoubleKey.ApsBoostV5CommittedCapU)
+        assertThat(f.resolved).contains(DoubleKey.ApsBoostV5CommittedCapU)
+        // boundary: exactly 1.0% is AT the consensus line -> held (guard is >=)
+        val f2 = FakeStore()
+        val res2 = f2.apply(s, tbr = 3.8, sev54 = BoostV5AutoConfigApply.TBR54_RAISE_GUARD_PCT)
+        assertThat(res2.single { it.key == DoubleKey.ApsBoostV5CommittedCapU }.outcome)
+            .isEqualTo(BoostV5AutoConfigApply.Outcome.SUGGESTED_NOT_APPLIED_TBR)
+    }
+
+    @Test fun `dose-cap RAISE applies when both guards are under their lines`() {
+        val s = BoostV5AutoConfig.compute(profile(tbr70 = 3.8))!!
+        val f = FakeStore()
+        val res = f.apply(s, tbr = 3.8, sev54 = 0.9)
+        assertThat(res.appliedKeys()).contains(DoubleKey.ApsBoostV5CommittedCapU)
+        assertThat(f.store[DoubleKey.ApsBoostV5CommittedCapU]).isEqualTo(s.committedCapU)
+    }
+
+    @Test fun `dose-cap LOWERING applies even with elevated below-54`() {
+        // Tightenings are exactly what a severe-hypo-exposed user needs — never blocked.
+        val s = BoostV5AutoConfig.compute(
+            profile(tbr70 = 3.8, manual = listOf(0.5, 0.5, 0.5, 0.5), smb = listOf(0.2, 0.2, 0.3))
+        )!!
+        assertThat(s.confirmedCapU).isEqualTo(1.5)   // below factory 2.5 = a lowering
+        val f = FakeStore()
+        val res = f.apply(s, tbr = 3.8, sev54 = 2.0)
+        assertThat(res.appliedKeys()).contains(DoubleKey.ApsBoostV5ConfirmedCapU)
+        assertThat(f.store[DoubleKey.ApsBoostV5ConfirmedCapU]).isEqualTo(1.5)
     }
 
     @Test fun `once applied, a knob is resolved and never re-applied`() {

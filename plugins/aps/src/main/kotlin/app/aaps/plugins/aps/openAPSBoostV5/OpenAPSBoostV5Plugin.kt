@@ -255,6 +255,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         val resolutions = BoostV5AutoConfigApply.applyAutoConfig(
             suggestion,
             tbrBelow70Pct = tbr70,
+            timeBelow54Pct = sev54,
             isResolved = { isResolved(it.key) },
             storedValue = { preferences.getIfExists(it) },
             put = { key, value -> preferences.put(key, value) },
@@ -282,8 +283,14 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         // readable line per knob; TBR-held cap raises are surfaced as manual suggestions.
         val heldSuggestions = resolutions.filter { it.outcome == BoostV5AutoConfigApply.Outcome.SUGGESTED_NOT_APPLIED_TBR }
             .map {
+                // Name whichever guard(s) actually tripped (<70 raise-guard and/or the 2026-07-07
+                // <54 severe co-guard) so the user sees why the raise was held.
+                val why = buildList {
+                    if (tbr70 > BoostV5AutoConfigApply.TBR_RAISE_GUARD_PCT) add("time-below-70 is ${Math.round(tbr70 * 10.0) / 10.0}%")
+                    if (sev54 >= BoostV5AutoConfigApply.TBR54_RAISE_GUARD_PCT) add("time-below-54 is ${Math.round(sev54 * 10.0) / 10.0}%")
+                }.joinToString(" and ")
                 "${shortName(it.key)}: suggested ${it.suggestedValue} U from your history — not auto-applied because " +
-                    "time-below-70 is ${Math.round(tbr70 * 10.0) / 10.0}%; set manually in Advanced if desired"
+                    "$why; set manually in Advanced if desired"
             }
         if (applied.isNotEmpty() || heldSuggestions.isNotEmpty()) {
             val pretty = (applied + heldSuggestions).joinToString("\n") { "• $it" }
