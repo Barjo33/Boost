@@ -80,9 +80,13 @@ class V7ResidualTracker {
          *  is unaffected (the offline regime quantiles used n ≥ 150). Oldest evicted first. */
         const val MAX_SAMPLES_PER_POOL = 2000
 
-        /** Below this per-(regime,horizon) count the pool is "warming" and consumers abstain —
-         *  the same minimum the offline regime-quantile fit required (03_distributional_sizing). */
-        const val WARM_MIN_SAMPLES = 150
+        /** Below this per-(regime,horizon) count the pool is "warming" and consumers abstain.
+         *  2026-07-07: lowered 150 → 60 for the SHADOW-EVAL warm-up. At the observed live fill
+         *  rate (~24 meal / ~12 quiet-flat matured residuals per day) 150 was ~1–2 weeks to first
+         *  signal; 60 gives a usable regime-quantile estimate in ~3–6 days. This is a SHADOW-ONLY
+         *  read (no dosing) — 60 is ample for an evaluation quantile; a production dosing gate would
+         *  restore 150 (the offline 03_distributional_sizing fit minimum). */
+        const val WARM_MIN_SAMPLES = 60
 
         /** Flat-CGM threshold (mg/dL per 5 min) for the QUIET_FLAT regime, applied to both delta
          *  and shortAvgDelta — "quiet defined by CGM dynamics rather than V6 state" (report §VERDICT b). */
