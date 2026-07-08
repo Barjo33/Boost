@@ -60,4 +60,10 @@ interface LoopHub {
         avgHeartRate: Int,
         device: String?
     )
+
+    /** Stores a batch of fine-grained (≈1-min) HR samples. Each pair is (endOfMinuteEpochMs, bpm);
+     *  stored with the HR-model convention timestamp = END of a 60 000 ms window, matching the
+     *  Health Connect ingest so per-minute buckets dedupe. Peak preservation is downstream:
+     *  Boost's hrBpmMax5m/Min5m take max/min over these 1-min rows. (2026-07-08, Garmin workstream B.) */
+    fun storeHeartRates(samples: List<Pair<Long, Int>>, device: String?)
 }

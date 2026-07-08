@@ -168,4 +168,22 @@ class LoopHubImpl @Inject constructor(
         )
         disposable += persistenceLayer.insertOrUpdateHeartRate(hr).subscribe()
     }
+
+    override fun storeHeartRates(samples: List<Pair<Long, Int>>, device: String?) {
+        // Correct HR-model convention: timestamp = END of the minute, duration = 60 000 (matches
+        // HealthConnectHrIngest so overlapping rows dedupe by minute bucket). insertOrUpdate is
+        // idempotent, so a backfill batch on BT reconnect is safe to replay.
+        val dev = device ?: "Garmin"
+        for ((endMs, bpm) in samples) {
+            if (bpm <= 10 || endMs <= 0L) continue
+            val hr = HR(
+                timestamp = endMs,
+                duration = 60_000L,
+                dateCreated = clock.millis(),
+                beatsPerMinute = bpm.toDouble(),
+                device = dev,
+            )
+            disposable += persistenceLayer.insertOrUpdateHeartRate(hr).subscribe()
+        }
+    }
 }
