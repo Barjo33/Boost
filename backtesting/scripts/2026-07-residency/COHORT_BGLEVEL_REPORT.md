@@ -45,6 +45,8 @@ Two caveats survive and bound the strength:
 
 **Verdict:** a **genuine but suggestive** Boost-vs-oref edge — consistent in direction across all five metrics (TIR/TING up, TBR/TAR down), but small (+1.2 pp difficulty-adjusted) and underpowered (p = 0.27) in a 9-vs-21 population comparison. Not conclusive, not a selection *artifact* either — it points the right way and warrants a larger / better-matched comparison to firm up.
 
+**→ The regime decomposition (`COHORT_REGIME_REPORT.md`) is where this gets interesting:** the flat +2.9 pp aggregate is *entirely overnight* (+13.3 pp, 00–06 local) partly offset by a post-breakfast *deficit* vs oref. The time-specific structure is a mechanism signature (overnight machinery = Boost's strength; meal sizing/timing = its deficit), which the aggregate hides. Read that report next.
+
 ## Per-user detail
 
 Full per-user table (TING/TIR/TBR/TAR/CV, both cohorts) is printed by the script and in `cohort_bglevel.json`. Notable: within AAPS-Boost, E (TIR 97) and H (94.5) lead, F (76.6) trails on high-time; within oref/Trio the spread is wider (U011 94 → U013 69), consistent with a broader, less-curated population.
