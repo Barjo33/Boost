@@ -173,6 +173,7 @@ class GarminPlugin @Inject constructor(
                 registerEndpoint("/get", requestHandler(::onGetBloodGlucose))
                 registerEndpoint("/carbs", requestHandler(::onPostCarbs))
                 registerEndpoint("/hr", requestHandler(::onPostHeartRates))
+                registerEndpoint("/steps", requestHandler(::onPostSteps))
                 registerEndpoint("/connect", requestHandler(::onConnectPump))
                 registerEndpoint("/sgv.json", requestHandler(::onSgv))
                 awaitReady(wait)
@@ -432,6 +433,27 @@ class GarminPlugin @Inject constructor(
         if (carbs > 0) {
             loopHub.postCarbs(carbs)
         }
+    }
+
+    /** Handles a Garmin step-count snapshot (workstream B, 2026-07-08). Format:
+     *  /steps?device=<name>&t=<endSec>&s5=<n>&s10=<n>&s15=<n>&s30=<n>&s60=<n>&s180=<n>
+     *  The six trailing-window counts are computed device-side from the cumulative counter. */
+    @VisibleForTesting
+    fun onPostSteps(uri: URI): CharSequence {
+        if (getQueryParameter(uri, "test", false)) return ""
+        val tSec = getQueryParameter(uri, "t", 0L)
+        if (tSec <= 0L) return ""
+        loopHub.storeSteps(
+            tSec * 1000L,
+            getQueryParameter(uri, "s5", 0L).toInt(),
+            getQueryParameter(uri, "s10", 0L).toInt(),
+            getQueryParameter(uri, "s15", 0L).toInt(),
+            getQueryParameter(uri, "s30", 0L).toInt(),
+            getQueryParameter(uri, "s60", 0L).toInt(),
+            getQueryParameter(uri, "s180", 0L).toInt(),
+            getQueryParameter(uri, "device")
+        )
+        return ""
     }
 
     /** Handles pump connected notification that the user entered on the Garmin device. */
