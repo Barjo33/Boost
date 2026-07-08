@@ -604,17 +604,18 @@ open class OpenAPSBoostPlugin @Inject constructor(
         val stepsAvailable = stepFeed.available
         if (!stepsAvailable) debug.append("\n${stepFeed.unavailableNote()}")
 
-        // Steps-based sleep-in (lie-in) — the FALSE-AWAKE backstop. In the first `sleepInHours` after
-        // night end, 60-min steps below threshold ⇒ still lying in even if the HR sleep-state machine
-        // wrongly reported AWAKE. Independent of the night-mode enabled flag so it protects regardless,
-        // and surfaced (cached by the caller) so night mode applies its SMB rules during the lie-in.
-        // (2026-07-02; gated on step-feed availability 2026-07-07 — night window + HR sleep detection
-        // still protect when the feed is dark.)
+        // Steps-based sleep-in (lie-in). 2026-07-08 MERGE: this is now folded into SleepStateDetector —
+        // when night-mode-auto-by-sleep is ON, the detector HOLDS SLEEPING through the lie-in window
+        // (nightEnd → nightEnd+sleepInHours) and releases on the SAME sleepInSteps threshold, so the
+        // detector is the single source of truth and this standalone gate is demoted to a FAILSAFE that
+        // only engages when the detector is not driving (auto-by-sleep OFF). Keeps the steps-based
+        // morning protection for users who run night mode on the clock only.
         val sleepInActive = StepFeed.sleepInActive(stepsAvailable, now, nightEndMs, sleepInMillis, recentSteps60Min, sleepInSteps)
-        if (boostActive && sleepInActive) {
+        val autoBySleepActive = preferences.get(BooleanKey.ApsBoostNightModeAutoBySleep)
+        if (boostActive && sleepInActive && !autoBySleepActive) {
             boostActive = false
-            disableReason = "Sleep-in (60m steps $recentSteps60Min < threshold $sleepInSteps, within ${sleepInHours}h of night end)"
-            aapsLogger.debug(LTag.APS, "Boost disabled due to lie-in")
+            disableReason = "Sleep-in failsafe (60m steps $recentSteps60Min < threshold $sleepInSteps, within ${sleepInHours}h of night end; auto-by-sleep off)"
+            aapsLogger.debug(LTag.APS, "Boost disabled due to lie-in (failsafe, auto-by-sleep off)")
         }
 
         var activityMinBg = minBg
@@ -1564,7 +1565,10 @@ open class OpenAPSBoostPlugin @Inject constructor(
                         preSleepLeadMin = preferences.get(IntKey.ApsBoostPreSleepLeadMin),
                         minSleepHysteresisMin = preferences.get(IntKey.ApsBoostSleepHysteresisMin),
                         wakeHrHysteresisMin = preferences.get(IntKey.ApsBoostWakeHrHysteresisMin),
-                        stepsToday = stepsTodayForSleep
+                        stepsToday = stepsTodayForSleep,
+                        // 2026-07-08 sleep-in merge: fold the lie-in backstop into the state machine.
+                        sleepInStepsThreshold = sleepInSteps,
+                        sleepInWindowMin = (sleepInHours * 60.0).toInt()
                     ),
                     aapsLogger = aapsLogger
                 )
