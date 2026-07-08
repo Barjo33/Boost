@@ -34,6 +34,15 @@ Consistent across platforms: high-time is overwhelmingly at *above-median* IOB (
 - **Directionally reassuring.** On the axes that matter — TIR up, lows down, high-time down, at equal severe-high — the Boost cohort sits ahead of the reference cohort, and it's consistent across all five metrics rather than a single lucky one.
 - **The Trio telemetry gap is the real limiter.** To ever run the mechanism analyses (brake, activity, sizing) on Trio, the port must emit `budget`/`steps`/`HR` to devicestatus (the deferred "fix the Trio port" path). Until then, Trio is BG-level-only and the Boost-specific levers can only be studied on the AAPS cohort.
 
+## Dig-deeper correction (2026-07-08): the gap is NOT a Boost effect
+
+Digging into *why* the Boost cohort looked better dissolved the reading — `cohort_dig.py`:
+
+1. **The AAPS cohort is only ~4.9% Boost-DOSING.** `boostv5_active` flips true only in late June (C/D/G never); post-windows are ~2 weeks (3–5k rows) vs 49–59k pre. So ~95% of the "AAPS-Boost" data is **V1/oref** glycemia. The comparison is therefore essentially **two oref-family populations**, not Boost-vs-not.
+2. **The small raw gap is mostly case difficulty and not significant.** Raw median TIR gap +2.9 pp. The AAPS cohort has slightly easier cases (CV 30 vs 32, mean BG 123 vs 125). OLS `TIR ~ platform + CV + meanBG` shrinks the platform effect to **+1.2 pp**, **permutation p = 0.27 (not significant)** — ~59% of the raw gap is explained by difficulty alone.
+
+**Verdict:** the eye-catching cohort finding is a **population/selection artifact**, not evidence for Boost. Boost's own dosing is too small a slice (~5% of the window, ~2 weeks, mixed within-user deltas) to isolate. The clean Boost test — within-user pre/post activation — is currently **underpowered** and should be revisited once weeks–months of Boost-active data accumulate.
+
 ## Per-user detail
 
 Full per-user table (TING/TIR/TBR/TAR/CV, both cohorts) is printed by the script and in `cohort_bglevel.json`. Notable: within AAPS-Boost, E (TIR 97) and H (94.5) lead, F (76.6) trails on high-time; within oref/Trio the spread is wider (U011 94 → U013 69), consistent with a broader, less-curated population.
