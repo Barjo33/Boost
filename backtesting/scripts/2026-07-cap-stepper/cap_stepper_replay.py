@@ -90,11 +90,26 @@ def low_within(g, i, hours):
     return False
 
 
-def simulate(df, uid):
-    """Walk the committedCap stepper over one user's cycles. Returns an event/summary dict."""
+TRACK = dict(
+    committed=("COMMITTED", None),   # cap = committedCap era (g.cap)
+    confirmed=("CONFIRMED", None),   # cap = confirmedCap (CONF_CAPS / CONF_CAP_DEFAULT), constant/user
+)
+
+
+def track_cap(df_g, uid, track):
+    """Per-cycle auto-config cap for the chosen track."""
+    if track == "confirmed":
+        c = vc.CONF_CAPS.get(uid, vc.CONF_CAP_DEFAULT)
+        return np.full(len(df_g), float(c))
+    return df_g["cap"].values.astype(float)   # committedCap era
+
+
+def simulate(df, uid, track="committed"):
+    """Walk the cap stepper for the chosen track over one user's cycles."""
+    target_state = TRACK[track][0]
     g = df[df.user_id == uid].reset_index(drop=True)
     n = len(g)
-    auto = g["cap"].values.astype(float)          # auto-config committedCap per cycle (era)
+    auto = track_cap(g, uid, track)               # auto-config cap for this track
     fd = g["fd"].values.astype(float)
     state = g["state"].values
     iob = g["iob"].values.astype(float)
@@ -119,8 +134,8 @@ def simulate(df, uid):
         exercising = np.isfinite(steps[i]) and steps[i] > P["EXERCISE_STEPS_60M"]
         eff_cap = auto[i] if exercising else auto[i] * mult
 
-        # cap binding on a meal-hold cycle?
-        clip = state[i] == "COMMITTED" and np.isfinite(fd[i]) and fd[i] >= P["CLIP_TOL"] * auto[i]
+        # cap binding on a cycle of the target state?
+        clip = state[i] == target_state and np.isfinite(fd[i]) and fd[i] >= P["CLIP_TOL"] * auto[i]
         if clip:
             n_clip += 1
 
@@ -156,7 +171,7 @@ def simulate(df, uid):
 
     days = (ts[-1] - ts[0]) / 86400 if n > 1 else 0
     return dict(
-        user=uid, days=round(days, 1), n_committed=int((state == "COMMITTED").sum()),
+        user=uid, days=round(days, 1), n_state=int((state == target_state).sum()),
         n_clip=n_clip, n_safe_clip=n_safe_clip, n_qual=n_qual,
         raises=raises, reverts=reverts,
         final_mult=round(mult, 3), extra_U=round(extra_total, 2),
@@ -165,12 +180,14 @@ def simulate(df, uid):
     )
 
 
-def price_prelow(df, uid):
+def price_prelow(df, uid, track="committed"):
     """Empirical two-test price: among this user's low-IOB safe-slice cap clips, what
     fraction actually went low within 3h? That is the honest per-user pre-low rate the
     extra insulin is charged at."""
+    target_state = TRACK[track][0]
     g = df[df.user_id == uid]
-    m = (g.state == "COMMITTED") & (g.fd >= P["CLIP_TOL"] * g["cap"]) \
+    capcol = track_cap(g, uid, track)
+    m = (g.state == target_state) & (g.fd >= P["CLIP_TOL"] * capcol) \
         & (g.iob < P["IOB_SAFE_FRAC"] * g["tdd_eff"]) & (g.bg >= 140)
     sub = g[m]
     if len(sub) == 0:
@@ -182,17 +199,19 @@ def main():
     ap = argparse.ArgumentParser()
     for k, v in P.items():
         ap.add_argument(f"--{k.lower()}", type=type(v), default=v)
+    ap.add_argument("--track", default="committed", choices=list(TRACK))
     args = ap.parse_args()
     for k in P:
         P[k] = getattr(args, k.lower())
+    track = args.track
 
     df = prep()
     rows = []
     for uid in vc.USERS:
         a = armed(uid)
-        s = simulate(df, uid)
+        s = simulate(df, uid, track)
         s["armed"] = a
-        pl, npl = price_prelow(df, uid)
+        pl, npl = price_prelow(df, uid, track)
         s["safe_prelow_pct"] = pl
         s["safe_slice_n"] = npl
         s["priced_low_U"] = round(s["extra_U"] * (pl / 100), 2) if pl is not None else None
@@ -206,10 +225,11 @@ def main():
             res.loc[i, "final_mult"] = 1.0
 
     pd.set_option("display.width", 200, "display.max_columns", 30)
-    show = res[["user", "armed", "days", "n_committed", "n_clip", "n_safe_clip",
+    show = res[["user", "armed", "days", "n_state", "n_clip", "n_safe_clip",
                 "n_qual", "raises", "reverts", "final_mult", "extra_U_per_day",
                 "safe_prelow_pct", "safe_slice_n", "priced_low_U"]]
-    print("\n=== EVIDENCE-GATED CAP-STEPPER — cohort policy replay ===")
+    print(f"\n=== EVIDENCE-GATED CAP-STEPPER — track={track} ({TRACK[track][0]} / "
+          f"{'confirmedCap' if track == 'confirmed' else 'committedCap'}) ===")
     print(f"params: {P}\n")
     print(show.to_string(index=False))
 
@@ -222,14 +242,16 @@ def main():
           f"revert:raise = {tot_reverts}:{tot_raises}"
           + (f" ({100*tot_reverts/ (tot_raises+tot_reverts):.0f}% of cap-changes were reverts)"
              if (tot_raises + tot_reverts) else ""))
-    write_report(res, armed_res, tot_raises, tot_reverts, df)
+    write_report(res, armed_res, tot_raises, tot_reverts, df, track)
 
 
-def write_report(res, armed_res, tot_raises, tot_reverts, df):
+def write_report(res, armed_res, tot_raises, tot_reverts, df, track):
     span = f"{df.date.min()} → {df.date.max()}"
-    out = os.path.join(os.path.dirname(__file__), "CAP_STEPPER_REPORT.md")
+    suffix = "" if track == "committed" else f"_{track}"
+    capname = "confirmedCap" if track == "confirmed" else "committedCap"
+    out = os.path.join(os.path.dirname(__file__), f"CAP_STEPPER_REPORT{suffix}.md")
     lines = []
-    lines.append("# Evidence-gated cap-stepper — cohort policy replay\n")
+    lines.append(f"# Evidence-gated cap-stepper — {capname} track — cohort policy replay\n")
     lines.append(f"_Data: TimescaleDB `oref.boost_decisions`, cohort {list(vc.USERS)}, "
                  f"span {span}. Generated by `cap_stepper_replay.py`._\n")
     lines.append("## Parameters\n")
@@ -244,7 +266,7 @@ def write_report(res, armed_res, tot_raises, tot_reverts, df):
         "**revert frequency** and the **safe-slice size**; the TIR buy-back is an "
         "upper bound and is not claimed here.\n")
     lines.append("## Per-user\n")
-    cols = ["user", "armed", "days", "n_committed", "n_clip", "n_safe_clip", "n_qual",
+    cols = ["user", "armed", "days", "n_state", "n_clip", "n_safe_clip", "n_qual",
             "raises", "reverts", "final_mult", "extra_U_per_day", "safe_prelow_pct",
             "safe_slice_n", "priced_low_U"]
     hdr = ("| " + " | ".join(cols) + " |\n|" + "---|" * len(cols) + "\n")
@@ -252,7 +274,8 @@ def write_report(res, armed_res, tot_raises, tot_reverts, df):
                    for i in res.index)
     lines.append(hdr + body + "\n")
     lines.append("### Column key\n"
-                 "- **n_clip** — COMMITTED cycles where fd hit the committedCap (cap binding).\n"
+                 f"- **n_state** — {TRACK[track][0]} cycles. **n_clip** — of those, where fd hit "
+                 f"{capname} (cap binding).\n"
                  "- **n_safe_clip** — of those, the ones in the low-IOB safe slice (iob < "
                  f"{P['IOB_SAFE_FRAC']:.0%} TDD, BG≥140). *If n_safe_clip ≪ n_clip, most cap-clips are "
                  "high-IOB — the recovering-highs rejection, seen per-user.*\n"
@@ -261,16 +284,17 @@ def write_report(res, armed_res, tot_raises, tot_reverts, df):
                  "- **raises / reverts** — policy actions once armed. **safe_prelow_pct** — empirical "
                  "fraction of the safe slice that went low within 3h = the two-test price the extra "
                  "insulin is charged at. **priced_low_U** — extra units × that rate.\n")
-    lines.append("## Robustness (parameter sweep, 2026-07-08 run)\n")
-    lines.append("Revert rate is stable and high across every variant tried, and raises stay "
-                 "in single digits cohort-wide over ~6 weeks:\n\n"
-                 "| variant | raises | reverts | revert share |\n|---|---|---|---|\n"
-                 "| default (window 10) | 4 | 3 | 43% |\n"
-                 "| window 5 | 6 | 3 | 33% |\n"
-                 "| window 5, iob<3% TDD | 3 | 3 | 50% |\n"
-                 "| window 8, step 10%, cd 48h | 4 | 3 | 43% |\n"
-                 "| high threshold 160 | 4 | 4 | 50% |\n\n"
-                 "No parameterization escapes the churn.\n")
+    if track == "committed":
+        lines.append("## Robustness (parameter sweep, 2026-07-08 run)\n")
+        lines.append("Revert rate is stable and high across every variant tried, and raises stay "
+                     "in single digits cohort-wide over ~6 weeks:\n\n"
+                     "| variant | raises | reverts | revert share |\n|---|---|---|---|\n"
+                     "| default (window 10) | 4 | 3 | 43% |\n"
+                     "| window 5 | 6 | 3 | 33% |\n"
+                     "| window 5, iob<3% TDD | 3 | 3 | 50% |\n"
+                     "| window 8, step 10%, cd 48h | 4 | 3 | 43% |\n"
+                     "| high threshold 160 | 4 | 4 | 50% |\n\n"
+                     "No parameterization escapes the churn.\n")
     lines.append("## Go / no-go\n")
     verdict = ("**NO-GO / negligible**" if tot_raises == 0 else
                ("**CAUTION — revert-heavy**" if tot_reverts >= tot_raises else
