@@ -494,20 +494,31 @@ internal const val COMPOSED_FLOOR_MIN_EVENTUAL_OFFSET_MGDL = 20.0
  *   cap). Both bounds keep the shadow honest AND keep the active floor inside the seam's caps.
  */
 /**
- * Max trailing-14-day time-below-63 mg/dL (3.5 mmol/L — the TING lower bound) for the composed
- * brake-floor to be ALLOWED to engage. The floor is insulin-ADDING, so it may only ever alter
- * delivered dose for users with low hypo exposure (Tim, 2026-07-08). Enforced, not advisory.
+ * Composed brake-floor hypo-gate thresholds (trailing 14 days). The floor is insulin-ADDING, so it
+ * may only ever alter delivered dose for users with low hypo exposure (Tim, 2026-07-08). BOTH must
+ * hold — enforced, not advisory:
+ *  - time-below-63 mg/dL (3.5 mmol, the TING lower bound) < [COMPOSED_FLOOR_MAX_TBR63_PCT], AND
+ *  - time-below-70 mg/dL < [COMPOSED_FLOOR_MAX_TBR70_PCT] (the two-test-bar primary gate — added
+ *    2026-07-08 after the floor re-validation showed a <63-only gate wrongly engaged user C, whose
+ *    <63 was 1.56% but <70 was 3.95%, over the manual 3.5% bar).
  */
 const val COMPOSED_FLOOR_MAX_TBR63_PCT = 2.0
+const val COMPOSED_FLOOR_MAX_TBR70_PCT = 3.5
 
 /**
- * Whether the composed brake-floor may engage, given the user's trailing-14d time-below-63 mg/dL.
- * FAIL-CLOSED: a null [tbrBelow63Pct] (not yet computed, or insufficient CGM history to trust the
- * fraction) means NOT allowed — an insulin-adding feature never engages without evidence the user
- * is not hypo-prone. Threshold is strict (<), so a user exactly at the limit is not allowed.
+ * Whether the composed brake-floor may engage, given the user's trailing-14d time-below-63 AND
+ * time-below-70 mg/dL. FAIL-CLOSED: a null in EITHER (not yet computed, or insufficient CGM history
+ * to trust the fraction) means NOT allowed — an insulin-adding feature never engages without evidence
+ * the user is not hypo-prone. Thresholds are strict (<), so a user exactly at either limit is blocked.
  */
-internal fun composedFloorAllowedByTbr(tbrBelow63Pct: Double?, maxPct: Double = COMPOSED_FLOOR_MAX_TBR63_PCT): Boolean =
-    tbrBelow63Pct != null && tbrBelow63Pct < maxPct
+internal fun composedFloorAllowedByTbr(
+    tbrBelow63Pct: Double?,
+    tbrBelow70Pct: Double?,
+    max63: Double = COMPOSED_FLOOR_MAX_TBR63_PCT,
+    max70: Double = COMPOSED_FLOOR_MAX_TBR70_PCT
+): Boolean =
+    tbrBelow63Pct != null && tbrBelow63Pct < max63 &&
+        tbrBelow70Pct != null && tbrBelow70Pct < max70
 
 internal fun composedFloorTargetDose(
     state: MealHypothesis,

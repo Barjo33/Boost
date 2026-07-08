@@ -279,19 +279,26 @@ class ComposedFloorShadowTest {
         assertThat(d.floorWouldAdd!!).isWithin(1e-9).of(0.05)
     }
 
-    // ── 2026-07-08 hypo-gate: the floor may only engage below 2.0% time-below-63 (fail-closed) ──
+    // ── 2026-07-08 hypo-gate: floor engages only if BOTH TBR<63 < 2.0% AND TBR<70 < 3.5% (fail-closed) ──
 
-    @Test fun `hypo-gate allows the floor below 2 percent TBR-below-63`() {
-        assertThat(composedFloorAllowedByTbr(0.0)).isTrue()
-        assertThat(composedFloorAllowedByTbr(1.99)).isTrue()
+    @Test fun `hypo-gate allows the floor below both thresholds`() {
+        assertThat(composedFloorAllowedByTbr(0.0, 0.0)).isTrue()
+        assertThat(composedFloorAllowedByTbr(1.99, 3.49)).isTrue()
     }
 
-    @Test fun `hypo-gate blocks the floor at or above 2 percent`() {
-        assertThat(composedFloorAllowedByTbr(2.0)).isFalse()   // strict <, so exactly 2.0% is blocked
-        assertThat(composedFloorAllowedByTbr(3.5)).isFalse()
+    @Test fun `hypo-gate blocks on TBR-below-63 at or above 2 percent`() {
+        assertThat(composedFloorAllowedByTbr(2.0, 1.0)).isFalse()   // strict <, exactly 2.0% blocked
+        assertThat(composedFloorAllowedByTbr(3.5, 1.0)).isFalse()
     }
 
-    @Test fun `hypo-gate is fail-closed when TBR-below-63 is unknown`() {
-        assertThat(composedFloorAllowedByTbr(null)).isFalse()  // no/insufficient CGM history → floor off
+    @Test fun `hypo-gate blocks on elevated TBR-below-70 even when below-63 is low - the user C case`() {
+        // 2026-07-08 re-validation: C's TBR<63 1.56% (<2.0%) but TBR<70 3.95% (>3.5%) → must HOLD.
+        assertThat(composedFloorAllowedByTbr(1.56, 3.95)).isFalse()
+        assertThat(composedFloorAllowedByTbr(1.0, 3.5)).isFalse()   // strict <, exactly 3.5% blocked
+    }
+
+    @Test fun `hypo-gate is fail-closed when either TBR is unknown`() {
+        assertThat(composedFloorAllowedByTbr(null, 1.0)).isFalse()  // no/insufficient CGM history → floor off
+        assertThat(composedFloorAllowedByTbr(1.0, null)).isFalse()
     }
 }

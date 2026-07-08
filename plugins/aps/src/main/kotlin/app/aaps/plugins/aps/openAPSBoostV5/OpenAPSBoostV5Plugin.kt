@@ -167,22 +167,27 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
     // when the user's trailing-14d time-below-63 mg/dL (3.5 mmol) is under COMPOSED_FLOOR_MAX_TBR63_PCT.
     // A 14-day metric moves slowly, so it is recomputed at most hourly and cached; fail-closed (the
     // floor stays off) until the first successful compute and whenever CGM history is too thin.
-    private val TBR63_REFRESH_MS = 60L * 60 * 1000            // hourly
-    private val TBR63_MIN_READINGS = 1000                     // ~3.5 days of 5-min CGM before the % is trusted
+    private val TBR_GATE_REFRESH_MS = 60L * 60 * 1000         // hourly
+    private val TBR_GATE_MIN_READINGS = 1000                  // ~3.5 days of 5-min CGM before the % is trusted
     @Volatile private var cachedTbrBelow63Pct: Double? = null
-    @Volatile private var lastTbr63ComputeMs: Long = 0L
+    @Volatile private var cachedTbrBelow70Pct: Double? = null
+    @Volatile private var lastTbrGateComputeMs: Long = 0L
 
-    /** Throttled trailing-14d time-below-63 mg/dL, then the fail-closed floor gate. */
+    /** Throttled trailing-14d time-below-63 AND -70 mg/dL, then the fail-closed floor hypo-gate. */
     internal fun composedFloorTbrAllowed(now: Long): Boolean {
-        if (cachedTbrBelow63Pct == null || now - lastTbr63ComputeMs >= TBR63_REFRESH_MS) {
+        if (cachedTbrBelow63Pct == null || now - lastTbrGateComputeMs >= TBR_GATE_REFRESH_MS) {
             val start = now - BoostV5AutoConfig.LOOKBACK_DAYS * 24L * 60 * 60 * 1000
             val bgs = persistenceLayer.getBgReadingsDataFromTimeToTime(start, now, true)
             val n = bgs.size
-            cachedTbrBelow63Pct = if (n >= TBR63_MIN_READINGS)
-                100.0 * bgs.count { it.value >= 1.0 && it.value < 63.0 } / n else null
-            lastTbr63ComputeMs = now
+            if (n >= TBR_GATE_MIN_READINGS) {
+                cachedTbrBelow63Pct = 100.0 * bgs.count { it.value >= 1.0 && it.value < 63.0 } / n
+                cachedTbrBelow70Pct = 100.0 * bgs.count { it.value >= 1.0 && it.value < 70.0 } / n
+            } else {
+                cachedTbrBelow63Pct = null; cachedTbrBelow70Pct = null
+            }
+            lastTbrGateComputeMs = now
         }
-        return composedFloorAllowedByTbr(cachedTbrBelow63Pct)
+        return composedFloorAllowedByTbr(cachedTbrBelow63Pct, cachedTbrBelow70Pct)
     }
 
     private fun maybeAutoConfigure() {
