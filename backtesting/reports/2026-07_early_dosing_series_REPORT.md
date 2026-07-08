@@ -485,3 +485,97 @@ numbers are contained above; raw data is reproducible from the DB / NS with the 
 `hr_bg_fetch_entries.py` (NS base URL + token), `mig_common_fetch.py` (2 NS site URLs + 2 tokens),
 `analyse_H.py` (surname initial trimmed from a docstring). The fetch scripts require the operator to re-point `BASE`/`TOKEN`
 or `~/.config/boost_backtest/sites.json` locally; they will not run as committed — deliberate.
+
+---
+
+# 2026-07-08 RE-VALIDATION (pre-promotion experimental→dev)
+
+DB refreshed to t=now first (all 8 cohort users fresh to 2026-07-08 ~11:34; only oref-pipeline site
+U018 failed — not a boost cohort user). Re-ran committed `phase3_floor_backtest.py` +
+`floor_activation_tbr_gate.py` (new supplement, items 4/5). Numbers vs the original committed run:
+
+## Items 1–2: systemic compounding + floor F=0.25 — HOLD (essentially unchanged)
+
+| metric | ORIGINAL | CURRENT (07-08) |
+|---|---|---|
+| capped-era cycles | 40,180 | 44,011 |
+| eligible stuck-high meal cycles | 1,133 | 1,301 |
+| **median composed post-budget multiplier** | **0.037** | **0.045** |
+| **F=0.25 added U/user-day** | **0.76** | **0.75** |
+| **F=0.25 pre-low pricing** | **16.6%** | **15.7%** (cycle base-rate 14.7%) |
+| stuck episodes rescued (≥0.5U) | 32/109 | 35/121 |
+
+The systemic compounding still holds (median mult 0.045 ≈ 0.037 — half of eligible stuck-high meal
+cycles still deliver <4.5% of budget). F=0.25 still adds ≈0.75 U/user-day at ≈15.7% pre-low. **The
+"bounded DEFECT fix, not a selectivity-passing TIR lever" framing STANDS unchanged**: 15.7% ≈ the
+14.7% cycle base rate, still fails the strict ≲10% selectivity bar; justified only as a compounding-
+defect floor. Nothing moved materially.
+
+## Item 3: Episode-A (budget=0) invariant — HOLDS by construction
+
+75,145 budget=0 cycles in the V6 set; the floor's eligibility gate requires `budget>0`, and the
+floored dose is `budget×F` (= 0 when budget=0). 100% of budget=0 cycles already have fd=0 (oref's
+insulinReq verdict). The floor cannot override a budget=0 hold — confirmed in the current replay.
+User H remains outside the era map (no capped-era rows) → gets zero from the floor, as before.
+
+## Item 4: per-user TBR on current data (14d + 30d)
+
+| user | 14d TBR<70 | 14d TBR<63 | 14d TBR<54 | 30d TBR<70 | 30d TBR<54 |
+|---|---|---|---|---|---|
+| tim | 2.99 | 1.38 | 0.42 | **4.08** | **1.14** |
+| A | 1.39 | 0.70 | 0.35 | 0.88 | 0.20 |
+| B | **4.49** | 2.60 | **1.35** | 3.46 | 0.77 |
+| C | 3.12 | 1.56 | 0.48 | **3.95** | 0.68 |
+| D | **9.44** | **5.13** | **1.83** | **10.12** | **1.86** |
+| E | 0.60 | 0.10 | 0.00 | 1.15 | 0.00 |
+| F | 1.06 | 0.53 | 0.13 | 2.68 | 0.32 |
+| H | 0.64 | 0.20 | 0.02 | 1.26 | 0.22 |
+
+## Item 5: shipped code gate (14d TBR<63 < 2.0%) vs manual verdict
+
+| user | 14d TBR<63 | code gate | manual verdict | agree? |
+|---|---|---|---|---|
+| tim | 1.38 | ENGAGE | GO | ✅ |
+| A | 0.70 | ENGAGE | GO | ✅ |
+| E | 0.10 | ENGAGE | GO | ✅ |
+| F | 0.53 | ENGAGE | GO | ✅ |
+| B | 2.60 | SUPPRESS | HOLD | ✅ |
+| D | 5.13 | SUPPRESS | HOLD | ✅ |
+| **C** | **1.56** | **ENGAGE** | **HOLD** | **❌ DISAGREE** |
+
+**6/7 agree. The one disagreement is user C** — TBR<63 1.56% < 2.0% so the code gate ENGAGES the floor,
+but the manual two-test bar HELD C (original: C→+4.50% upper-bracket TBR<70). Root of the gap: the code
+gate keys on **TBR<63 only**, which does not see C's elevated **TBR<70** (mild-low 63–70 band). C's
+14d TBR<70 is 3.12% (borderline under the manual 3.5% bar) but her **30d TBR<70 is 3.95%** (over it) —
+she is a genuinely wobbling borderline user, and the TBR<63 metric is too permissive to catch her.
+Separation check: GO users' TBR<63 ≤ 1.38 (tim); HOLD users' TBR<63 ≥ 1.56 (C) — the true separating
+threshold sits at ~1.4–1.5%, so the shipped **2.0% is ~0.5pp too loose** and lets C through.
+
+**Calibration recommendation:** either tighten the gate to **TBR<63 < 1.5%**, or (preferred, since the
+manual bar was TBR<70-primary) **add a TBR<70 < 3.5% co-check** — C's 30d TBR<70 3.95% would then
+correctly hold her while all four GO users still engage. Note also **tim's 30d TBR<70 (4.08%) and <54
+(1.14%) are both over the manual bar** though his 14d passes (2.99/0.42) — the gate correctly engages
+him on 14d, but he is wobbling (recent evening-confirm hypo incident); worth a watch, not a hold.
+
+## VERDICT
+
+- **The floor backtest results HOLD on current data** — median composed mult 0.045≈0.037, F=0.25
+  ≈0.75 U/user-day @ ≈15.7% pre-low, Episode-A invariant intact. Nothing moved materially; the
+  defect-fix framing is unchanged. **The floor is clear to promote experimental→dev on the mechanics.**
+- **The 2.0% TBR<63 activation gate is slightly MIS-CALIBRATED vs the manual per-user verdict**: it
+  agrees for tim/A/E/F (engage) and B/D (suppress) but **would wrongly ENGAGE C**, whom the manual
+  analysis held on TBR<70 grounds. Recommend tightening to TBR<63 < 1.5% or adding a TBR<70 < 3.5%
+  co-check before relying on the automated gate for C-class borderline users. (This is an
+  activation-gating calibration item, not a floor-mechanics blocker.)
+
+### RESOLUTION (2026-07-08, Tim) — TBR<70 < 3.5% co-check, SAME 14d window for both
+
+Shipped: the gate now engages the floor only if **TBR<63 < 2.0% AND TBR<70 < 3.5%**, both computed
+over the **same 14-day window** (Tim's call — consistency + it is the documented two-test-bar window).
+Correction to the calibration note above: on that consistent 14d window, **user C ENGAGES** — her *14d*
+TBR<70 is 3.12% (under 3.5%) and 14d <63 1.56% (under 2.0%), so both pass. The manual "hold C" rested
+on her **30d** <70 (3.95%), a different window. So the co-check does NOT hold C on 14d; it is the correct
+two-test-bar PRIMARY gate that will hold any user whose *14d* <70 reaches 3.5% (C is not one right now).
+Engaging C on current 14d data is defensible (she is within bar) and fail-safe: the self-updating gate
+auto-holds her the moment her 14d low exposure crosses either bar. 30d-for-both was rejected because it
+would also hold tim (30d <70 4.08%), switching off his own floor over the recent evening-confirm wobble.

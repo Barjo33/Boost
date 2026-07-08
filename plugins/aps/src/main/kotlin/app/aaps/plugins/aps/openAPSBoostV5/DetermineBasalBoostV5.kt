@@ -493,6 +493,36 @@ internal const val COMPOSED_FLOOR_MIN_EVENTUAL_OFFSET_MGDL = 20.0
  *   state at the override seam (capped at V1's would-dose since the 2026-07-02 non-meal-state
  *   cap). Both bounds keep the shadow honest AND keep the active floor inside the seam's caps.
  */
+/**
+ * Composed brake-floor hypo-gate thresholds (trailing 14 days). The floor is insulin-ADDING, so it
+ * may only ever alter delivered dose for users with low hypo exposure (Tim, 2026-07-08). BOTH must
+ * hold — enforced, not advisory:
+ *  - time-below-63 mg/dL (3.5 mmol, the TING lower bound) < [COMPOSED_FLOOR_MAX_TBR63_PCT], AND
+ *  - time-below-70 mg/dL < [COMPOSED_FLOOR_MAX_TBR70_PCT] (the two-test-bar PRIMARY gate — added
+ *    2026-07-08 so the gate keys on the same axis the two-test bar does, not the <63 proxy alone).
+ *    BOTH use the SAME 14d window. NB: on 14d the re-validation's borderline user C ENGAGES (her
+ *    14d <70 3.12%, <63 1.56% — both under bar); the manual HOLD on C came from her 30d <70 (3.95%),
+ *    a different window now deliberately superseded by this self-updating 14d gate, which auto-holds
+ *    any user the moment their 14d <70 reaches 3.5% or <63 reaches 2.0%.
+ */
+const val COMPOSED_FLOOR_MAX_TBR63_PCT = 2.0
+const val COMPOSED_FLOOR_MAX_TBR70_PCT = 3.5
+
+/**
+ * Whether the composed brake-floor may engage, given the user's trailing-14d time-below-63 AND
+ * time-below-70 mg/dL. FAIL-CLOSED: a null in EITHER (not yet computed, or insufficient CGM history
+ * to trust the fraction) means NOT allowed — an insulin-adding feature never engages without evidence
+ * the user is not hypo-prone. Thresholds are strict (<), so a user exactly at either limit is blocked.
+ */
+internal fun composedFloorAllowedByTbr(
+    tbrBelow63Pct: Double?,
+    tbrBelow70Pct: Double?,
+    max63: Double = COMPOSED_FLOOR_MAX_TBR63_PCT,
+    max70: Double = COMPOSED_FLOOR_MAX_TBR70_PCT
+): Boolean =
+    tbrBelow63Pct != null && tbrBelow63Pct < max63 &&
+        tbrBelow70Pct != null && tbrBelow70Pct < max70
+
 internal fun composedFloorTargetDose(
     state: MealHypothesis,
     bg: Double,

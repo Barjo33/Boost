@@ -34,6 +34,7 @@ import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.plugins.aps.getBoostDosing
 import app.aaps.core.validators.preferences.AdaptiveDoublePreference
 import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
 import app.aaps.core.validators.preferences.AdaptiveUnitPreference
@@ -162,6 +163,33 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
      * retries on a later cycle once data accrues. Never changes the dosing path itself — only its
      * settings.
      */
+    // 2026-07-08: composed brake-floor hypo-gate. The floor is insulin-ADDING, so it may only engage
+    // when the user's trailing-14d time-below-63 mg/dL (3.5 mmol) is under COMPOSED_FLOOR_MAX_TBR63_PCT.
+    // A 14-day metric moves slowly, so it is recomputed at most hourly and cached; fail-closed (the
+    // floor stays off) until the first successful compute and whenever CGM history is too thin.
+    private val TBR_GATE_REFRESH_MS = 60L * 60 * 1000         // hourly
+    private val TBR_GATE_MIN_READINGS = 1000                  // ~3.5 days of 5-min CGM before the % is trusted
+    @Volatile private var cachedTbrBelow63Pct: Double? = null
+    @Volatile private var cachedTbrBelow70Pct: Double? = null
+    @Volatile private var lastTbrGateComputeMs: Long = 0L
+
+    /** Throttled trailing-14d time-below-63 AND -70 mg/dL, then the fail-closed floor hypo-gate. */
+    internal fun composedFloorTbrAllowed(now: Long): Boolean {
+        if (cachedTbrBelow63Pct == null || now - lastTbrGateComputeMs >= TBR_GATE_REFRESH_MS) {
+            val start = now - BoostV5AutoConfig.LOOKBACK_DAYS * 24L * 60 * 60 * 1000
+            val bgs = persistenceLayer.getBgReadingsDataFromTimeToTime(start, now, true)
+            val n = bgs.size
+            if (n >= TBR_GATE_MIN_READINGS) {
+                cachedTbrBelow63Pct = 100.0 * bgs.count { it.value >= 1.0 && it.value < 63.0 } / n
+                cachedTbrBelow70Pct = 100.0 * bgs.count { it.value >= 1.0 && it.value < 70.0 } / n
+            } else {
+                cachedTbrBelow63Pct = null; cachedTbrBelow70Pct = null
+            }
+            lastTbrGateComputeMs = now
+        }
+        return composedFloorAllowedByTbr(cachedTbrBelow63Pct, cachedTbrBelow70Pct)
+    }
+
     private fun maybeAutoConfigure() {
         // Migration from the legacy global one-shot flag (raw read — get() would mask it in simple
         // mode): mark resolved ONLY knobs whose stored value differs from the factory default (they
@@ -369,8 +397,8 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             rT.boostV5_active = activeMode   // true => V5 is the selected/active doser (drives the V5 overview/widget)
             // Log the live per-user dose caps so the OBSERVING→CONFIRMED gate can be backtested against
             // REAL caps (not inferred/auto-formula estimates) and manual overrides are captured. (2026-07-02)
-            rT.boostV5_committedCap = preferences.get(DoubleKey.ApsBoostV5CommittedCapU)
-            rT.boostV5_confirmedCap = preferences.get(DoubleKey.ApsBoostV5ConfirmedCapU)
+            rT.boostV5_committedCap = preferences.getBoostDosing(DoubleKey.ApsBoostV5CommittedCapU)
+            rT.boostV5_confirmedCap = preferences.getBoostDosing(DoubleKey.ApsBoostV5ConfirmedCapU)
             // 2026-07-03 confirm-gate telemetry for the 2026-07-10 live gate review — a dose-adequacy
             // gate block was previously indistinguishable from a score fade in NS. Read-only.
             rT.boostV5_confirmGate = decision.confirmGate
@@ -516,12 +544,15 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             postRescueWindow = postRescueWindow,
             // rT.units here is V1's dose — runShadow runs before the engine's V6 override seam.
             v1WouldDoseU = rT.units,
-            // 2026-07 composed brake-floor ACTIVATION — Advanced toggle, default OFF, PER-USER
-            // TBR-gated (see the key's KDoc). Additionally gated on activeMode so the floor can
-            // only ever alter finalDose when V6 is the selected doser (the delivered-dose path);
-            // in shadow mode the field keeps its pre-activation would-add semantics regardless.
-            composedFloorActive = activeMode && preferences.get(BooleanKey.ApsBoostV5ComposedFloorActive),
-            fastCarbConfirmEnabled = preferences.get(BooleanKey.ApsBoostV5FastCarbConfirm),
+            // 2026-07 composed brake-floor ACTIVATION — Advanced toggle, default OFF. Gated on:
+            // (1) activeMode, so the floor only ever alters finalDose when V6 is the selected doser
+            //     (in shadow mode the field keeps its pre-activation would-add semantics regardless);
+            // (2) 2026-07-08 ENFORCED hypo-gate — trailing-14d time-below-63 mg/dL < 2.0% (fail-closed).
+            //     The floor is insulin-adding, so it cannot engage for a hypo-prone user even if toggled on.
+            composedFloorActive = activeMode &&
+                preferences.getBoostDosing(BooleanKey.ApsBoostV5ComposedFloorActive) &&
+                composedFloorTbrAllowed(dateUtil.now()),
+            fastCarbConfirmEnabled = preferences.getBoostDosing(BooleanKey.ApsBoostV5FastCarbConfirm),
             sensorQualityOk = if (activeMode) !flatBGsDetected else true,
             profileSwitched = false,           // deferred reset trigger (microBolusAllowed gates actual dosing)
             pumpDisconnected = false,
@@ -530,8 +561,8 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             aggressionUserKnob = aggressionKnob,
             hypoCautionUserKnob = hypoCautionKnob,
             sensitivityUserKnob = sensitivityKnob,
-            confirmedCapU = preferences.get(DoubleKey.ApsBoostV5ConfirmedCapU),
-            committedCapU = preferences.get(DoubleKey.ApsBoostV5CommittedCapU),
+            confirmedCapU = preferences.getBoostDosing(DoubleKey.ApsBoostV5ConfirmedCapU),
+            committedCapU = preferences.getBoostDosing(DoubleKey.ApsBoostV5CommittedCapU),
         )
     }
 
@@ -577,8 +608,8 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
 
     /** V5's three HEADLINE tuning knobs (advanced settings — caps, fast-carb, pre-meal — live on
      *  the preference screen; these three are the per-user calibration surface). */
-    val aggressionKnob: Double get() = preferences.get(DoubleKey.ApsBoostV5Aggression)
-    val hypoCautionKnob: Double get() = preferences.get(DoubleKey.ApsBoostV5HypoCaution)
+    val aggressionKnob: Double get() = preferences.getBoostDosing(DoubleKey.ApsBoostV5Aggression)
+    val hypoCautionKnob: Double get() = preferences.getBoostDosing(DoubleKey.ApsBoostV5HypoCaution)
 
     /**
      * Sensitivity knob ∈ [0.8, 1.2] — per-user calibration multiplier on the aggression budget.
@@ -587,7 +618,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
      * resistant users) is warranted. This is the lever a future nightly per-user learner will
      * drive (loop deferred — see boost_v6_delivery_plan Phase 3). Default 1.0 = no change.
      */
-    val sensitivityKnob: Double get() = preferences.get(DoubleKey.ApsBoostV5Sensitivity)
+    val sensitivityKnob: Double get() = preferences.getBoostDosing(DoubleKey.ApsBoostV5Sensitivity)
 
     // Preference sub-screens this plugin may (re)build — the V5 root, the Advanced parent, and the
     // shared engine sub-screens (they live nested under "Advanced" and are rebuilt by key when

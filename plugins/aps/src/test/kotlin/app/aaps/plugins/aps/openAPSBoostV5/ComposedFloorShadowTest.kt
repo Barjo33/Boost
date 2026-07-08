@@ -278,4 +278,34 @@ class ComposedFloorShadowTest {
         assertThat(d.finalDose).isAtMost(10.0 - 9.95 + 1e-9)
         assertThat(d.floorWouldAdd!!).isWithin(1e-9).of(0.05)
     }
+
+    // ── 2026-07-08 hypo-gate: floor engages only if BOTH TBR<63 < 2.0% AND TBR<70 < 3.5% (fail-closed) ──
+
+    @Test fun `hypo-gate allows the floor below both thresholds`() {
+        assertThat(composedFloorAllowedByTbr(0.0, 0.0)).isTrue()
+        assertThat(composedFloorAllowedByTbr(1.99, 3.49)).isTrue()
+    }
+
+    @Test fun `hypo-gate blocks on TBR-below-63 at or above 2 percent`() {
+        assertThat(composedFloorAllowedByTbr(2.0, 1.0)).isFalse()   // strict <, exactly 2.0% blocked
+        assertThat(composedFloorAllowedByTbr(3.5, 1.0)).isFalse()
+    }
+
+    @Test fun `hypo-gate blocks on elevated TBR-below-70 even when below-63 is low`() {
+        // The two-test-bar co-check: a low <63 must NOT engage the floor if <70 is over the primary
+        // bar (both on the same 14d window). e.g. a 30d-C-like profile <63 1.56% / <70 3.95% → HOLD.
+        assertThat(composedFloorAllowedByTbr(1.56, 3.95)).isFalse()
+        assertThat(composedFloorAllowedByTbr(1.0, 3.5)).isFalse()   // strict <, exactly 3.5% blocked
+    }
+
+    @Test fun `hypo-gate ENGAGES a borderline user whose 14d figures are both under bar`() {
+        // Honest record: on the SAME 14d window, re-validation user C actually engages (14d <70 3.12%,
+        // <63 1.56% — both under). The manual hold on C was 30d-based; the 14d gate supersedes it.
+        assertThat(composedFloorAllowedByTbr(1.56, 3.12)).isTrue()
+    }
+
+    @Test fun `hypo-gate is fail-closed when either TBR is unknown`() {
+        assertThat(composedFloorAllowedByTbr(null, 1.0)).isFalse()  // no/insufficient CGM history → floor off
+        assertThat(composedFloorAllowedByTbr(1.0, null)).isFalse()
+    }
 }

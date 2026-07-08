@@ -89,7 +89,7 @@ for F in (0.15, 0.25, 0.35):
     print(f"   per-user added: {sub.groupby('user_id')['add'].sum().round(1).to_dict()}")
 
 # user H: find user with >180 episodes at 07-05 15:49-16:30Z and 07-06 04:14-04:44Z
-print("\n===== USER H ID + replay =====")
+print("\n===== USER-H ID + replay =====")
 for t0,t1,lbl in ((("2026-07-05 15:45","2026-07-05 16:35"),None,"ep1"), (("2026-07-06 04:10","2026-07-06 04:50"),None,"ep2")):
     pass
 w1 = df[(pd.to_datetime(df.ts_utc,utc=True,format="mixed")>=pd.Timestamp("2026-07-05 15:45",tz="UTC"))&(pd.to_datetime(df.ts_utc,utc=True,format="mixed")<=pd.Timestamp("2026-07-05 16:35",tz="UTC"))]

@@ -96,9 +96,9 @@ for uid, g in df.groupby("user_id"):
                     break
 # site age for tim's stretches from NS treatments
 try:
-    url = ("https://REDACTED/api/v1/treatments.json?count=200"
+    url = ("https://<REDACTED_NS_HOST>/api/v1/treatments.json?count=200"
            "&find[eventType][$regex]=Site|Insulin&find[created_at][$gte]=2026-06-25"
-           "&token=REDACTED")
+           "&token=<REDACTED_TOKEN>")
     tx = json.load(urllib.request.urlopen(url, timeout=30))
     site_changes = sorted(pd.Timestamp(t["created_at"]) for t in tx
                           if "Site" in (t.get("eventType") or "") or "Cannula" in (t.get("eventType") or ""))

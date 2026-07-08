@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""user H (user H) — early-insulin diagnosis. Dedupe per 5-min bucket, meal episodes,
+"""user H — early-insulin diagnosis. Dedupe per 5-min bucket, meal episodes,
 confirm latency, cap-clip split, glycaemia, base-vs-V6 comparison."""
 import re, json
 import numpy as np, pandas as pd, psycopg2
