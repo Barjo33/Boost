@@ -572,10 +572,27 @@ open class OpenAPSBoostPlugin @Inject constructor(
             aapsLogger.debug(LTag.APS, "Boost disabled due to high temptarget of $targetBg")
         }
 
-        val recentSteps5Min = StepService.getRecentStepCount5Min()
-        val recentSteps15Min = StepService.getRecentStepCount15Min()
-        val recentSteps30Min = StepService.getRecentStepCount30Min()
-        val recentSteps60Min = StepService.getRecentStepCount60Min()
+        var recentSteps5Min = StepService.getRecentStepCount5Min()
+        var recentSteps15Min = StepService.getRecentStepCount15Min()
+        var recentSteps30Min = StepService.getRecentStepCount30Min()
+        var recentSteps60Min = StepService.getRecentStepCount60Min()
+        // F3 fix (2026-07-08): the live exercise classifier read PHONE StepService ONLY, so watch
+        // steps (wear AND Garmin, which land in the SC table) never influenced exercise state — a
+        // pre-existing gap that Garmin workstream B forced into the open. Blend the freshest watch
+        // SC row's trailing windows in ADDITIVELY (max): can only ADD activity detection, never
+        // remove protection. NOTE: this is a dosing-behaviour change (exercise state → activity
+        // target/gating) — backtest before relying on it beyond on-device validation.
+        run {
+            val recentSc = try {
+                persistenceLayer.getStepsCountFromTimeToTime(dateUtil.now() - 15 * 60_000L, dateUtil.now())
+            } catch (t: Throwable) { emptyList() }
+            recentSc.maxByOrNull { it.timestamp }?.let { sc ->
+                recentSteps5Min = maxOf(recentSteps5Min, sc.steps5min)
+                recentSteps15Min = maxOf(recentSteps15Min, sc.steps15min)
+                recentSteps30Min = maxOf(recentSteps30Min, sc.steps30min)
+                recentSteps60Min = maxOf(recentSteps60Min, sc.steps60min)
+            }
+        }
 
         debug.append("\nSteps: 5m=$recentSteps5Min 15m=$recentSteps15Min 30m=$recentSteps30Min 60m=$recentSteps60Min")
 
