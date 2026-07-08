@@ -11,6 +11,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.plugins.aps.getBoostDosing
 import app.aaps.plugins.aps.openAPSBoost.DailyStepHistoryTracker.DailyTotal
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -98,7 +99,7 @@ class HealthConnectStepsIngest @Inject constructor(
 
     /** Call each Boost cycle. Cheap when not due; spawns an async sync when due. Never throws. */
     fun syncIfDue() {
-        if (!preferences.get(BooleanKey.ApsBoostActivityShadowEnabled)) return
+        if (!preferences.getBoostDosing(BooleanKey.ApsBoostActivityShadowEnabled)) return   // 2026-07-08: raw read (Simple-Mode mask bypass — don't starve step ingest)
         val now = System.currentTimeMillis()
         if (now - lastSyncRunMs < pollIntervalMs) return
         if (!inFlight.compareAndSet(false, true)) return   // atomic guard — no check-then-act race

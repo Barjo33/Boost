@@ -1642,7 +1642,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
 
             // ── Activity-load SHADOW (2026-06-16): learn the personal step baseline + compute what
             // an activity/inactivity ISF modifier WOULD do, and LOG it. Never applied to dosing. ──
-            if (preferences.get(BooleanKey.ApsBoostActivityShadowEnabled)) {
+            if (preferences.getBoostDosing(BooleanKey.ApsBoostActivityShadowEnabled)) {   // 2026-07-08: raw read (Simple-Mode mask bypass)
                 try {
                     val offsetMs = java.time.ZoneId.systemDefault().rules.getOffset(java.time.Instant.now()).totalSeconds * 1000L
                     val todayIdx = DailyStepHistoryTracker.dayIndex(now, offsetMs)
