@@ -113,6 +113,75 @@ class SleepLumpWakeTest {
         assertThat(woke).isTrue()
     }
 
+    /** One 5-min cycle with a LIVE HR feed (≥HR_RELIABLE_MIN_SAMPLES fresh samples → no drought). */
+    private fun cycleLive(prev: State, nowMs: Long, minuteOfDay: Int, bpm: Double, stepsToday: Int, steps15: Int = 0) =
+        T.evaluate(
+            prev,
+            SleepStateDetector.Inputs(
+                nowMs = nowMs, minuteOfDay = minuteOfDay,
+                hrReadings = (1..4).map { hr(nowMs - it * 60_000L, bpm) },   // 4 fresh → live feed
+                hrResting = 60, stepsLast15Min = steps15, mlMealLikely = null,
+                nightStartMin = 1320, nightEndMin = 420,
+                stepsToday = stepsToday
+            )
+        )
+
+    @Test fun `intermittent HR (flickering feed) still reaches SLEEPING`() {
+        // 2026-07-08 stuck-in-PRE_SLEEP fix: HR dribbled ~1 stray sample every other cycle. avgHr
+        // flickered null↔value so hrQualifies kept resetting the candidate, and each stray reset the
+        // old drought gate → stuck in PRE_SLEEP all night. Now the unreliable feed + established
+        // drought qualifies across the flicker and reaches SLEEPING.
+        var s = State(state = SleepState.PRE_SLEEP, enteredAtMs = T0 - 60 * 60_000L,
+                      lastFreshHrSampleMs = T0 - 40 * 60_000L)          // ~40 min drought, established
+        var t = T0; var min = 1350                                       // 22:30, in night window
+        for (bpm in listOf(68.0, null, 68.0, null, 68.0, null, 68.0)) {  // flickering feed, low steps
+            val r = cycle(s, t, min, bpm = bpm, stepsToday = 0)
+            s = r.newState; t += FIVE_MIN; min += 5
+        }
+        assertThat(s.state).isEqualTo(SleepState.SLEEPING)
+    }
+
+    @Test fun `dead HR plus strong steps wakes steps-only`() {
+        // HR dead overnight (drought established), morning getting-up = strong step lump ≥250.
+        // Gentle HR+steps can't fire (no HR); steps-alone wakes with reason "steps".
+        var s = State(state = SleepState.SLEEPING, enteredAtMs = T0 - 4 * 3_600_000L,
+                      lastFreshHrSampleMs = T0 - 60 * 60_000L)           // HR dead 60 min → drought
+        var t = T0; var min = 300                                        // 05:00 (NOT near wake grace)
+        var wakeReason: String? = null
+        for (st in listOf(0, 300, 600, 900)) {
+            val r = cycle(s, t, min, bpm = null, stepsToday = st)
+            s = r.newState; wakeReason = r.wakeReason ?: wakeReason
+            if (s.state == SleepState.AWAKE) break
+            t += FIVE_MIN; min += 5
+        }
+        assertThat(s.state).isEqualTo(SleepState.AWAKE)
+        assertThat(wakeReason).isEqualTo("steps")                        // genuine → trains the learner
+    }
+
+    @Test fun `live HR blocks steps-only wake - both-required guard holds`() {
+        // HR live (no drought) + a strong step lump at 03:00 (far from scheduled wake). Steps-alone
+        // must NOT wake — HR can corroborate, so the gentle rule governs, and gentle is time-gated away.
+        var s = State(state = SleepState.SLEEPING, enteredAtMs = T0 - 4 * 3_600_000L,
+                      lastFreshHrSampleMs = T0 - 60_000)                 // fresh HR
+        var t = T0; var min = 180                                        // 03:00
+        for (st in listOf(0, 400, 800, 1200)) {
+            val r = cycleLive(s, t, min, bpm = 55.0, stepsToday = st)    // live low HR (asleep)
+            assertThat(r.newState.state).isEqualTo(SleepState.SLEEPING)  // never wakes on steps alone
+            s = r.newState; t += FIVE_MIN; min += 5
+        }
+    }
+
+    @Test fun `HR+steps wake is time-gated away too early`() {
+        // A clean HR+steps signal at 03:00 (far from nightEnd) must NOT wake via the gentle rule —
+        // earlier HR rises are REM/restlessness. (Genuine early rising is caught by strong steps.)
+        var s = sleeping(T0); var t = T0; var min = 180                  // 03:00
+        for (bpm in listOf(85.0, 86.0, 85.0, 85.0)) {
+            val r = cycle(s, t, min, bpm = bpm, stepsToday = 0, steps15 = 150)
+            assertThat(r.newState.state).isEqualTo(SleepState.SLEEPING)  // gentle gated away this early
+            s = r.newState; t += FIVE_MIN; min += 5
+        }
+    }
+
     @Test fun `boundary exit unchanged`() {
         val r = cycle(sleeping(T0), T0, minuteOfDay = 421, bpm = 55.0, stepsToday = 0)   // 07:01
         assertThat(r.newState.state).isEqualTo(SleepState.AWAKE)
