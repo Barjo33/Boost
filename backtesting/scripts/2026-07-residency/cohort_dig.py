@@ -57,11 +57,15 @@ def main():
     print(f"  permutation p (platform): {p:.3f}   ({'sig' if p < 0.05 else 'NOT significant'})")
 
     print("\n--- verdict ---")
-    print(f"AAPS cohort is only 4.9% Boost-DOSING, so this gap is ~two OREF-family populations.")
+    print("NB: V1 IS Boost (Boost V1 generation is the dosing algorithm; the 4.9% boostv5_active is")
+    print("the V5/V6-generation slice). So the AAPS cohort is Boost-dosing throughout -> this is a")
+    print("legitimate Boost-vs-oref/Trio comparison (NOT two oref populations).")
     shrink = 100 * (1 - abs(coef) / abs(raw_gap)) if raw_gap else 0
-    print(f"Controlling for case difficulty shrinks the gap by {shrink:.0f}% (to {coef:+.1f}pp), "
-          f"p={p:.2f}: the population difference is {'mostly selection/difficulty' if p>=0.05 else 'partly real but tiny'}.")
-    print("Either way it is NOT a Boost effect — Boost's own dosing is ~5% of the window (too little).")
+    print(f"Raw +{raw_gap:.1f}pp shrinks to {coef:+.1f}pp after case difficulty ({shrink:.0f}% is difficulty), "
+          f"p={p:.2f} ({'NS' if p>=0.05 else 'sig'}).")
+    print("Verdict: a genuine but SMALL, underpowered Boost-vs-oref edge (consistent direction,")
+    print("+1.2pp adjusted, NS in 9-vs-21). Population comparison; no within-user Boost-vs-oref exists")
+    print("(cohort was always Boost). Warrants a larger/matched comparison, not a stronger claim here.")
 
 
 if __name__ == "__main__":

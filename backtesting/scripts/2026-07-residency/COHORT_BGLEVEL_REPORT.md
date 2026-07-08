@@ -34,14 +34,16 @@ Consistent across platforms: high-time is overwhelmingly at *above-median* IOB (
 - **Directionally reassuring.** On the axes that matter — TIR up, lows down, high-time down, at equal severe-high — the Boost cohort sits ahead of the reference cohort, and it's consistent across all five metrics rather than a single lucky one.
 - **The Trio telemetry gap is the real limiter.** To ever run the mechanism analyses (brake, activity, sizing) on Trio, the port must emit `budget`/`steps`/`HR` to devicestatus (the deferred "fix the Trio port" path). Until then, Trio is BG-level-only and the Boost-specific levers can only be studied on the AAPS cohort.
 
-## Dig-deeper correction (2026-07-08): the gap is NOT a Boost effect
+## Dig-deeper (2026-07-08): this IS a Boost-vs-oref comparison, but small & underpowered
 
-Digging into *why* the Boost cohort looked better dissolved the reading — `cohort_dig.py`:
+**Correction to an earlier over-correction: `V1` is Boost.** "V1-acting" = Boost V1 (the first Boost generation) is the *dosing* algorithm — NOT oref. So the AAPS cohort has been **Boost-dosing throughout** (V1 generation, with V5/V6 shadowing); the ~4.9% `boostv5_active` is just the slice where the *V5/V6* generation took over dosing from V1, not "Boost vs not." The comparison to the oref/Trio cohort is therefore a **legitimate Boost-vs-oref population comparison** (an earlier draft here wrongly called it "two oref populations" — retracted).
 
-1. **The AAPS cohort is only ~4.9% Boost-DOSING.** `boostv5_active` flips true only in late June (C/D/G never); post-windows are ~2 weeks (3–5k rows) vs 49–59k pre. So ~95% of the "AAPS-Boost" data is **V1/oref** glycemia. The comparison is therefore essentially **two oref-family populations**, not Boost-vs-not.
-2. **The small raw gap is mostly case difficulty and not significant.** Raw median TIR gap +2.9 pp. The AAPS cohort has slightly easier cases (CV 30 vs 32, mean BG 123 vs 125). OLS `TIR ~ platform + CV + meanBG` shrinks the platform effect to **+1.2 pp**, **permutation p = 0.27 (not significant)** — ~59% of the raw gap is explained by difficulty alone.
+Two caveats survive and bound the strength:
 
-**Verdict:** the eye-catching cohort finding is a **population/selection artifact**, not evidence for Boost. Boost's own dosing is too small a slice (~5% of the window, ~2 weeks, mixed within-user deltas) to isolate. The clean Boost test — within-user pre/post activation — is currently **underpowered** and should be revisited once weeks–months of Boost-active data accumulate.
+1. **Population comparison, not within-user.** Different people (9 Boost vs 21 oref/Trio); selection is uncontrolled. There is no within-user Boost-vs-oref transition to exploit — the AAPS cohort was Boost the whole window (a within-user cut here would be Boost-V1 vs Boost-V5/V6, a *generation* question, not Boost-vs-oref).
+2. **Small and not-yet-significant after adjusting for case difficulty.** Raw median TIR gap **+2.9 pp**; the Boost cohort has slightly easier cases (CV 30 vs 32, mean BG 123 vs 125). OLS `TIR ~ platform + CV + meanBG` attenuates the platform effect to **+1.2 pp**, permutation **p = 0.27 (not significant)** — ~59% of the raw gap is case difficulty.
+
+**Verdict:** a **genuine but suggestive** Boost-vs-oref edge — consistent in direction across all five metrics (TIR/TING up, TBR/TAR down), but small (+1.2 pp difficulty-adjusted) and underpowered (p = 0.27) in a 9-vs-21 population comparison. Not conclusive, not a selection *artifact* either — it points the right way and warrants a larger / better-matched comparison to firm up.
 
 ## Per-user detail
 
