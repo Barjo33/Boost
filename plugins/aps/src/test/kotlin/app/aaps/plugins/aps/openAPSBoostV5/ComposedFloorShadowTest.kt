@@ -278,4 +278,20 @@ class ComposedFloorShadowTest {
         assertThat(d.finalDose).isAtMost(10.0 - 9.95 + 1e-9)
         assertThat(d.floorWouldAdd!!).isWithin(1e-9).of(0.05)
     }
+
+    // ── 2026-07-08 hypo-gate: the floor may only engage below 2.0% time-below-63 (fail-closed) ──
+
+    @Test fun `hypo-gate allows the floor below 2 percent TBR-below-63`() {
+        assertThat(composedFloorAllowedByTbr(0.0)).isTrue()
+        assertThat(composedFloorAllowedByTbr(1.99)).isTrue()
+    }
+
+    @Test fun `hypo-gate blocks the floor at or above 2 percent`() {
+        assertThat(composedFloorAllowedByTbr(2.0)).isFalse()   // strict <, so exactly 2.0% is blocked
+        assertThat(composedFloorAllowedByTbr(3.5)).isFalse()
+    }
+
+    @Test fun `hypo-gate is fail-closed when TBR-below-63 is unknown`() {
+        assertThat(composedFloorAllowedByTbr(null)).isFalse()  // no/insufficient CGM history → floor off
+    }
 }

@@ -493,6 +493,22 @@ internal const val COMPOSED_FLOOR_MIN_EVENTUAL_OFFSET_MGDL = 20.0
  *   state at the override seam (capped at V1's would-dose since the 2026-07-02 non-meal-state
  *   cap). Both bounds keep the shadow honest AND keep the active floor inside the seam's caps.
  */
+/**
+ * Max trailing-14-day time-below-63 mg/dL (3.5 mmol/L — the TING lower bound) for the composed
+ * brake-floor to be ALLOWED to engage. The floor is insulin-ADDING, so it may only ever alter
+ * delivered dose for users with low hypo exposure (Tim, 2026-07-08). Enforced, not advisory.
+ */
+const val COMPOSED_FLOOR_MAX_TBR63_PCT = 2.0
+
+/**
+ * Whether the composed brake-floor may engage, given the user's trailing-14d time-below-63 mg/dL.
+ * FAIL-CLOSED: a null [tbrBelow63Pct] (not yet computed, or insufficient CGM history to trust the
+ * fraction) means NOT allowed — an insulin-adding feature never engages without evidence the user
+ * is not hypo-prone. Threshold is strict (<), so a user exactly at the limit is not allowed.
+ */
+internal fun composedFloorAllowedByTbr(tbrBelow63Pct: Double?, maxPct: Double = COMPOSED_FLOOR_MAX_TBR63_PCT): Boolean =
+    tbrBelow63Pct != null && tbrBelow63Pct < maxPct
+
 internal fun composedFloorTargetDose(
     state: MealHypothesis,
     bg: Double,
