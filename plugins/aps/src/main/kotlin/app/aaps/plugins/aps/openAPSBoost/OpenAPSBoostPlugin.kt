@@ -1657,7 +1657,10 @@ open class OpenAPSBoostPlugin @Inject constructor(
                         preSleepLeadMin = preferences.getBoostDosing(IntKey.ApsBoostPreSleepLeadMin),
                         minSleepHysteresisMin = preferences.getBoostDosing(IntKey.ApsBoostSleepHysteresisMin),
                         wakeHrHysteresisMin = preferences.getBoostDosing(IntKey.ApsBoostWakeHrHysteresisMin),
-                        stepsToday = stepsTodayForSleep
+                        stepsToday = stepsTodayForSleep,
+                        // 2026-07-08 sleep-in merge: fold the lie-in backstop into the state machine.
+                        sleepInStepsThreshold = sleepInSteps,
+                        sleepInWindowMin = (sleepInHours * 60.0).toInt()
                     ),
                     aapsLogger = aapsLogger
                 )
