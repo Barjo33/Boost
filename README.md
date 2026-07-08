@@ -74,7 +74,7 @@ scratch. Boost V6 carries a *meal hypothesis* across cycles and scales dosing to
 
 - **OBSERVING** — a rise is building; dose lightly while evidence accrues.
 - **CONFIRMED** — a meal is recognised (BG delta + acceleration + an ML meal-likelihood score +
-  time-of-day + sustained-rise, minus a recent-low penalty); deliver the catch-up commit.
+  time-of-day + sustained-rise + not-exercising, minus a recent-low penalty); deliver the catch-up commit.
 - **COMMITTED** — hold a measured per-cycle dose while the meal is clearly active.
 - **RECOVERING** — **deliberately wind down** as insulin takes hold, instead of re-deciding from
   scratch and re-dosing a meal that's already handled.
@@ -92,7 +92,7 @@ learner, and **meal-time** learning.
 > it is right now?"* — the recommended place to watch the algorithm work. The classic V1 overview keeps
 > working if you prefer it.
 
-> Where this came from: V6 is the current generation of a line that ran V1 → V2 → v3 → v4.2 → V5. The
+> Where this came from: V6 is the current generation of a line that ran V1 → V2 → V3 → v4.4 → v4.4.2 → V6 (still named "V5" internally in the code). The
 > earlier plugins and their settings are documented in the
 > [legacy settings reference](docs/boost-v1-settings.md). V6 still runs *on top of* the V1 engine and
 > derives its day-one defaults from your V1/oref history (see §4).
@@ -239,11 +239,15 @@ derivation was checked line-for-line against the Trio (Swift) port and is in ful
 
 All Boost settings live under the plugin preferences. Defaults shown; most are auto-seeded (§4).
 
+> **Simple Mode note:** the Boost preference *screen* is still hidden while AndroidAPS is in Simple
+> Mode, but your saved Boost dosing settings now **still apply** in Simple Mode — Boost reads them via a
+> dedicated bypass, so they are no longer masked back to factory defaults as they once were.
+
 **Dosing**
 - **Aggression** `0.7–1.3` (1.0) — scales the **CONFIRMED catch-up shot** (the state machine's one
   discretionary dose); routine holds are bounded by the caps below, not this knob.
 - **HypoCaution** `1.0–2.0` (1.0) — scales the aggression budget down; higher = more hypo-defensive.
-- **Sensitivity** `0.8–1.2` (1.0) — fine sensitivity multiplier on top of DynISF.
+- **Sensitivity** `0.8–1.2` (1.0) — scales the **aggression budget** (below 1.0 for sensitive users, above for resistant); it is not a DynISF multiplier.
 - **CONFIRMED dose cap** `0–7.5 U` (2.5) — hard limit on the meal-confirm commit shot.
 - **COMMITTED dose cap** `0–2.5 U` (0.5) — hard limit on the per-cycle holding SMB.
 - **Cumulative SMB cap / 60 min** `0–10 U` (10) — rolling-hour ceiling across all SMBs. The factory
@@ -254,7 +258,8 @@ All Boost settings live under the plugin preferences. Defaults shown; most are a
   during active meal sessions above 160 mg/dL with eventualBG above target, fixing the soft-brake
   stack compounding to sub-pump-step zero doses mid-meal (July 2026). All hard gates and dose caps
   still apply. **Per-user activation only**: enable only if trailing 14-day time-below-range is
-  within consensus targets (<70 mg/dL below 3.5%, <54 mg/dL below 0.8%) — do not enable outside those.
+  within consensus targets (<63 mg/dL below 2.0% **and** <70 mg/dL below 3.5%) — do not enable outside those.
+  The gate is self-updating and fail-closed: it auto-holds the floor the moment either 14-day figure crosses its limit.
 
 **V6 DynISF / `future_sens`**
 - **DynISF normal target** (99 mg/dL), **BG cap** (210), **velocity** (100), **adjustment factor** —

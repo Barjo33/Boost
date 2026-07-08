@@ -319,6 +319,12 @@ function parseCycles(dsList) {
       isf: numOrNull(sug.variable_sens),
       ccap: numOrNull(sug.boostV5_committedCap),
       fcap: numOrNull(sug.boostV5_confirmedCap),
+      // 2026-07 telemetry: floorWouldAdd = the shadow composed-floor's would-be uplift this cycle
+      // (evidence of mid-meal brake-stack collapse); confirmGate = "pass"/"blocked"/"n/a" — whether
+      // a confirm-eligible OBSERVING cycle's dose-adequacy gate passed (distinguishes a gated confirm
+      // from a score fade). Powers the brake-floor + confirm-gate lever hints.
+      floorWouldAdd: numOrNull(sug.boostV5_floorWouldAdd),
+      confirmGate: sug.boostV5_confirmGate || null,
       reason
     });
   }
@@ -377,12 +383,13 @@ function glycaemia(entries) {
   const inR = v.filter(x => x >= 70 && x <= 180).length;
   const ting = v.filter(x => x >= 63 && x <= 140).length;
   const lo = v.filter(x => x < 70).length, lo54 = v.filter(x => x < 54).length;
+  const lo63 = v.filter(x => x < 63).length;   // for the composed-floor hypo-gate (TBR<63)
   const hi = v.filter(x => x > 180).length;
   const sd = Math.sqrt(v.reduce((a, b) => a + (b - mean) * (b - mean), 0) / n);
   return {
     n, mean, gmi: 3.31 + 0.02392 * mean,
     tir: 100 * inR / n, ting: 100 * ting / n,
-    below70: 100 * lo / n, below54: 100 * lo54 / n, above180: 100 * hi / n,
+    below70: 100 * lo / n, below54: 100 * lo54 / n, below63: 100 * lo63 / n, above180: 100 * hi / n,
     cv: 100 * sd / mean
   };
 }
@@ -661,6 +668,26 @@ function leverHints(model, cycles, activeMode, labels) {
   if (iobClamp >= 3)
     hints.push({ lever: "Max IOB", dir: "review (safety setting — small steps)",
       why: `the maxIOB clamp was the binding constraint on ${iobClamp} cycles while BG was above 200.` });
+  // 5b. mid-meal dose "strangling" the composed brake-floor would fix → enable IF hypo-safe.
+  //     boostV5_floorWouldAdd logs exactly where the shadow floor would have added dose; the SAME 14d
+  //     hypo-gate the engine enforces (TBR<63<2.0% AND TBR<70<3.5%) decides eligibility here, so the
+  //     hint only suggests the floor when the engine would actually let it engage.
+  const floorC = cycles.filter(c => c.floorWouldAdd !== null && c.floorWouldAdd > 0.05);
+  const gl = model.gly;
+  if (floorC.length >= 4 && gl && gl.below63 != null) {
+    const totalWould = floorC.reduce((a, c) => a + c.floorWouldAdd, 0);
+    const hypoSafe = gl.below63 < 2.0 && gl.below70 < 3.5;
+    hints.push(hypoSafe
+      ? { lever: "Composed brake-floor (Advanced)", dir: "eligible — consider enabling",
+          why: `${floorC.length} cycles where the soft-brake stack collapsed the dose to ~0 mid-meal (shadow floor would have added ${fmt2(totalWould)}U total). Your low exposure (TBR<63 ${gl.below63.toFixed(1)}%, <70 ${gl.below70.toFixed(1)}%) is under the safety gate, so the floor may engage.` }
+      : { lever: "Composed brake-floor (Advanced)", dir: "not eligible yet",
+          why: `${floorC.length} cycles showed the mid-meal dose collapse the floor targets, but your low exposure (TBR<63 ${gl.below63.toFixed(1)}%, <70 ${gl.below70.toFixed(1)}%) is over the gate (needs <2.0% AND <3.5%) — the floor stays suppressed until it drops.` });
+  }
+  // 5c. confirm blocked by the dose-adequacy gate (not a score fade) → caps too low for the meal.
+  const gatedBlocked = cycles.filter(c => c.confirmGate === "blocked").length;
+  if (gatedBlocked >= 3)
+    hints.push({ lever: "Confirmed / Committed cap (U)", dir: "review — the confirm gate is blocking",
+      why: `${gatedBlocked} confirm-eligible cycles were blocked by the dose-adequacy gate (the prospective shot fell below the confirm floor) — the meal was recognised but the caps held the shot back.` });
   // 6. nights running high while V6 held back
   const nightHi = model.night && model.night.n > 24 && model.gly && model.night.v6 < model.night.v1 - 1.0;
   if (nightHi)

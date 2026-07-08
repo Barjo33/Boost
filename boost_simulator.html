@@ -1217,6 +1217,9 @@ const V6 = {
   FC_DELTA: 6.0, FC_ACCL: 10.0, FC_SCORE: 0.65, FC_MIN_RECENT_LOW: 80.0,
   // 2026-07-02 confirm dose-adequacy gate (DetermineBasalBoostV5.kt:166-169, MealHypothesis.kt:109)
   CONFIRM_FLOOR_FRAC_OF_CONFIRMED_CAP: 0.8,
+  // 2026-07-06 pin: the committedCap term of the confirm floor is capped at the factory 0.5 so a
+  // user-raised Committed cap can't tighten the confirm gate (MealHypothesis.kt:140,151-155).
+  CONFIRM_FLOOR_COMMITTED_TERM_MAX: 0.5,
   // ── MealActionMultiplier.kt ──
   ACTION: { IDLE: 1.0, OBSERVING: 0.3, CONFIRMED: 1.8, COMMITTED: 1.0, RECOVERING: 0.4 },
   // ── AggressionBudget.kt ──
@@ -1307,12 +1310,18 @@ function v6MealStep(st, m) {
   switch (st.state) {
     case 'IDLE':
       if (fastPath) return { state:'CONFIRMED', age:0, maxScore:0, maxOffset:0, committed:true };
-      if (score >= V6.ENTER_OBSERVING) return { state:'OBSERVING', age:0, maxScore:score, maxOffset:offset, committed:false };
+      if (score >= V6.ENTER_OBSERVING) return { state:'OBSERVING', age:0, maxScore:score, maxOffset:offset, committed:false, prevScore:score };
       return { state:'IDLE', age:st.age + 1, maxScore:0, maxOffset:0, committed:false };
     case 'OBSERVING': {
       const newMaxScore = Math.max(st.maxScore, score);
       const newMaxOffset = Math.max(st.maxOffset, offset);
-      const confirmEligible = st.age >= V6.CONFIRM_MIN_AGE
+      // 2026-07-03 sustained-score early-confirm (MealHypothesis.kt:237-239): the age gate opens one
+      // cycle early when the CURRENT score is ≥ CONFIRM_SCORE and it was also ≥ CONFIRM_SCORE on the
+      // previous cycle (scoreReadyStreak) — a sustained-ready score, not a transient peak.
+      const scoreReadyStreak = st.prevScore != null && st.prevScore >= V6.CONFIRM_SCORE;
+      const ageEligible = st.age >= V6.CONFIRM_MIN_AGE
+        || (st.age >= V6.CONFIRM_MIN_AGE - 1 && score >= V6.CONFIRM_SCORE && scoreReadyStreak);
+      const confirmEligible = ageEligible
         && newMaxScore >= V6.CONFIRM_SCORE
         && newMaxOffset >= V6.CONFIRM_OFFSET
         && doseAdequate
@@ -1321,7 +1330,7 @@ function v6MealStep(st, m) {
       if (confirmEligible) return { state:'CONFIRMED', age:0, maxScore:0, maxOffset:0, committed:true };
       if (score < V6.FALLBACK_IDLE_SCORE && st.age >= V6.FALLBACK_IDLE_AGE)
         return { state:'IDLE', age:0, maxScore:0, maxOffset:0, committed:false };
-      return { state:'OBSERVING', age:st.age + 1, maxScore:newMaxScore, maxOffset:newMaxOffset, committed:st.committed };
+      return { state:'OBSERVING', age:st.age + 1, maxScore:newMaxScore, maxOffset:newMaxOffset, committed:st.committed, prevScore:score };
     }
     case 'CONFIRMED':
       // CONFIRMED_TO_COMMITTED_AGE = 0 → true single-cycle commit (Fix 6)
@@ -1446,7 +1455,7 @@ function v6Decide(baseInsulinReq, m, prevState, knobs) {
   // 2026-07-02 confirm dose-adequacy gate: the DELIVERED shot (incl. velocity scaling) must beat
   // min(committedCapU, 0.8 × confirmedCapU) or the per-session confirm token isn't spent.
   const prospectiveShot = bud.budget * v6ActionMult('CONFIRMED', knobs.aggression) * velFactor;
-  const confirmFloor = Math.min(committedCap, V6.CONFIRM_FLOOR_FRAC_OF_CONFIRMED_CAP * confirmedCap);
+  const confirmFloor = Math.min(Math.min(committedCap, V6.CONFIRM_FLOOR_COMMITTED_TERM_MAX), V6.CONFIRM_FLOOR_FRAC_OF_CONFIRMED_CAP * confirmedCap);
   const confirmDoseAdequate = prospectiveShot > confirmFloor;
   const deltaDeclining = m.deltaDeclining != null ? m.deltaDeclining : v6DeltaDeclining(m.deltaHistory);
   const stepIn = { ...m, score, confirmDoseAdequate, deltaDeclining };
