@@ -567,3 +567,15 @@ him on 14d, but he is wobbling (recent evening-confirm hypo incident); worth a w
   analysis held on TBR<70 grounds. Recommend tightening to TBR<63 < 1.5% or adding a TBR<70 < 3.5%
   co-check before relying on the automated gate for C-class borderline users. (This is an
   activation-gating calibration item, not a floor-mechanics blocker.)
+
+### RESOLUTION (2026-07-08, Tim) — TBR<70 < 3.5% co-check, SAME 14d window for both
+
+Shipped: the gate now engages the floor only if **TBR<63 < 2.0% AND TBR<70 < 3.5%**, both computed
+over the **same 14-day window** (Tim's call — consistency + it is the documented two-test-bar window).
+Correction to the calibration note above: on that consistent 14d window, **user C ENGAGES** — her *14d*
+TBR<70 is 3.12% (under 3.5%) and 14d <63 1.56% (under 2.0%), so both pass. The manual "hold C" rested
+on her **30d** <70 (3.95%), a different window. So the co-check does NOT hold C on 14d; it is the correct
+two-test-bar PRIMARY gate that will hold any user whose *14d* <70 reaches 3.5% (C is not one right now).
+Engaging C on current 14d data is defensible (she is within bar) and fail-safe: the self-updating gate
+auto-holds her the moment her 14d low exposure crosses either bar. 30d-for-both was rejected because it
+would also hold tim (30d <70 4.08%), switching off his own floor over the recent evening-confirm wobble.

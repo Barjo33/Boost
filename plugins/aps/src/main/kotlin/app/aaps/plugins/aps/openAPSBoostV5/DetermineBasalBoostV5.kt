@@ -498,9 +498,12 @@ internal const val COMPOSED_FLOOR_MIN_EVENTUAL_OFFSET_MGDL = 20.0
  * may only ever alter delivered dose for users with low hypo exposure (Tim, 2026-07-08). BOTH must
  * hold — enforced, not advisory:
  *  - time-below-63 mg/dL (3.5 mmol, the TING lower bound) < [COMPOSED_FLOOR_MAX_TBR63_PCT], AND
- *  - time-below-70 mg/dL < [COMPOSED_FLOOR_MAX_TBR70_PCT] (the two-test-bar primary gate — added
- *    2026-07-08 after the floor re-validation showed a <63-only gate wrongly engaged user C, whose
- *    <63 was 1.56% but <70 was 3.95%, over the manual 3.5% bar).
+ *  - time-below-70 mg/dL < [COMPOSED_FLOOR_MAX_TBR70_PCT] (the two-test-bar PRIMARY gate — added
+ *    2026-07-08 so the gate keys on the same axis the two-test bar does, not the <63 proxy alone).
+ *    BOTH use the SAME 14d window. NB: on 14d the re-validation's borderline user C ENGAGES (her
+ *    14d <70 3.12%, <63 1.56% — both under bar); the manual HOLD on C came from her 30d <70 (3.95%),
+ *    a different window now deliberately superseded by this self-updating 14d gate, which auto-holds
+ *    any user the moment their 14d <70 reaches 3.5% or <63 reaches 2.0%.
  */
 const val COMPOSED_FLOOR_MAX_TBR63_PCT = 2.0
 const val COMPOSED_FLOOR_MAX_TBR70_PCT = 3.5
