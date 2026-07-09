@@ -12,6 +12,26 @@ We have **no structural glucodynamic simulator**. For any *dosing-policy* change
 
 This — identification, not model sophistication — is the genuine bottleneck.
 
+## Where these sit — lab vs loop (read this before the method list)
+
+**The inference is in the lab, not the loop.** What actually doses is deterministic; all the statistical machinery below is offline decision-support that decides *what gets built*. Do not read the method list as runtime behaviour.
+
+| Method | Where | Role |
+|---|---|---|
+| State machine, multipliers, caps, composed brake-floor | **Runtime (loop)** | The dosing logic — deterministic |
+| Rule-based sleep detector (HR + steps + clock) | **Runtime (loop)** | Night-mode gating — thresholds, not a model |
+| Auto-config per-user knob derivation (from own TBR/dosing history) | **Runtime (loop)** | Sets hypoCaution/caps/aggression — deterministic formula, once/periodic (not online, not Bayesian) |
+| `mlHypoRisk`, `mlMealLikely` (pre-trained models) | **Runtime (loop)** | The only *learned* components live — fixed functions at inference |
+| — hard constraint — | | **No training / online inference in the dose path** |
+| LightGBM + grouped-by-user CV | **Offline (lab)** | Does a signal exist / forecast, leakage-safe |
+| Empirical-Bayes Beta-Binomial, asymmetric-loss lower-bound gating, hierarchical partial pooling | **Offline (lab)** | The "Bayesian decision layer" — analysing recurring structure |
+| Policy-replay pricing, permutation tests, OLS confound-adjustment, regime decomposition, matched-window hazard | **Offline (lab)** | The "inference piece" — GO/NO-GO on proposed levers |
+| Exercise-prep Beta-lower-bound gate | **Specced, not built** | Would move Bayesian decision *into* runtime — shadow-log first |
+| Night-mode mixed-effects A/B | **Pre-registered, not run** | Needs instrumentation first |
+| V7 residual-tracker / sens-frozen innovation | **Shadow** | Computes, doesn't dose |
+
+The shipping controller is deterministic (state machine + caps + a deterministic per-user auto-config derivation) with two pre-trained ML models at inference; every Bayesian/inferential method below is offline tooling; the two places we'd move inference into the loop are gated behind shadow-logging or a pre-registered RCT first.
+
 ## 1. Supervised prediction — gradient-boosted trees
 
 - **LightGBM** binary classifiers: forward events (BG > 180 or < 70 at +60 min) and habitual-activity prediction. Config ≈ 350–400 trees, lr 0.03, num_leaves 15–31, min_child_samples 50, subsample/colsample 0.8.
