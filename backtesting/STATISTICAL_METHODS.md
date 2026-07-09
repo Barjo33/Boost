@@ -32,6 +32,34 @@ This — identification, not model sophistication — is the genuine bottleneck.
 
 The shipping controller is deterministic (state machine + caps + a deterministic per-user auto-config derivation) with two pre-trained ML models at inference; every Bayesian/inferential method below is offline tooling; the two places we'd move inference into the loop are gated behind shadow-logging or a pre-registered RCT first.
 
+## 0. Learned runtime & shadow components — their statistical derivation
+
+The runtime *does* contain learned quantities (HR baselines, sleep timing) and the V7 shadow contains a distributional model. **None are parametric/posterior Bayesian models** — they are **robust order statistics, circular statistics, and asymmetric-loss decision theory** — chosen deliberately to be simple and hard to break in a safety-critical loop.
+
+| Component | Derivation | Tier |
+|---|---|---|
+| V7 sizer "p10/p90" | empirical windowed quantiles of regime-conditioned forecast residuals → minimum-expected-asymmetric-loss dose | **Shadow** |
+| HR learning (resting / daytime baseline) | per-session p10, median across ≥7 sessions → personalises Karvonen HRR | **Runtime** |
+| Sleep learning (bedtime / wake) | circular mean of onset/wake clock-minutes | **Runtime** |
+
+### V7 distributional sizer — the "p10/p90" model (shadow only)
+
+A **windowed empirical predictive distribution + a decision rule**, not a fitted distribution:
+
+- **Substrate (`V7ResidualTracker`):** each cycle records the IOB-only forecast `projBG(t+h) = bg + BGI5·(h/5)`, `BGI5 = −iob_activity·variable_sens·5`. On horizon maturation it pools the **residual = observed − projected**, keyed by **regime × horizon**. Regimes {QUIET_FLAT, MEAL, NIGHT} (V5 state + CGM flatness + hour) are a *debiasing* split — unannounced-carb absorption otherwise biases the residual +12–38 mg/dL.
+- **The quantiles:** each pool is a ~21-day windowed, size-capped sample (oldest-evicted) exposing **5 empirical percentiles (5/25/50/75/95) via linear interpolation**. Cold pools (<60 samples) return null → abstain. So "p10/p90" = **empirical order statistics of the recent regime-conditioned forecast error**, not a parametric fit.
+- **The decision:** for a candidate dose it forms a predictive BG distribution (point projection + residual quantiles) as a **piecewise-linear inverse CDF through the 5 knots, discretised at 19 equal-probability points (5–95%)**, and picks the dose minimising an **asymmetric linear loss** `E[R·max(0,70−BG) + max(0,BG−140)]`, cost-ratio R ∈ {4,7,10}; grid search, first-minimum, hard cap/budget envelope.
+- **In stats terms:** a **minimum-expected-asymmetric-loss (Bayes-risk) point decision under an empirical predictive distribution** — the most decision-theoretic object in the codebase, and it **doses nothing** (logs R4/R7/R10 to test formulation sensitivity to R).
+
+### HR learning (runtime) — robust order statistics personalising a fixed formula
+
+- **Learned resting HR** = `median` over sessions of each session's **sleep-period p10** (10th percentile), once ≥7 sessions accrue. The p10 is the quiescent floor (robust to movement spikes); the median-across-sessions is robust to outlier nights. **Learned daytime baseline** = same on the awake-period p10.
+- These personalise the deterministic **Karvonen HRR**: `HRR% = (HR − HRrest)/(HRmax − HRrest)·100` → fixed zone thresholds (<30/30–40/40–60/60–80/>80). The only *learned* input is the personalised `HRrest`/daytime baseline — robust percentile estimation, not inference.
+
+### Sleep learning (runtime) — circular (directional) statistics
+
+- Learned bedtime and wake are the **circular mean** of clock-minute-of-day values (each minute → angle on the unit circle, vector-sum, `atan2` back), **because clock times wrap at midnight** — the mean of 22:00 and 02:00 must be 00:00, not 12:00; a naive arithmetic mean is wrong. Requires ≥ min sessions; HR baselines within the same tracker use the median-of-p10s above.
+
 ## 1. Supervised prediction — gradient-boosted trees
 
 - **LightGBM** binary classifiers: forward events (BG > 180 or < 70 at +60 min) and habitual-activity prediction. Config ≈ 350–400 trees, lr 0.03, num_leaves 15–31, min_child_samples 50, subsample/colsample 0.8.
