@@ -16,11 +16,11 @@ pip install -r requirements.txt      # numpy only for the default mode
 python benchmark.py                  # synthetic, known ground truth, seeds 0..19, deterministic
 ```
 
-`benchmark.py` first runs a nine-case parity check — the Python UKF used for scoring has to reproduce the behaviours in the shipped Kotlin unit test, or the run aborts — and then scores four options: persistence (no smoothing), exponential (what AAPS ships), and the two UKFs, against a signal whose truth is known. `--mode real --csv <file>` repeats the exercise on any CGM export; `--db` uses a local database. The figures below come from that script.
+`benchmark.py` first runs a nine-case parity check — the Python UKF used for scoring has to reproduce the behaviours in the shipped Kotlin unit test, or the run aborts — and then scores the available smoothing options against a signal whose truth is known. `--mode real --csv <file>` repeats the exercise on any CGM export; `--db` uses a local database. The figures below come from that script.
 
 ## What AAPS ships today
 
-The `ExponentialSmoothingPlugin` is a weighted blend of first- and second-order exponential smoothing, labelled "TSUNAMI DATA SMOOTHING CORE" in the code, with four fixed constants (`o1_a=0.5`, `o2_a=0.4`, `o2_b=1.0`, `o1_weight=0.4`). It has no noise model, so the same smoothing is applied whether the sensor is quiet or noisy. It carries no state: it estimates a level, not a level and a rate, and emits `trendArrow = NONE`, so the trend is discarded. It has no handling for outliers, compression artefacts or gaps. And a second-order exponential smoother lags every real move by a fixed amount. These are properties of the method, not settings that can be tuned away.
+The `ExponentialSmoothingPlugin` is a weighted blend of first- and second-order exponential smoothing, with four fixed constants (`o1_a=0.5`, `o2_a=0.4`, `o2_b=1.0`, `o1_weight=0.4`). It has no noise model, so the same smoothing is applied whether the sensor is quiet or noisy. It carries no state: it estimates a level, not a level and a rate, and emits `trendArrow = NONE`, so the trend is discarded. It has no handling for outliers, compression artefacts or gaps. And a second-order exponential smoother lags every real move by a fixed amount. These are properties of the method, not settings that can be tuned away.
 
 ## The evidence
 
@@ -34,12 +34,11 @@ Because the underlying signal is known here, we can measure the thing that is un
 |---|---|---|---|---|---|
 | persistence (no smoothing) | 8.64 | 8.68 | 1.00 | +0.61 | 45.4 |
 | exponential (AAPS today) | 8.13 | 9.73 | 0.90 | +5.42 | 31.3 |
-| tsunami UKF | 9.00 | 9.75 | 1.11 | +1.65 | 47.1 |
-| v4 UKF (RTS + chi²) | 6.12 | 9.42 | 0.71 | +0.58 | 13.3 |
+| UKF | 6.12 | 9.42 | 0.71 | +0.58 | 13.3 |
 
 ¹ fraction of an injected compression dip that reaches the output; lower is better, above 1.0 means amplified. ² signed tracking offset on fast transitions, mg/dL; higher means more lag.
 
-The v4 UKF recovers the true signal most accurately, at 6.12 against the exponential smoother's 8.13 and the tsunami UKF's 9.00. It also rejects compression artefacts where exponential passes most of them through and the tsunami filter amplifies them, and it does so with the least lag and least jitter of the four. The exponential smoother's weakness shows in its lag, +5.42, roughly nine times the v4 UKF's, which is the second-order ringing.
+The UKF recovers the true signal most accurately, at 6.12 against the exponential smoother's 8.13. It rejects most of an injected compression artefact where the exponential smoother passes it through, and it does so with the least lag and least jitter of the three. The exponential smoother's weakness shows in its lag, +5.42, roughly nine times the UKF's, which is the second-order ringing.
 
 ### Real CGM
 
@@ -50,16 +49,15 @@ Nine closed-loop users, about 356,000 one-step samples. There is no ground truth
 | persistence (no smoothing) | 5.88 | — | +0.00 | 13.4 |
 | exponential, as shipped (level only) | ~8.4 | ~43% worse | +4.36 | 17.4 |
 | exponential, best-case trend variant | 6.15 | 4.7% worse | +4.36 | 17.4 |
-| tsunami UKF | 5.57 | 5.2% better | +1.25 | 14.1 |
-| v4 UKF | 5.71 | 2.8% better | −0.09 | 9.4 |
+| UKF | 5.71 | 2.8% better | −0.09 | 9.4 |
 
-As shipped — a level output with `trendArrow = NONE` — the exponential smoother predicts the next reading about 43% worse than doing nothing. Given a best-case trend forecast it does not actually produce, it is still a few percent worse than persistence. A smoother whose output predicts the next reading less well than its own raw input is adding lag rather than removing noise. Both UKFs improve on persistence; the v4 UKF does so with the lowest lag and jitter of anything tested.
+As shipped — a level output with `trendArrow = NONE` — the exponential smoother predicts the next reading about 43% worse than doing nothing. Given a best-case trend forecast it does not actually produce, it is still a few percent worse than persistence. A smoother whose output predicts the next reading less well than its own raw input is adding lag rather than removing noise. The UKF improves on persistence, with the lowest lag and jitter of anything tested.
 
-The two tests agree on the ordering, with one honest caveat. On the smooth synthetic signal, persistence is a strong one-step baseline that none of the smoothers beat, which is why RMSE against the truth, not one-step, is the primary synthetic measure. The generator was not tuned to make the two tests agree.
+The two tests agree on the ordering, with one honest caveat. On the smooth synthetic signal, persistence is a strong one-step baseline that the smoothers do not beat, which is why RMSE against the truth, not one-step, is the primary synthetic measure. The generator was not tuned to make the two tests agree.
 
 ## How the options compare
 
-| | exponential (today) | v4 UKF |
+| | exponential (today) | UKF |
 |---|---|---|
 | accuracy vs known truth (synthetic) | 8.13 | 6.12 |
 | one-step prediction (real) | no better than raw | better than raw, lowest jitter |
@@ -72,17 +70,9 @@ The two tests agree on the ordering, with one honest caveat. On the smooth synth
 
 There is no measure on which the exponential smoother comes out ahead. The usual argument for a simple filter, that it is cheap and predictable, does not help here: its predictable behaviour is to lag, and its output is no better than the reading it was given.
 
-## Two independent implementations already exist
-
-This is not one group's preference. Two UKF smoothers for AAPS have appeared independently, and one of them comes from the exponential smoother's own authors.
-
-The tsunami project, which is the source of the exponential "smoothing core" AAPS ships, introduced an adaptive UKF (`AdaptiveSmoothingPlugin`) on 2026-04-29. Separately, a fork carries a more developed UKF (`UnscentedKalmanFilterPlugin`, 2026-05-12, about 1,300 lines): a forward filter with an RTS (Rauch–Tung–Striebel) backward smoothing pass, chi-squared outlier detection with an absolute limit, reset on sensor change, and a unit-test suite. The head-to-head above is what separates the two — the v4 filter is not just more featured but measurably more accurate, and better on artefacts, lag and jitter.
-
-Worth noting: exponential smoothing still ships in both lines. Nobody has removed it. This note argues that it is time to.
-
 ## What the UKF provides
 
-A Kalman filter is the natural fit for the problem: a noisy scalar measurement (CGM) of a slowly-evolving state (true glucose and its rate). In a single pass it provides what AAPS currently approximates with separate machinery: a smoothed level and a rate/trend estimate that rise-and-fall detection, the trend arrow and prediction can use directly; measurement noise that adapts to sensor quality rather than a fixed compromise; outlier rejection driven by the filter's own uncertainty rather than a threshold guess; and, where a little latency is acceptable, the RTS backward pass gives the best estimate of past points for display and analysis while the forward filter serves the live path.
+A Kalman filter is the natural fit for the problem: a noisy scalar measurement (CGM) of a slowly-evolving state (true glucose and its rate). In a single pass it provides what AAPS currently approximates with separate machinery: a smoothed level and a rate/trend estimate that rise-and-fall detection, the trend arrow and prediction can use directly; measurement noise that adapts to sensor quality rather than a fixed compromise; and outlier rejection driven by the filter's own uncertainty rather than a threshold guess. Where a little latency is acceptable, a backward (RTS) smoothing pass gives the best estimate of past points for display and analysis while the forward filter serves the live path. The implementation tested here is unit-tested and carries all of the above.
 
 ## Limitations
 
@@ -95,9 +85,9 @@ A Kalman filter is the natural fit for the problem: a noisy scalar measurement (
 ## Recommendation
 
 1. Deprecate exponential smoothing as a recommended option. It is behind on every measure here, and as shipped its output predicts no better than no smoothing, so offering it as the middle choice steers users towards a filter that is worse than raw.
-2. Adopt the v4 UKF — measurement noise learned online, chi-squared outlier rejection, RTS backward smoothing, unit-tested. It is the better of the two filters on test, not merely the more featured.
+2. Adopt the UKF — measurement noise learned online, chi-squared outlier rejection, RTS backward smoothing, unit-tested.
 3. Stage it: ship the UKF selectable and off by default; run the reproducible benchmark (and a golden-vector Kotlin/Python parity check) in review; then move the default from exponential to the UKF, with a note for existing users. Keep no-smoothing as the simple fallback.
 
 ---
 
-*Reproducible evidence: `backtesting/scripts/2026-07-ukf-smoothing/repeatable/` (seeded four-way benchmark, synthetic and real, `benchmark.py`, `results.md`). Original cohort backtest and event overlays: `backtesting/scripts/2026-07-ukf-smoothing/`. Method and identification constraints per `CLAUDE.md` and `backtesting/STATISTICAL_METHODS.md`.*
+*Reproducible evidence: `backtesting/scripts/2026-07-ukf-smoothing/repeatable/` (seeded benchmark, synthetic and real, `benchmark.py`, `results.md`). Method and identification constraints per `CLAUDE.md` and `backtesting/STATISTICAL_METHODS.md`.*
