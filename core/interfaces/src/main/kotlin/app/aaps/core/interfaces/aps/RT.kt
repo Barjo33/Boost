@@ -94,6 +94,12 @@ data class RT(
     var boostV5_budget: Double? = null,          // aggression_budget U
     var boostV5_actionMult: Double? = null,      // action multiplier for the current state
     var boostV5_finalDose: Double? = null,       // V5's would-have-delivered SMB (U) — direct comparator to rT.units
+    // Dose-chain intermediates (2026-07-10) — make finalDose reconstructible stage-by-stage so an
+    // offline port can be fidelity-validated: raw(=budget×actionMult) → ×velocityFactor & state-cap
+    // = doseAfterCaps → Phase-3 brake stack = doseAfterBrakes → composed floor = finalDose. All read-only.
+    var boostV5_velocityFactor: Double? = null,  // climb-velocity dose scale applied to the raw shot
+    var boostV5_doseAfterCaps: Double? = null,   // U — after velocity + state dose-cap, before Phase-3 brakes
+    var boostV5_doseAfterBrakes: Double? = null, // U — after the Phase-3 composed brake stack, before the floor
     var boostV5_gateReduction: String? = null,   // compact summary of which Phase 3 gates fired
     var boostV5_active: Boolean? = null,         // true when V5 was the ACTIVE doser this cycle (not shadow) — drives the V5 overview/widget
     var boostV5_committedCap: Double? = null,    // per-user COMMITTED per-cycle hold cap (U) — for dose-gate backtests (2026-07-02)

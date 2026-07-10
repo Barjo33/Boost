@@ -131,8 +131,9 @@ data class V5Decision(
     val stateReset: Boolean,
     val aggressionBudget: AggressionBudgetResult,
     val actionMultiplier: Double,
-    val insulinToDeliver: Double,
-    val phase3: Phase3Result,
+    val velocityFactor: Double,      // 2026-07-10 telemetry: climb-velocity dose scale on the raw shot
+    val insulinToDeliver: Double,    // = dose after velocity + state cap, before Phase-3 brakes
+    val phase3: Phase3Result,        // phase3.finalDose = dose after the composed brake stack
     val newPersistedState: V5PersistedState,
     // 2026-07-03 gate telemetry (read-only; needed for the 2026-07-10 live gate review — a
     // dose-adequacy gate block was previously indistinguishable from a score fade in NS):
@@ -353,6 +354,7 @@ class DetermineBasalBoostV5 @Inject constructor() {
             stateReset = didReset,
             aggressionBudget = budget,
             actionMultiplier = actionMult,
+            velocityFactor = velocityFactor,
             insulinToDeliver = insulinToDeliver,
             phase3 = phase3,
             newPersistedState = V5PersistedState(
