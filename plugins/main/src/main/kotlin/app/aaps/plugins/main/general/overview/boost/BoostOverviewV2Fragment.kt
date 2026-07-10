@@ -999,9 +999,10 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
                             )
                             btn.text = event.title
                             btn.setOnClickListener {
-                                OKDialog.showConfirmation(ctx, rh.gs(R.string.run_question, event.title)) {
-                                    handler.post { automation.processEvent(event) }
-                                }
+                                OKDialog.showConfirmation(
+                                    ctx, rh.gs(R.string.run_question, event.title),
+                                    Runnable { handler.post { automation.processEvent(event) } }
+                                )
                             }
                             container.addView(btn)
                             for (d in btn.compoundDrawables) {
