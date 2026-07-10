@@ -38,3 +38,7 @@ backtesting/__pycache__/
 
 # Local-only Claude operational notes (personal specifics — never commit)
 CLAUDE.local.md
+
+# Python bytecode from backtesting scripts
+__pycache__/
+*.pyc
