@@ -1,9 +1,9 @@
 # Boost Exercise & Recovery Mode Review — 2026-05-06
 
 **Window**: 2026-04-06 → 2026-05-06 (30 days)
-**Source**: Nightscout `https://nstest3.crabdance.com`
+**Source**: Nightscout `https://[self-NS-site]`
 **Raw data**: `/tmp/boost_30d_exercise/` (devicestatus.json 13,701 cycles, entries.json 8,529 SGV, treatments.json 5,079, parsed_cycles.json, events.json, effectiveness.json)
-**Charts (Drive)**: `~/Library/CloudStorage/GoogleDrive-street.tj@gmail.com/My Drive/Boost-v2-Analysis/exercise_review_2026-05-06/`
+**Charts (Drive)**: `~/Library/CloudStorage/GoogleDrive-[user-Drive-account]/My Drive/Boost-v2-Analysis/exercise_review_2026-05-06/`
 - `overview_30d.png` — full 30-day BG/HR/steps overlay with mode bands
 - `event_NN_YYYYMMDD_HHMM_<MODE>.png` — 45 per-event detail charts (±2 h)
 

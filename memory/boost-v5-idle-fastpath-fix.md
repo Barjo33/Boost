@@ -52,7 +52,7 @@ the display-only watch additions (DynISF / ranged-BG / TIR-pie complications + E
 `variableSens`+`tirWeights`); the IDLE removal is the ONLY dosing-path change on it.
 
 **APK to flash (on the PHONE):** `Boost-V6-PHONE-IDLEfastpathfix-2026-06-26.apk` (96 MB, V2-signed
-CN=Tim Street) on street.tj Drive `Boost-v2-Analysis/`. Installing it also lights up DynISF + the TIR
+CN=Tim) on [user-Drive-account] Drive `Boost-v2-Analysis/`. Installing it also lights up DynISF + the TIR
 pie on the watch faces (it sends variableSens + tirWeights). Flash when ready to watch a few cycles.
 
 **Also ported to Trio** (2026-06-26): faithful mirror in

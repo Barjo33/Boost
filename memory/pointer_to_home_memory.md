@@ -11,7 +11,7 @@ When working in `/Users/timstreet/StudioProjects/AndroidAPS` (this repo), all re
 Key files there:
 - `MEMORY.md` — index
 - `boost_v3_architecture.md` — V3 plugin architecture (formula, tiers, features)
-- `boost_v2_investigation_status.md` — Tim's nstest3 single-user analysis + NS read token location
+- `boost_v2_investigation_status.md` — Tim's [self-NS-site] single-user analysis + NS read token location
 - `boost_v3ml_production_validation.md` — V3ML on-device model production check (Apr 28 2026)
 - `project_v4_migration_plan.md` — Boost 3.4.2.1 → AAPS v4 phased plan
 - `project_session_apr2026_day{1,2,3,4}.md` — Daily session records
@@ -19,7 +19,7 @@ Key files there:
 - `oref_methodology.md` — has a Boost-specific section on silent-Boost detection, field-coverage, paired comparisons
 - `project_sms_debug.md` — SMS Communicator debugging
 
-NS read token for `nstest3.crabdance.com` is at `/Users/timstreet/Nightscout_Work/.ns_token`.
+NS read token for `[self-NS-site]` is at `/Users/timstreet/Nightscout_Work/.ns_token`.
 
 V3ML branch lives in a separate repo: `/Users/timstreet/StudioProjects/Boost-AAPS-core/` on `Boost-V3ML-Testing`.
 

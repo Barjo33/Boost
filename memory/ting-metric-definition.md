@@ -11,7 +11,7 @@ metadata:
 
 Tim's preferred tight-control metric, reported **alongside TIR** (Time-in-Range, 3.9–10.0 mmol/L / 70–180 mg/dL). Note TING's *lower* bound (3.5 mmol) is slightly below TIR's (3.9) and its *upper* bound (7.8) is the tight-control ceiling — so it's a "good glucose" band, not the same as the standard TITR (70–140). When Tim asks for "TIR/TING", compute both: TIR 70–180 and TING 63–140 mg/dL.
 
-NS source for his data: `https://nstest3.crabdance.com`, read token at `/Users/timstreet/Nightscout_Work/.ns_token` (units mg/dl, BST utcOffset=60). Used for the V1→V6 outcome analysis (2026-06-29).
+NS source for his data: `https://[self-NS-site]`, read token at `/Users/timstreet/Nightscout_Work/.ns_token` (units mg/dl, BST utcOffset=60). Used for the V1→V6 outcome analysis (2026-06-29).
 
 **Tim's COMPRESSION-LOW definition (for excluding artifacts from TBR):** an *overnight* (23:30–07:00 local) sensor dropout (>15 min gap) bracketed by low shoulders (<75 mg/dL) that recovers to ≥90 mg/dL within 30 min. Remove the bracketing <75 readings. (Impact is small in his data — 9 readings in Apr, 7 in late-Jun — i.e. his lows are mostly real.)
 

@@ -57,7 +57,7 @@ Key facts:
 - WFF data-driven arc pattern: `<Arc startAngle endAngle><Stroke/><Transform target="endAngle"
   value="-150 + (clamp(val,lo,hi)-lo)/(hi-lo)*300"/></Arc>`. Full-face background ComplicationSlot
   (x0 y0 450x450) lets the ring read `[COMPLICATION.RANGED_VALUE_VALUE]`; other slots overlay on top.
-- All three validate (wff-validator v2), debug-signed, on street.tj Drive (Boost-Face-{TIR,BGRing,HRRing}).
+- All three validate (wff-validator v2), debug-signed, on [user-Drive-account] Drive (Boost-Face-{TIR,BGRing,HRRing}).
 
 ## TIR pie ring on the TIR face (2026-06-26)
 - TIR face now also has an **edge donut ring = the last-24h Time-In-Range distribution** (a pie).
@@ -81,7 +81,7 @@ Key facts:
 - **Installed on the Oppo Watch X3**: wear app (TIRpie build), faces TIR (with pie ring) / BGRing / HRRing,
   + the original clean `com.boost.aaps.wff` (untouched). All confirmed working on-wrist: TIR colour ✓,
   BG ring ✓ (40-250), HR ring ✓.
-- **PENDING — phone**: `Boost-V6-PHONE-TIRpie-2026-06-26.apk` on street.tj Drive must be installed
+- **PENDING — phone**: `Boost-V6-PHONE-TIRpie-2026-06-26.apk` on [user-Drive-account] Drive must be installed
   **on the PHONE** (NOT the watch — same package `info.nightscout.androidaps`; pushing the phone APK to
   the watch is WRONG, was caught/stopped once). The phone APK is what actually sends variableSens +
   tirWeights; until it's on the phone, DynISF shows `--` and the TIR pie shows solid grey.

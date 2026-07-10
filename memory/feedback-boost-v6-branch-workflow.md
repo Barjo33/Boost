@@ -13,7 +13,7 @@ metadata:
 2. **`dev` is downstream** — push `Boost-V6-experimental` → `dev` so the two are an **identical base** at all times. Never commit/push straight to `dev` (that's what caused the divergence we had to reconcile).
 3. **Keep them in lockstep** so it's easy to track what's going on (one source of truth, no "this is on dev but not experimental" surprises).
 
-**Why:** I broke this earlier in the session by pushing the V6-simulator work straight to `dev`, so `dev` got ahead of `experimental` (2 commits) — confusing. Reconciled 2026-06-30 by fast-forwarding `experimental` up to `dev`; **both now == `6264e34f98`**.
+**Why:** I broke this earlier in the session by pushing the V6-simulator work straight to `dev`, so `dev` got ahead of `experimental` (2 commits) — confusing. Reconciled 2026-06-30 by fast-forwarding `experimental` up to `dev`; both == `6264e34f98`. **Re-reconciled 2026-07-08: experimental→dev force-promotion, both now == `c2f2b1258c`.** Promotion carried: Simple-Mode mask bypass (delivered + shadow + HC-ingest), composed brake-floor toggle + enforced 14d hypo-gate (TBR<63<2.0% AND TBR<70<3.5%, re-validated on DB@07-08), 07-07 sensing batch (F1/F2/F4/F5/F6/F9), <54 co-guard, degraded-HR sleep fix, anonymization. The sleep-in MERGE stayed **v7-shadow-only** (NOT promoted).
 
 **How to apply:**
 - New change → branch/commit on `Boost-V6-experimental` → `git push origin Boost-V6-experimental` → then `git push origin Boost-V6-experimental:dev` (ff dev to match). Verify `git rev-parse origin/dev origin/Boost-V6-experimental` are equal.
