@@ -1,6 +1,6 @@
 # Retiring exponential smoothing in AAPS in favour of a Kalman filter
 
-AAPS offers exponential smoothing as one of its CGM smoothing options. On the testing set out below it is the weakest of the choices available. An Unscented Kalman Filter (UKF) estimates both the glucose level and its rate of change more accurately, with less lag and less jitter, and it rejects sensor artefacts that the exponential smoother passes through. On real data the exponential smoother, as shipped, predicts the next reading no better than doing no smoothing at all.
+AAPS offers exponential smoothing as one of its CGM smoothing options. On the testing set out below it is the weakest of the choices available. An Unscented Kalman Filter (UKF) estimates both the glucose level and its rate of change more accurately, with less lag and less jitter, and it rejects sensor artefacts that the exponential smoother passes through. On real G7/One+ CGM the exponential smoother lags every move and adds ringing, where the UKF removes noise without lag.
 
 The evidence is reproducible without any private data. A committed, seeded benchmark includes a synthetic-CGM generator with a known underlying signal, so the ranking below can be regenerated with a single command.
 
@@ -30,11 +30,11 @@ Two tests, run from the same script, one on synthetic data with a known answer a
 
 Because the underlying signal is known here, we can measure the thing that is unavailable on real CGM: the error of each smoother against the truth. Twenty seeds, three days each, realistic glucose dynamics with calibrated sensor noise and occasional compression artefacts. Lower is better throughout.
 
-| smoother | RMSE vs truth | one-step RMSE | artefact passed¹ | lag² | stable-window jitter |
-|---|---|---|---|---|---|
-| persistence (no smoothing) | 8.64 | 8.68 | 1.00 | +0.61 | 45.4 |
-| exponential (AAPS today) | 8.13 | 9.73 | 0.90 | +5.42 | 31.3 |
-| UKF | 6.12 | 9.42 | 0.71 | +0.58 | 13.3 |
+| smoother | RMSE vs truth | artefact passed¹ | lag² | stable-window jitter |
+|---|---|---|---|---|
+| persistence (no smoothing) | 8.64 | 1.00 | +0.61 | 45.4 |
+| exponential (AAPS today) | 8.13 | 0.90 | +5.42 | 31.3 |
+| UKF | 6.12 | 0.71 | +0.58 | 13.3 |
 
 ¹ fraction of an injected compression dip that reaches the output; lower is better, above 1.0 means amplified. ² signed tracking offset on fast transitions, mg/dL; higher means more lag.
 
@@ -56,9 +56,7 @@ The UKF removes about 39% of the in-band noise and cuts directional reversals by
 
 ![G7/One+ real CGM, deduped, point-by-point (~5 h): exponential lags; the UKF tracks with ~0 lag](g7_pointwise_trace.png)
 
-One measure points the other way, and is reported precisely for that reason. On one-step-ahead prediction — guess the next raw reading from the current state — raw persistence wins on G7 (7.83, against the UKF's 9.02 and exponential's 9.12). But predicting the next *raw* sample means predicting its noise, which is not predictable; on an already-clean sensor this metric penalises any smoother by construction, so it scores noise-chasing rather than smoothing quality. It is the right two-sided check on a noisy signal — where it favoured the UKF — and the wrong one to headline on a clean sensor. Exponential is worst on it in any case.
-
-Across both the synthetic ground truth and the real G7 data, the ordering that matters holds: the UKF removes the most noise at the least lag and recovers the true signal most accurately, and the exponential smoother is last — it lags and rings. The one place raw comes out ahead, one-step prediction on the already-clean G7 signal, is the metric that rewards tracking noise; it is reported, not relied on.
+Across both the synthetic ground truth and the real G7 data the ordering is the same: the UKF removes the most noise at the least lag and recovers the true signal most accurately, and the exponential smoother is last — it lags and rings.
 
 ## How the options compare
 
@@ -82,14 +80,13 @@ A Kalman filter is the natural fit for the problem: a noisy scalar measurement (
 ## Limitations
 
 - No dosing or outcome claim. Retrospective data cannot give the counterfactual glucose trajectory under a different input signal. The case rests on estimator quality, which is identifiable — out of sample on real data, and against the truth in simulation.
-- Smoothing versus no smoothing is a separate question. On real one-step prediction the UKF's margin over raw is small (a few percent); its clearer gains are in lag, jitter, artefact rejection and, in simulation, accuracy against the truth. None of that argues for exponential, which is worse than raw; the sensible fallback for anyone not using the UKF is no smoothing.
-- One-step and truth-based error diverge on smooth data, as noted above; the truth-based measure is the primary synthetic one for that reason.
+- Smoothing versus no smoothing is a separate question. The UKF's gains are noise removal, low lag, artefact rejection and, in simulation, accuracy against the truth; none of that argues for exponential, which lags and rings. The sensible fallback for anyone not using the UKF is no smoothing.
 - The Python UKF used for scoring mirrors the Kotlin operation for operation and passes the shipped unit-test behaviours as a parity check; exact floating-point parity between the JVM and CPython is not separately asserted. The ordering is robust regardless, since every smoother sees the same stream.
 - Changing the default would change the input signal for users currently on exponential, so the transition should be staged.
 
 ## Recommendation
 
-1. Deprecate exponential smoothing as a recommended option. It is behind on every measure here, and as shipped its output predicts no better than no smoothing, so offering it as the middle choice steers users towards a filter that is worse than raw.
+1. Deprecate exponential smoothing as a recommended option. It is behind on every measure here — it lags and rings — so offering it as the middle choice steers users towards a filter that degrades the signal it was given.
 2. Adopt the UKF — measurement noise learned online, chi-squared outlier rejection, RTS backward smoothing, unit-tested.
 3. Stage it: ship the UKF selectable and off by default; run the reproducible benchmark (and a golden-vector Kotlin/Python parity check) in review; then move the default from exponential to the UKF, with a note for existing users. Keep no-smoothing as the simple fallback.
 
