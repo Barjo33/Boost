@@ -57,8 +57,8 @@ A record of the data relationships, dosing levers, mechanisms and models we've e
 | Relationship / mechanism | Finding | Evidence | Status |
 |---|---|---|---|
 | Phase-3 brake compounding | 0.4 × 0.40 × 0.85 × 0.30 = 4.1% of budget → rounds to 0 for 30 min at BG ~270 | 07-06 forensic, 17/17 cycles reconstructed | Composed brake-floor |
-| Brake (composed multipliers) correctness | Mostly correct | 76% correct high-IOB restraint + 13% saved a low; ~3% recoverable | Don't loosen; floor's target is small |
-| Where TIR loss comes from | Highs: sizing/timing. Lows: activity 47% + rescue 37% | residency attribution | The lever map |
+| Brake (composed multipliers) correctness | Directionally right (don't loosen); the "90%" is 13% outcome-proven + 76% correct-by-assumption, on a pooled self-dominated n=135 | 13% saved a low, 76% high-IOB restraint (assumed), ~3% recoverable | Don't loosen; don't quote "90%" |
+| Where TIR loss comes from | Highs: sizing/timing (brake #1 but lead over sizing narrow per-user). Lows: activity + rescue (pooled activity 47>rescue 37; per-user rescue 44>activity 36 — ranking pooling-dependent) | residency attribution (cause-shares POOLED; per-user differs) | The lever map |
 | 2026-05-14 evening excursion | Unannounced meal on a basal deficit, not insulin stacking | peak IOB only +4.62 | Canonical V6 sequence-aware use case |
 
 ### Per-user configuration
@@ -104,7 +104,7 @@ A record of the data relationships, dosing levers, mechanisms and models we've e
 | ISF EMA overlay equivalence | Not clinically equivalent | within ±5% on only 28–58% of cycles |
 | delta_accl ML retrain | Rejected on validation | 05-05 |
 | Deviation-sensitivity function | Removed | 04-30, superseded by TDD-EMA |
-| Brake "34% of high-time" as a lever | Proximate over-attribution | brake is 90% right on audit |
+| Brake "34% of high-time" as a lever | Proximate over-attribution | brake is directionally right on audit (13% proven + 76% assumed; don't loosen) |
 | Cohort +13 pp as a clean Boost effect | Mostly overnight + selection/basal confound | +2.9 pp raw → +1.2 pp adjusted; permutation p ≈ 0.27 |
 | Post-exercise "delayed 2× ramp" | Window-length artefact | de-artefacted to ~1.2×, flat |
 
