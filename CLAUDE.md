@@ -35,19 +35,21 @@ What doses is deterministic (state machine, multipliers, caps, composed brake-fl
 
 ## Branch and commit workflow
 
-- Make Boost changes on the experimental branch first, then propagate. Don't push straight to dev.
-- Current working branches are the experimental line and the V7-shadow line. Land work on one, then cherry-pick (`-x`) to the other and push both, so they stay a common base.
+- **Two separate repositories exist and must not be crossed.** All Boost V5/V6/V7 work lives in the Boost fork on its **vehicle branch** (the V7-shadow line) — that is what APKs are built from and flashed. A second repository holds a separate port tracking upstream AAPS (a different generation); **Boost feature or dosing work never goes there.** Sessions often start in the upstream-port working directory because it is the default cwd — that does not make it the target. Confirm the repo and branch before creating a branch or committing. Local paths/branch names are in the private notes.
+- Land Boost changes on the vehicle branch first; don't push straight to dev. If a change belongs on both the vehicle and the experimental line, cherry-pick (`-x`) across and push both so they keep a common base.
 - Commit messages end with the required Co-Authored-By and session trailer. Keep them factual.
 - After a force-push upstream, sync your local branch to origin before running any analysis against it — a stale local branch has inverted conclusions before.
 
 ## Build and deploy
 
+- **Roll-out sequence (feature → flashed APK):** prototype in the Boost fork (not the upstream-port repo) → commit (the app build has a no-uncommitted-changes gate; a dirty tree fails it) → land on the vehicle branch, cherry-pick (`-x`) to the sibling line if it belongs there → validate the Dagger graph (`:app` KSP) → build the signed release APK → verify it (SHA/timestamp, signature, and that the new class is actually in the dex) → rename descriptively and copy to the private Drive folder (per local notes) → flash.
 - Verify every APK by timestamp/SHA before shipping it. A silent `BUILD FAILED` (hidden by `-q`) once led to an old APK being copied out as if fresh. Never trust an APK you didn't just watch build.
 - Background builds: check the exit status and the output, not just that the command returned.
 - Wear/phone flashing can be done over adb wireless debugging (pair port + code, then connect port); watch for background sensor permissions and the doze/battery whitelist, which are what let overnight sensing survive.
 
 ## Mistakes made, and the rules that came from them
 
+- **Prototyped a feature in the wrong repository** (a smoothing plugin built in the upstream-port repo instead of the Boost fork's vehicle branch, because that was the session's default cwd) → all Boost work goes in the Boost fork on the vehicle branch; confirm the repo/branch before branching or committing, then cherry-pick if a prototype ended up misplaced.
 - **Trusted a stale APK** after `-q` hid a build failure → always verify APK timestamp/SHA.
 - **Ran analysis against a stale local branch** 24 commits behind origin after a force-push → sync local to origin first.
 - **Repeated mis-diagnosis of a single user** from a contaminated aggregate window → verify era detection (`boostv5_active`), don't trust raw day-count windows.
