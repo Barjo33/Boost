@@ -50,7 +50,10 @@ What doses is deterministic (state machine, multipliers, caps, composed brake-fl
 ## Mistakes made, and the rules that came from them
 
 - **Prototyped a feature in the wrong repository** (a smoothing plugin built in the upstream-port repo instead of the Boost fork's vehicle branch, because that was the session's default cwd) → all Boost work goes in the Boost fork on the vehicle branch; confirm the repo/branch before branching or committing, then cherry-pick if a prototype ended up misplaced.
-- **Trusted a stale APK** after `-q` hid a build failure → always verify APK timestamp/SHA.
+- **Trusted a stale APK** after `-q` hid a build failure → always verify APK timestamp/SHA, and confirm the *new* class is actually in the dex (`unzip -p apk classes*.dex | strings | grep <Class>`), not just that a file exists.
+- **A backgrounded `gradle … | tail` reported exit 0** — that was the pipe's last command (`tail`), not gradle; a `BUILD FAILED` (clean-tree gate) was masked and a stale APK was nearly shipped. → Capture gradle's real exit code (`gradlew … > log 2>&1; echo $?`), don't read it through a pipe.
+- **Edited a tracked file while a background build ran** → dirtied the tree and tripped the no-uncommitted-changes gate mid-build. Commit (or hold edits) before starting a build; don't touch the tree until it finishes.
+- **Ran `git add -A` while a subagent was writing the same repo** → swept the agent's in-progress files into unrelated commits and left the tree dirty. → Stage explicit paths, never `-A`, when a subagent shares the working copy; or give the agent an isolated worktree.
 - **Ran analysis against a stale local branch** 24 commits behind origin after a force-push → sync local to origin first.
 - **Repeated mis-diagnosis of a single user** from a contaminated aggregate window → verify era detection (`boostv5_active`), don't trust raw day-count windows.
 - **Called V1 "oref"**, wrongly deflating a finding → **V1 is Boost** (the V1 generation is a Boost dosing algorithm); `boostv5_active` marks only the V5/V6-generation slice.
