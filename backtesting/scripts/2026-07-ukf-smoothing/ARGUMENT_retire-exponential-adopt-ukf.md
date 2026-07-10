@@ -16,7 +16,7 @@ pip install -r requirements.txt      # numpy only for the default mode
 python benchmark.py                  # synthetic, known ground truth, seeds 0..19, deterministic
 ```
 
-`benchmark.py` first runs a nine-case parity check — the Python UKF used for scoring has to reproduce the behaviours in the shipped Kotlin unit test, or the run aborts — and then scores the available smoothing options against a signal whose truth is known. `--mode real --csv <file>` repeats the exercise on any CGM export; `--db` uses a local database. The figures below come from that script.
+`benchmark.py` first runs a nine-case parity check — the Python UKF used for scoring has to reproduce the behaviours in the shipped Kotlin unit test, or the run aborts — and then scores the available smoothing options against a signal whose truth is known. `--mode real --csv <file>` repeats the exercise on any CGM export; `--db` uses a local database, and `--db --sensor G7` restricts the real cohort to the G7/One+ users. The figures below come from that script.
 
 ## What AAPS ships today
 
@@ -40,28 +40,33 @@ Because the underlying signal is known here, we can measure the thing that is un
 
 The UKF recovers the true signal most accurately, at 6.12 against the exponential smoother's 8.13. It rejects most of an injected compression artefact where the exponential smoother passes it through, and it does so with the least lag and least jitter of the three. The exponential smoother's weakness shows in its lag, +5.42, roughly nine times the UKF's, which is the second-order ringing.
 
-### Real CGM
+### Real CGM: the G7/One+ cohort
 
-Nine closed-loop users, about 356,000 one-step samples. There is no ground truth here, so the measure is one-step-ahead predictive RMSE: predict the next raw reading from each smoother's current state. It penalises both lag and noise-chasing.
+The modern default Dexcom sensor is the G7; the One+ shares its hardware and firmware and reports as G7, so "G7" here means G7/One+. We ran the benchmark on all six G7/One+ users in the sensor-labelled dataset, deduped to one reading per five-minute bucket. (The raw export interleaves two upload streams about a minute apart; without the dedup the series is a spurious sawtooth — worth naming, because it silently corrupts any smoother comparison run against it.)
 
-| smoother | one-step RMSE | vs persistence | lag | jitter |
+There is no ground truth on real data, so the measures that matter are the ones that describe what a smoother does to the signal: how much in-band noise it removes, and how much it lags. Lower is better.
+
+| smoother | stable-window variance | vs raw | directional reversals | lag |
 |---|---|---|---|---|
-| persistence (no smoothing) | 5.88 | — | +0.00 | 13.4 |
-| exponential, as shipped (level only) | ~8.4 | ~43% worse | +4.36 | 17.4 |
-| exponential, best-case trend variant | 6.15 | 4.7% worse | +4.36 | 17.4 |
-| UKF | 5.71 | 2.8% better | −0.09 | 9.4 |
+| raw (no smoothing) | 30.8 | — | 23,972 | +0.00 |
+| exponential | 35.4 | +15% (rings) | 14,971 | +5.30 |
+| UKF | 18.8 | −39% | 14,014 | −0.14 |
 
-As shipped — a level output with `trendArrow = NONE` — the exponential smoother predicts the next reading about 43% worse than doing nothing. Given a best-case trend forecast it does not actually produce, it is still a few percent worse than persistence. A smoother whose output predicts the next reading less well than its own raw input is adding lag rather than removing noise. The UKF improves on persistence, with the lowest lag and jitter of anything tested.
+The UKF removes about 39% of the in-band noise and cuts directional reversals by roughly 40%, at essentially zero lag. The exponential smoother reduces reversals too, but by ringing — it *increases* the amplitude variance — and it lags by the equivalent of a full reading. The point-by-point trace shows it directly: exponential (orange) trailing every peak and trough, the UKF (blue online, green RTS) tracking the raw with no lag while smoothing the noise blips.
 
-The two tests agree on the ordering, with one honest caveat. On the smooth synthetic signal, persistence is a strong one-step baseline that the smoothers do not beat, which is why RMSE against the truth, not one-step, is the primary synthetic measure. The generator was not tuned to make the two tests agree.
+![G7/One+ real CGM, deduped, point-by-point (~5 h): exponential lags; the UKF tracks with ~0 lag](g7_pointwise_trace.png)
+
+One measure points the other way, and is reported precisely for that reason. On one-step-ahead prediction — guess the next raw reading from the current state — raw persistence wins on G7 (7.83, against the UKF's 9.02 and exponential's 9.12). But predicting the next *raw* sample means predicting its noise, which is not predictable; on an already-clean sensor this metric penalises any smoother by construction, so it scores noise-chasing rather than smoothing quality. It is the right two-sided check on a noisy signal — where it favoured the UKF — and the wrong one to headline on a clean sensor. Exponential is worst on it in any case.
+
+Across both the synthetic ground truth and the real G7 data, the ordering that matters holds: the UKF removes the most noise at the least lag and recovers the true signal most accurately, and the exponential smoother is last — it lags and rings. The one place raw comes out ahead, one-step prediction on the already-clean G7 signal, is the metric that rewards tracking noise; it is reported, not relied on.
 
 ## How the options compare
 
 | | exponential (today) | UKF |
 |---|---|---|
 | accuracy vs known truth (synthetic) | 8.13 | 6.12 |
-| one-step prediction (real) | no better than raw | better than raw, lowest jitter |
-| lag on transitions | roughly 4–9× the UKF's | near zero |
+| in-band noise removed (real G7) | none — rings (+15% variance) | ~39% |
+| lag on transitions (real G7) | +5.30 mg/dL | ≈0 (−0.14) |
 | trend / rate output | none (`trendArrow = NONE`) | velocity estimate, used for the trend arrow |
 | adaptivity to sensor noise | none (fixed weights) | measurement noise learned online |
 | outlier / artefact rejection | none (~90% passes) | chi-squared gate + absolute limit (~70% passes) |

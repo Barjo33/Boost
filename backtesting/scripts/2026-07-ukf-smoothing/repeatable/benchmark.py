@@ -243,6 +243,38 @@ def load_db():
     return series
 
 
+def load_db_sensor(sensor_type):
+    """Load every user on a given CGM sensor_type from the sensor-labelled
+    oref_phase2_sites_v2 table, relabelled to anonymous tags U1..Un. For G7/One+
+    the transmitter sends a single value (no separate filtered stream), so
+    cgm_mgdl is the raw sensor signal. One+ shares G7 hardware/firmware and is
+    reported as G7; there is no separate One+ label."""
+    import psycopg2
+    conn = psycopg2.connect("dbname=oref")
+    cur = conn.cursor()
+    cur.execute("SELECT DISTINCT user_id FROM oref_phase2_sites_v2 "
+                "WHERE sensor_type=%s ORDER BY user_id", (sensor_type,))
+    user_ids = [r[0] for r in cur.fetchall()]
+    series = []
+    for i, uid in enumerate(user_ids, start=1):
+        # DEDUP to one reading per 5-min bucket (last per bucket) -- the raw phase2 export
+        # interleaves multiple upload streams (~1-min spacing), which the pipeline collapses
+        # via floor(ts/300) elsewhere. Without this the series is a spurious sawtooth.
+        cur.execute(
+            "SELECT DISTINCT ON (floor(ts_utc_ms/300000)) ts_utc_ms, cgm_mgdl "
+            "FROM oref_phase2_sites_v2 "
+            "WHERE user_id=%s AND sensor_type=%s AND cgm_mgdl IS NOT NULL "
+            "ORDER BY floor(ts_utc_ms/300000), ts_utc_ms DESC", (uid, sensor_type))
+        rows = sorted(cur.fetchall(), key=lambda r: r[0])
+        if not rows:
+            continue
+        ts = [float(r[0]) for r in rows]
+        vals = [float(r[1]) for r in rows]
+        series.append((f"U{i}", ts, vals))  # anonymous tag only
+    cur.close(); conn.close()
+    return series
+
+
 def run_real(series):
     accs = {name: Acc() for name in SMOOTHERS}
     per_series = {}
@@ -406,6 +438,9 @@ def main():
     ap.add_argument("--noise-sd", type=float, default=6.0, help="synthetic: sensor noise SD mg/dL")
     ap.add_argument("--csv", type=str, default=None, help="real: path to timestamp,glucose_mgdl CSV")
     ap.add_argument("--db", action="store_true", help="real: use local TimescaleDB dbname=oref")
+    ap.add_argument("--sensor", type=str, default=None,
+                    help="real+--db: restrict to a CGM sensor_type from oref_phase2_sites_v2 "
+                         "(e.g. G7 for the G7/One+ cohort); default uses boost_cgm (all sensors)")
     ap.add_argument("--no-selftest", action="store_true", help="skip the v4 parity self-test")
     args = ap.parse_args()
 
@@ -440,11 +475,17 @@ def main():
         elif args.db:
             print("\nRunning Mode B real from TimescaleDB (dbname=oref) ...")
             try:
-                series = load_db()
+                if args.sensor:
+                    series = load_db_sensor(args.sensor)
+                else:
+                    series = load_db()
             except Exception as e:
                 print(f"DB unavailable ({e}). Provide --csv instead.")
                 sys.exit(1)
-            src = f"local TimescaleDB boost_cgm ({len(series)} cohort series)"
+            if args.sensor:
+                src = f"local TimescaleDB oref_phase2_sites_v2 sensor={args.sensor} ({len(series)} users)"
+            else:
+                src = f"local TimescaleDB boost_cgm ({len(series)} cohort series)"
         else:
             print("Mode real requires --csv <file> or --db")
             sys.exit(1)
