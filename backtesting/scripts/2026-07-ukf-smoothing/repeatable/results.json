@@ -1,0 +1,140 @@
+{
+  "parity_pass": true,
+  "synthetic": {
+    "ground_truth_rmse": {
+      "persistence": 8.637526599039163,
+      "exponential": 8.124544653799523,
+      "tsunami": 8.996062028623939,
+      "v4": 6.120595386397119
+    },
+    "onestep_rmse": {
+      "persistence": 8.6780646503947,
+      "exponential": 9.729827068006948,
+      "tsunami": 9.746682115762363,
+      "v4": 9.415453664657555
+    },
+    "artifact_absorbed": {
+      "persistence": 1.0,
+      "exponential": 0.9033582251621144,
+      "tsunami": 1.111213289485815,
+      "v4": 0.7075670516532043
+    },
+    "artifact_abserr": {
+      "persistence": 36.93870151593586,
+      "exponential": 30.06026114896338,
+      "tsunami": 40.83405414524581,
+      "v4": 23.705336906038042
+    },
+    "lag": {
+      "persistence": 0.6110698115176162,
+      "exponential": 5.416069811517616,
+      "tsunami": 1.649511977330225,
+      "v4": 0.5775159214926866
+    },
+    "jitter_var": {
+      "persistence": 45.34581417049923,
+      "exponential": 31.31355395587549,
+      "tsunami": 47.09075645769841,
+      "v4": 13.323068866596055
+    },
+    "reversals": {
+      "persistence": 3525,
+      "exponential": 1821,
+      "tsunami": 2924,
+      "v4": 1490
+    },
+    "meta": {
+      "seeds": 20,
+      "n_days": 3,
+      "noise_sd": 6.0,
+      "total_samples": 17280,
+      "total_valid": 16999,
+      "total_artifacts": 436
+    }
+  },
+  "real": {
+    "onestep_rmse": {
+      "persistence": 5.877530531244945,
+      "exponential": 6.153987469244981,
+      "tsunami": 5.573053160027378,
+      "v4": 5.714411339631747
+    },
+    "per_series": {
+      "U1": {
+        "persistence": 5.546759869736133,
+        "exponential": 5.871506164306707,
+        "tsunami": 5.162530781150934,
+        "v4": 5.320107058792329
+      },
+      "U2": {
+        "persistence": 5.483455906626298,
+        "exponential": 5.21365709192291,
+        "tsunami": 4.448636650077176,
+        "v4": 4.6458492775347136
+      },
+      "U3": {
+        "persistence": 6.181964361490081,
+        "exponential": 6.389390537246369,
+        "tsunami": 6.09610455731865,
+        "v4": 6.011266021507885
+      },
+      "U4": {
+        "persistence": 4.819404703489368,
+        "exponential": 5.507929292625554,
+        "tsunami": 4.978448464358584,
+        "v4": 5.07055566592702
+      },
+      "U5": {
+        "persistence": 3.2790272280761137,
+        "exponential": 3.606045430862493,
+        "tsunami": 3.1092077132026366,
+        "v4": 3.0995152698295443
+      },
+      "U6": {
+        "persistence": 7.088004967998764,
+        "exponential": 7.227166044189688,
+        "tsunami": 6.31510928302475,
+        "v4": 6.339096229837231
+      },
+      "U7": {
+        "persistence": 7.295206822523435,
+        "exponential": 7.625326401021897,
+        "tsunami": 7.152142451774396,
+        "v4": 7.398723780581235
+      },
+      "U8": {
+        "persistence": 4.273190411206958,
+        "exponential": 4.634824303927209,
+        "tsunami": 4.033604762941853,
+        "v4": 4.063261021947853
+      },
+      "U9": {
+        "persistence": 7.360082690937282,
+        "exponential": 7.8249639171082155,
+        "tsunami": 7.28696871339943,
+        "v4": 7.6917530628358035
+      }
+    },
+    "lag": {
+      "persistence": 0.0,
+      "exponential": 4.359229696218227,
+      "tsunami": 1.24568181182995,
+      "v4": -0.09453111067021668
+    },
+    "jitter_var": {
+      "persistence": 13.402591427758193,
+      "exponential": 17.423947351363843,
+      "tsunami": 14.087655102232223,
+      "v4": 9.427135189426878
+    },
+    "reversals": {
+      "persistence": 41623,
+      "exponential": 28852,
+      "tsunami": 44924,
+      "v4": 31739
+    },
+    "meta": {
+      "source": "local TimescaleDB boost_cgm (9 cohort series)"
+    }
+  }
+}
