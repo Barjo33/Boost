@@ -393,6 +393,11 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             rT.boostV5_budget = decision.aggressionBudget.budget
             rT.boostV5_actionMult = decision.actionMultiplier
             rT.boostV5_finalDose = decision.finalDose
+            // Dose-chain intermediates (2026-07-10) so an offline port can be fidelity-validated
+            // stage-by-stage: raw(budget×actionMult) → doseAfterCaps → doseAfterBrakes → finalDose.
+            rT.boostV5_velocityFactor = decision.velocityFactor
+            rT.boostV5_doseAfterCaps = decision.insulinToDeliver
+            rT.boostV5_doseAfterBrakes = decision.phase3.finalDose
             rT.boostV5_gateReduction = formatGateReduction(decision)
             rT.boostV5_active = activeMode   // true => V5 is the selected/active doser (drives the V5 overview/widget)
             // Log the live per-user dose caps so the OBSERVING→CONFIRMED gate can be backtested against
