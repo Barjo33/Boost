@@ -2,11 +2,15 @@ package app.aaps.plugins.smoothing
 
 import app.aaps.core.data.iob.InMemoryGlucoseValue
 import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.iob.IobCobCalculator
+import dagger.Lazy
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.keys.interfaces.Preferences
 import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.Test
+import app.aaps.core.interfaces.aps.IobTotal
+import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
 
 /**
@@ -24,7 +28,11 @@ internal class UnscentedKalmanFilterPluginTest {
     private val preferences = mock<Preferences>()
     private val persistenceLayer = mock<PersistenceLayer>()
 
-    private fun plugin() = UnscentedKalmanFilterPlugin(aapsLogger, rh, preferences, persistenceLayer)
+    // Guard-disabled by default (IOB unavailable → compression gate off), so the existing tests
+    // exercise the unchanged UKF. A compression test supplies a stubbed low-IOB Lazy.
+    private fun plugin(
+        iobLazy: Lazy<IobCobCalculator> = Lazy { throw IllegalStateException("no IOB in unit test") }
+    ) = UnscentedKalmanFilterPlugin(aapsLogger, rh, preferences, persistenceLayer, iobLazy)
 
     /** Newest-first series (data[0] = most recent) at [stepMin]-minute spacing, timestamps descending. */
     private fun series(vararg values: Double, stepMin: Long = 5): MutableList<InMemoryGlucoseValue> {
@@ -88,5 +96,22 @@ internal class UnscentedKalmanFilterPluginTest {
         val a = plugin().smooth(series(120.0, 118.0, 122.0, 119.0, 121.0, 120.0, 118.0))
         val b = plugin().smooth(series(120.0, 118.0, 122.0, 119.0, 121.0, 120.0, 118.0))
         a.indices.forEach { assertThat(b[it].smoothed!!).isWithin(1e-9).of(a[it].smoothed!!) }
+    }
+
+    private fun iobLazy(totalU: Double) = Lazy<IobCobCalculator> {
+        mock {
+            on { calculateIobFromBolus() } doReturn IobTotal(0L, iob = totalU)
+            on { calculateIobFromTempBasalsIncludingConvertedExtended() } doReturn IobTotal(0L, iob = 0.0)
+        }
+    }
+
+    @Test fun `a compression low with near-zero IOB is damped, not tracked to the floor`() {
+        // newest-first: steady ~100 then a steep fall toward 40 (a compression dip).
+        val vals = doubleArrayOf(40.0, 44.0, 60.0, 82.0, 100.0, 100.0, 100.0, 100.0)
+        val damped = plugin(iobLazy(0.1)).smooth(series(*vals))[0].smoothed!!
+        // With real insulin on board (guard disabled) the same fall IS followed down.
+        val followed = plugin(iobLazy(3.0)).smooth(series(*vals))[0].smoothed!!
+        assertThat(damped).isGreaterThan(52.0)            // held well above the 40 floor
+        assertThat(damped).isGreaterThan(followed + 5.0)  // and clearly higher than the un-gated case
     }
 }

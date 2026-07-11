@@ -5,6 +5,7 @@ import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.TrendArrow
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
@@ -15,6 +16,7 @@ import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.smoothing.keys.UkfDoubleNonKey
 import app.aaps.plugins.smoothing.keys.UkfIntNonKey
 import app.aaps.plugins.smoothing.keys.UkfLongNonKey
+import dagger.Lazy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -59,7 +61,8 @@ class UnscentedKalmanFilterPlugin @Inject constructor(
     aapsLogger: AAPSLogger,
     rh: ResourceHelper,
     preferences: Preferences,
-    private val persistenceLayer: PersistenceLayer
+    private val persistenceLayer: PersistenceLayer,
+    private val iobCobCalculator: Lazy<IobCobCalculator>
 ) : PluginBaseWithPreferences(
     pluginDescription = PluginDescription()
         .mainType(PluginType.SMOOTHING)
@@ -113,6 +116,22 @@ class UnscentedKalmanFilterPlugin @Inject constructor(
     // Chi-squared based outlier detection (99.99% confidence, 1 DOF).
     private val chiSquaredThreshold = 15.13  // Statistically rigorous.
     private val outlierAbsolute = 65.0        // Absolute safety limit (mg/dL).
+
+    // --- IOB-gated compression-low damping (grafted from the tsunami compression guard) ---
+    // A glucose-only filter cannot tell a compression low (lying on the sensor) from a real fast
+    // hypo; both are sustained fast drops. IOB is the discriminator: a genuine fast low needs
+    // insulin behind it. When a LOW reading falls well below the filter's own prediction with
+    // little IOB on board, we treat it as a probable compression artefact and DOWN-WEIGHT it
+    // (heavy R, no zero-lag Q) instead of tracking it to the floor. It is soft and bounded:
+    // a sustained real low is still followed within a cycle, the hold is capped so it can never
+    // mask a persistent low, highs/rises are never touched, and it fails safe (disabled) when
+    // IOB is unavailable.
+    private val compressionBgCeiling = 75.0      // only ever act on readings below this
+    private val compressionIobMaxU = 2.0         // ...and only when IOB is under this
+    private val compressionDropMgdl = 30.0       // ...and only if fallen >this from the recent baseline
+    private val compressionWindow = 5            // baseline = max raw over the last ~5 readings (~25 min)
+    private val compressionR = 900.0             // effective measurement variance for a suspect
+    private val maxConsecutiveCompression = 3    // ≤15 min: after this, follow even if still matching
 
     // Covariance limits (tighter for faster recovery).
     private val maxGlucoseVariance = 400.0  // Max 20 mg/dL std dev.
@@ -556,10 +575,28 @@ class UnscentedKalmanFilterPlugin @Inject constructor(
         return segments
     }
 
+    /**
+     * Total IOB (units) for the compression-damping gate. FAILS SAFE: on any error returns a high
+     * value so the gate is disabled and a genuine drop is never masked.
+     */
+    private fun currentIobTotalU(): Double =
+        try {
+            val calc = iobCobCalculator.get()
+            calc.calculateIobFromBolus().iob +
+                calc.calculateIobFromTempBasalsIncludingConvertedExtended().iob
+        } catch (e: Exception) {
+            aapsLogger.debug(LTag.GLUCOSE, "UKF: IOB unavailable, compression gate disabled")
+            99.0
+        }
+
     private fun smoothInternal(data: MutableList<InMemoryGlucoseValue>): MutableList<InMemoryGlucoseValue> {
         if (shouldResetLearning(data[0].timestamp)) {
             resetLearning()
         }
+
+        // Current IOB for the compression-damping gate (same value for the window, as the
+        // tsunami guard did; correct for the newest reading that feeds dosing).
+        val iobTotal = currentIobTotalU()
 
         val segments = findDataSegments(data)
 
@@ -583,7 +620,7 @@ class UnscentedKalmanFilterPlugin @Inject constructor(
                     "(idx ${segment.startIdx} to ${segment.endIdx})"
             )
 
-            processSegment(data, segment.startIdx, segment.endIdx, previousTimestamp)
+            processSegment(data, segment.startIdx, segment.endIdx, previousTimestamp, iobTotal)
         }
 
         // Fill any unprocessed points with calibration-corrected raw values.
@@ -645,7 +682,8 @@ class UnscentedKalmanFilterPlugin @Inject constructor(
         data: MutableList<InMemoryGlucoseValue>,
         startIdx: Int,           // Newest point in segment.
         endIdx: Int,             // Oldest point in segment.
-        previousTimestamp: Long  // For tracking new measurements.
+        previousTimestamp: Long, // For tracking new measurements.
+        iobTotal: Double         // Current IOB, for the compression-damping gate.
     ) {
         val segmentSize = endIdx - startIdx + 1
         if (segmentSize < 2) {
@@ -679,6 +717,12 @@ class UnscentedKalmanFilterPlugin @Inject constructor(
 
         // Local 2-of-3 same-sign gate for trend persistence (>2σ).
         val recentSigns = ArrayDeque<Int>(3)
+
+        // Consecutive compression-suspect readings (bounds the damping hold; see below).
+        var consecutiveCompression = 0
+        // Recent RAW values (newest first) — baseline for the compression drop test. Uses raw,
+        // not the filter level, so the filter's own rate-tracking can't hide a gradual drop.
+        val recentRaw = ArrayDeque<Double>(compressionWindow + 1)
 
         // === FORWARD PASS (within segment only) ===
         for (i in (endIdx - 1) downTo startIdx) {
@@ -753,15 +797,43 @@ class UnscentedKalmanFilterPlugin @Inject constructor(
 
             val absn = abs(normRaw)
 
+            // --- IOB-gated compression-low suspicion ---
+            // A LOW reading that has fallen well below its own recent RAW baseline, with little IOB
+            // to explain a real crash → probable sensor compression. Raw-baseline (not prediction)
+            // so the filter's rate-tracking can't hide a gradual dip; capped at
+            // maxConsecutiveCompression so a persistent low is never masked for more than ~15 min.
+            val recentMaxRaw = if (recentRaw.isEmpty()) z else recentRaw.max()
+            val compressionSuspect = z < compressionBgCeiling &&
+                iobTotal < compressionIobMaxU &&
+                (recentMaxRaw - z) > compressionDropMgdl &&
+                consecutiveCompression < maxConsecutiveCompression
+            if (compressionSuspect) {
+                consecutiveCompression++
+                aapsLogger.debug(
+                    LTag.GLUCOSE,
+                    "UKF: Compression-suspect low z=${z.toInt()} " +
+                        "(fell ${(recentMaxRaw - z).toInt()} from ${recentMaxRaw.toInt()}, " +
+                        "IOB=${String.format(Locale.US, "%.1f", iobTotal)}) — damping"
+                )
+            } else {
+                consecutiveCompression = 0
+            }
+            recentRaw.addFirst(z)
+            if (recentRaw.size > compressionWindow) recentRaw.removeLast()
+
             // --- Measurement noise inflation (R_eff) ---
-            // Huber-like per-sample R inflation with soft caps.
+            // Huber-like per-sample R inflation with soft caps; a compression suspect is
+            // down-weighted heavily instead (soft, not a hard mask — a sustained low is still
+            // followed within a cycle, and the consecutive cap releases it after ~15 min).
             val rScale = 1.0 + max(0.0, absn - 2.0) // Grows linearly beyond 2σ.
-            val rEff = min(r * rScale, min(r + 100.0, rEffMax)) // Gentle ceiling.
+            val rEff = if (compressionSuspect) compressionR
+            else min(r * rScale, min(r + 100.0, rEffMax)) // Gentle ceiling.
 
             // --- Process noise inflation (Q) for real trends ---
-            // Temporary Q inflation: prioritize rate agility, keep glucose bounded.
+            // Temporary Q inflation: prioritize rate agility, keep glucose bounded. Suppressed for
+            // a compression suspect so the filter does NOT turn agile and chase the artefact down.
             val zScore = absn.coerceAtLeast(1.0)
-            val qScale = if (qInflateAllowed) zScore.coerceIn(1.0, 3.0) else 1.0
+            val qScale = if (qInflateAllowed && !compressionSuspect) zScore.coerceIn(1.0, 3.0) else 1.0
             val tempQ = if (qScale > 1.0) {
                 q.copyOf().apply {
                     this[0] = q[0] * min(qScale, 2.0) // Modest glucose variance.
