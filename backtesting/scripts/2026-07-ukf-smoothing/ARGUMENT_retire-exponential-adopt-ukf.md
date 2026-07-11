@@ -1,6 +1,6 @@
 # Retiring exponential smoothing in AAPS in favour of a Kalman filter
 
-AAPS offers exponential smoothing as one of its CGM smoothing options. On the testing set out below it is the weakest of the choices available. An Unscented Kalman Filter (UKF) estimates both the glucose level and its rate of change more accurately, with less lag and less jitter, and it rejects sensor artefacts that the exponential smoother passes through. On real G7/One+ CGM the exponential smoother lags every move and adds ringing, where the UKF removes noise without lag.
+AAPS offers exponential smoothing as one of its CGM smoothing options. On the testing set out below it is the weakest of the choices available. An Unscented Kalman Filter (UKF) estimates both the glucose level and its rate of change more accurately, with less lag and less jitter, and it damps sensor artefacts that the exponential smoother passes through untouched. On real G7/One+ CGM the exponential smoother lags every move and adds ringing, where the UKF removes noise without lag.
 
 The evidence is reproducible without any private data. A committed, seeded benchmark includes a synthetic-CGM generator with a known underlying signal, so the ranking below can be regenerated with a single command.
 
