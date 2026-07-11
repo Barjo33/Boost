@@ -1,13 +1,13 @@
 ---
 name: user-h-diagnosis-2026-07-05
-description: "user H = a DB cohort user ([user-H-site], token in sites.json). V6-ACTIVE since 06-30, complaint 'not enough insulin early': CONFIRMED = config hygiene — TDD ~50U on factory committedCap 0.5 vs HIS formula 1.24 (44% of meal gap cap-clipped, vs cohort 28%). Recommended 0.5→1.2 + confirmedCap 4→6. TWO CODE LEADS: auto-config never applied committedCap on his device; RECOVERING-during-rise = 28% of his gap."
+description: "user H K = DB user H ([user-H-site], token in sites.json). V6-ACTIVE since 06-30, complaint 'not enough insulin early': CONFIRMED = config hygiene — TDD ~50U on factory committedCap 0.5 vs HIS formula 1.24 (44% of meal gap cap-clipped, vs cohort 28%). Recommended 0.5→1.2 + confirmedCap 4→6. TWO CODE LEADS: auto-config never applied committedCap on his device; RECOVERING-during-rise = 28% of his gap."
 metadata: 
   node_type: memory
   type: project
   originSessionId: db82de70-d40e-4e73-9c47-395352be1ee8
 ---
 
-**user H — user H (added to sites.json 2026-07-05).** Samsung S948B, mmol, Bratislava UTC+2, TDD ~49.6U, announces meals (~3 boluses/day median 3.5U). V1/V2-acting from 05-05, **V6-ACTIVE since 06-30** (complaint week = pre-safety-layer build; updated to ~8ecaf7bbd9-era build on 07-05). 22k decisions pulled to DB.
+**user H K — user H (added to sites.json 2026-07-05).** Samsung S948B, mmol, Bratislava UTC+2, TDD ~49.6U, announces meals (~3 boluses/day median 3.5U). V1/V2-acting from 05-05, **V6-ACTIVE since 06-30** (complaint week = pre-safety-layer build; updated to ~8ecaf7bbd9-era build on 07-05). 22k decisions pulled to DB.
 
 **Complaint validated**: V6 era vs V1 era — TING 79→73%, >180 2.8→5.4%, meal peaks 161→179, min>140/episode 68→106. First-90-min of 19 meal episodes: V6 delivered 24.8U vs base-would 40.9U. BUT hypos halved (<70 2.21→0.81%) — his V1 era was ABOVE hypo target, so some V6 restraint was correction, not deficit.
 

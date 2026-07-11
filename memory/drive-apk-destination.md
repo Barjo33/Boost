@@ -11,7 +11,7 @@ APK deliverables go to the **[user-Drive-account]** Drive, path:
 `~/Library/CloudStorage/GoogleDrive-[user-Drive-account]/My Drive/Boost-v2-Analysis/`
 
 **Why:** Two Drive mounts exist on this Mac — `GoogleDrive-[user-Drive-account]` AND
-`GoogleDrive-[user]@[user-domain].com`, and BOTH contain a `My Drive/Boost-v2-Analysis`
+`GoogleDrive-[user-Drive-account]`, and BOTH contain a `My Drive/Boost-v2-Analysis`
 folder. Tim watches the **[user-Drive-account]** one. On 2026-06-25 I copied APKs to the
 [user-domain] mount and Tim couldn't see them.
 
