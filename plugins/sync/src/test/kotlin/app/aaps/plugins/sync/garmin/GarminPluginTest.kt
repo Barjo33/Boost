@@ -93,6 +93,7 @@ class GarminPluginTest : TestBaseWithProfile() {
         verify(loopHub, atMost(3)).highGlucoseMark
         verify(loopHub, atMost(3)).loopStatus
         verify(loopHub, atMost(3)).lastLoopEpochMs
+        verify(loopHub, atMost(3)).variableSensInUnits
         verifyNoMoreInteractions(loopHub)
     }
 
@@ -456,6 +457,7 @@ class GarminPluginTest : TestBaseWithProfile() {
         whenever(loopHub.carbsOnboard).thenReturn(10.7)
         whenever(loopHub.loopStatus).thenReturn("CLOSED")
         whenever(loopHub.lastLoopEpochMs).thenReturn(null)
+        whenever(loopHub.variableSensInUnits).thenReturn(null)
         whenever(loopHub.getGlucoseValues(any(), eq(false))).thenReturn(
             listOf(
                 createGlucoseValue(
@@ -480,6 +482,7 @@ class GarminPluginTest : TestBaseWithProfile() {
         whenever(loopHub.carbsOnboard).thenReturn(10.7)
         whenever(loopHub.loopStatus).thenReturn("CLOSED")
         whenever(loopHub.lastLoopEpochMs).thenReturn(null)
+        whenever(loopHub.variableSensInUnits).thenReturn(null)
         whenever(loopHub.getGlucoseValues(any(), eq(false))).thenAnswer { i ->
             val from = i.getArgument<Instant>(0)
             fromClosedRange(from.toEpochMilli(), clock.instant().toEpochMilli(), 300_000L)
