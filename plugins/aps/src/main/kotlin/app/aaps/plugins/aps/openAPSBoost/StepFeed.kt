@@ -69,4 +69,19 @@ internal object StepFeed {
      */
     fun sleepInActive(stepsAvailable: Boolean, nowMs: Long, nightEndMs: Long, sleepInMs: Long, recentSteps60Min: Int, sleepInSteps: Int): Boolean =
         stepsAvailable && nowMs in nightEndMs until (nightEndMs + sleepInMs) && recentSteps60Min < sleepInSteps
+
+    /**
+     * The steps-based lie-in FAILSAFE decision (extracted so the false-AWAKE gap is unit-testable).
+     *
+     * Boost is disabled during a morning lie-in when [sleepInActive] AND the sleep detector is NOT
+     * currently holding sleep for us. The detector holds sleep only when auto-by-sleep is ON and its
+     * state is SLEEPING — then its night-mode already suppresses, so the failsafe stands down. But if
+     * auto-by-sleep is OFF, OR the detector has (falsely) WOKEN during the lie-in window, the failsafe
+     * must engage: near-zero 60-min steps are the ground truth that the user is still in bed, and we
+     * must not amplify a dawn rise into a full meal-SMB on a false-AWAKE. Prior shadow-branch code gated
+     * this on `!autoBySleepActive` alone, which stood the failsafe down for the ENTIRE lie-in whenever
+     * auto-by-sleep was on — leaving both protections off exactly in the detector's false-AWAKE mode.
+     */
+    fun lieInFailsafeEngages(sleepInActive: Boolean, autoBySleepActive: Boolean, detectorSleeping: Boolean): Boolean =
+        sleepInActive && !(autoBySleepActive && detectorSleeping)
 }
