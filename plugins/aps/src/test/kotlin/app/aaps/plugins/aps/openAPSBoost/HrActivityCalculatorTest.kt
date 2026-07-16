@@ -250,6 +250,43 @@ class HrActivityCalculatorTest {
         assertThat(result.confidence).isEqualTo(HrActivityCalculator.Confidence.MEDIUM)
     }
 
+    @Test fun `classify - a frozen HR value (4 or more identical readings) is treated as unavailable`() {
+        // 5 bit-identical elevated readings = a stuck sensor value, not a heartbeat. Without the
+        // guard this classifies as RESISTANCE (zone3+, low steps) — the exact false-fire seen with a
+        // value pinned at 124 bpm all night. The guard rejects it and falls back to step-only.
+        val result = HrActivityCalculator.classify(
+            hrReadings = makeReadings(124.0, count = 5),
+            nowMillis = NOW,
+            hrWindowMinutes = WINDOW_MIN,
+            hrMax = 180,
+            hrResting = 60,
+            stepsLast15Min = 5,
+            stressDetection = false
+        )
+        assertThat(result.exerciseState).isEqualTo(HrActivityCalculator.ExerciseState.RESTING)
+        assertThat(result.averageHrBpm).isNull()
+        assertThat(result.hrZone).isEqualTo(HrActivityCalculator.HrZone.NONE)
+    }
+
+    @Test fun `classify - varying elevated HR is not frozen and still classifies`() {
+        // 5 readings that VARY around 140 bpm (a real elevated HR) with low steps must still reach
+        // RESISTANCE — the guard rejects stuck values, not genuinely elevated ones.
+        val readings = listOf(138.0, 141.0, 139.0, 142.0, 140.0).mapIndexed { i, bpm ->
+            HR(duration = 60_000L, timestamp = NOW - (i + 1) * 60_000L, beatsPerMinute = bpm, device = "test", isValid = true)
+        }
+        val result = HrActivityCalculator.classify(
+            hrReadings = readings,
+            nowMillis = NOW,
+            hrWindowMinutes = WINDOW_MIN,
+            hrMax = 180,
+            hrResting = 60,
+            stepsLast15Min = 10,
+            stressDetection = false
+        )
+        assertThat(result.exerciseState).isEqualTo(HrActivityCalculator.ExerciseState.RESISTANCE)
+        assertThat(result.averageHrBpm).isNotNull()
+    }
+
     @Test fun `classify - STRESS low steps zone 2-3 with stressDetection true`() {
         // 100 bpm: HRR% = (100-60)/120*100 = 33.3% → ZONE_2; steps=5
         val result = HrActivityCalculator.classify(

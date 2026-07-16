@@ -91,6 +91,24 @@ object HrActivityCalculator {
     private const val STEPS_15MIN_MODERATE_THRESHOLD = 100 // ~7 steps/min = slow walk
     private const val STEPS_15MIN_LOW_THRESHOLD = 30       // near-stationary
 
+    /** Minimum in-window readings before a zero-variance run is judged "frozen" (below this we
+     *  can't distinguish a stuck value from merely sparse data, so we don't suppress). */
+    private const val FROZEN_MIN_READINGS = 4
+
+    /**
+     * True when the HR window holds enough readings that are ALL bit-identical — the signature of a
+     * stuck sensor value (a wear HR listener repeating its last reading), NOT a heartbeat: a genuine
+     * 1-minute-averaged HR always has some spread over a 15-min window. Used to reject a phantom
+     * elevated HR that would otherwise mis-fire RESISTANCE/STRESS every cycle.
+     */
+    fun isHrWindowFrozen(readings: List<HR>, nowMillis: Long, windowMinutes: Int): Boolean {
+        val windowMs = windowMinutes * 60_000L
+        val cutoff = nowMillis - windowMs
+        val inWindow = readings.filter { it.isValid && it.timestamp > cutoff && it.timestamp <= nowMillis }
+        if (inWindow.size < FROZEN_MIN_READINGS) return false
+        return inWindow.minOf { it.beatsPerMinute } == inWindow.maxOf { it.beatsPerMinute }
+    }
+
     /**
      * Computes the average heart rate over [windowMinutes] from the provided list of
      * [HR] readings, returns null if no valid readings exist in the window.
@@ -160,6 +178,24 @@ object HrActivityCalculator {
         val avgBpm = averageHrInWindow(hrReadings, nowMillis, hrWindowMinutes)
         if (avgBpm == null) {
             debug.append("HR: no valid readings in ${hrWindowMinutes}m window — falling back to step-only")
+            return HrClassificationResult(
+                exerciseState = ExerciseState.RESTING,
+                hrZone = HrZone.NONE,
+                averageHrBpm = null,
+                hrrPercent = null,
+                confidence = Confidence.LOW,
+                debugInfo = debug.toString()
+            )
+        }
+
+        // Frozen/stuck-value guard: a run of bit-identical readings is a sensor artifact (e.g. the
+        // wear HR listener repeating its last value), not a heartbeat. Trusting a stuck ELEVATED
+        // value mis-fires RESISTANCE/STRESS on every cycle (observed: a value pinned at 124 bpm all
+        // night). Treat it as unavailable and fall back to step-only. Suppression is safe-side — the
+        // fallback (RESTING) only ever withholds an activity/target modifier, never adds insulin.
+        if (isHrWindowFrozen(hrReadings, nowMillis, hrWindowMinutes)) {
+            debug.append("HR: frozen value ${String.format("%.1f", avgBpm)} bpm across ${hrWindowMinutes}m window (stuck sensor?) — treating as unavailable")
+            aapsLogger?.debug(LTag.APS, "HrActivityCalculator: $debug")
             return HrClassificationResult(
                 exerciseState = ExerciseState.RESTING,
                 hrZone = HrZone.NONE,
