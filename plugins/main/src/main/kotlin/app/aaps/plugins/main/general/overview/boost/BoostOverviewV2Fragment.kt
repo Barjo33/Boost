@@ -345,7 +345,14 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
         disposable += rxBus
             .toObservable(EventPreferenceChange::class.java)
             .observeOn(aapsSchedulers.io)
-            .subscribe({ scheduleUpdateGUI() }, fabricPrivacy::logException)
+            .subscribe({
+                // A RangeToDisplay (hours) change already drives a full recompute + graph repaint via
+                // the calculation workflow (IobCobCalculator → runOnScaleChanged/EventNewHistoryData →
+                // EventUpdateOverviewGraph → updateGraph). Running our own refreshAll on top repaints
+                // all three graphs on the main thread 1–2 extra times per tap — the slow-load/jank on a
+                // range change. Skip it for that key; every other pref change still refreshes.
+                if (!it.isChanged(IntNonKey.RangeToDisplay.key)) scheduleUpdateGUI()
+            }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventScale::class.java)
             .observeOn(aapsSchedulers.main)
@@ -828,31 +835,43 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
         val menuChartSettings = overviewMenus.setting
         if (menuChartSettings.isEmpty()) return
 
-        graphData.addInRangeArea(overviewData.fromTime, overviewData.endTime,
-            preferences.get(UnitDoubleKey.OverviewLowMark), preferences.get(UnitDoubleKey.OverviewHighMark))
-        graphData.addBgReadings(menuChartSettings[0][OverviewMenus.CharType.PRE.ordinal], ctx)
-        graphData.addBucketedData()
-        graphData.addTreatments(ctx)
-        graphData.addEps(ctx, 0.95)
-        if (menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) graphData.addTherapyEvents()
-        if (menuChartSettings[0][OverviewMenus.CharType.ACT.ordinal]) graphData.addActivity(0.8)
-        if ((pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal])
-            graphData.addBasals()
-        graphData.addTargetLine()
-        graphData.addRunningModes()
-        graphData.addNowLine(dateUtil.now())
-        graphData.setNumVerticalLabels()
-        graphData.formatAxis(overviewData.fromTime, overviewData.endTime)
-        graphData.performUpdate()
-        graphData.applyV2Theme()
+        // Guarded so a render hiccup can never throw to the main looper and force-close the app.
+        // updateGraph() runs on the main thread and reads overviewData series that the calculation
+        // workers concurrently rebuild/reassign on a range change; a transient (e.g. a NaN scale
+        // divisor on a just-reset series, or a partially-prepared window) must degrade to "no repaint
+        // this pass", not a crash. The steps/HR block below has always had its own guard; this
+        // extends the same protection to the BG+IOB render, which was the unguarded crash path
+        // reached via refreshAll → runOnUiThread. (2026-07-16 — v2 hours-change crash.)
+        try {
+            graphData.addInRangeArea(overviewData.fromTime, overviewData.endTime,
+                preferences.get(UnitDoubleKey.OverviewLowMark), preferences.get(UnitDoubleKey.OverviewHighMark))
+            graphData.addBgReadings(menuChartSettings[0][OverviewMenus.CharType.PRE.ordinal], ctx)
+            graphData.addBucketedData()
+            graphData.addTreatments(ctx)
+            graphData.addEps(ctx, 0.95)
+            if (menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) graphData.addTherapyEvents()
+            if (menuChartSettings[0][OverviewMenus.CharType.ACT.ordinal]) graphData.addActivity(0.8)
+            if ((pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal])
+                graphData.addBasals()
+            graphData.addTargetLine()
+            graphData.addRunningModes()
+            graphData.addNowLine(dateUtil.now())
+            graphData.setNumVerticalLabels()
+            graphData.formatAxis(overviewData.fromTime, overviewData.endTime)
+            graphData.performUpdate()
+            graphData.applyV2Theme()
 
-        // IOB graph
-        val iobGraphData = graphDataProvider.get().with(binding.v2IobGraph, overviewData)
-        iobGraphData.addIob(true, 1.0)
-        iobGraphData.addNowLine(dateUtil.now())
-        iobGraphData.formatAxis(overviewData.fromTime, overviewData.endTime)
-        iobGraphData.performUpdate()
-        iobGraphData.applyV2Theme()
+            // IOB graph
+            val iobGraphData = graphDataProvider.get().with(binding.v2IobGraph, overviewData)
+            iobGraphData.addIob(true, 1.0)
+            iobGraphData.addNowLine(dateUtil.now())
+            iobGraphData.formatAxis(overviewData.fromTime, overviewData.endTime)
+            iobGraphData.performUpdate()
+            iobGraphData.applyV2Theme()
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.UI, "V2 BG/IOB graph render failed", e)
+            return
+        }
 
         // Activity graph (steps + heart rate) — replaces the old sensitivity preview. DATA-DRIVEN:
         // show whichever of steps/HR actually has data in the visible window; hide the whole card
@@ -1141,13 +1160,16 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
                 R.id.accept_temp_button -> {
                     protectionCheck.queryProtection(a, ProtectionCheck.Protection.BOLUS, UIRunnable {
                         if (isAdded) {
+                            // Must ENACT the pending open-loop change, not re-run the loop. The old code
+                            // called loop.invoke() (which just re-triggers the APS) and logged
+                            // ACCEPTS_TEMP_BASAL without ever calling acceptChangeRequest() — so for an
+                            // open-loop user the tap reached the pump with nothing while the audit trail
+                            // said "accepted". Mirror stock OverviewFragment. (2026-07-16)
                             val lastRun = loop.lastRun
-                            loop.invoke("Accept temp button", false)
                             if (lastRun?.lastAPSRun != null && lastRun.constraintsProcessed?.isChangeRequested == true) {
-                                protectionCheck.queryProtection(a, ProtectionCheck.Protection.BOLUS, UIRunnable {
-                                    uel.log(Action.ACCEPTS_TEMP_BASAL, Sources.Overview)
-                                    binding.v2ButtonsLayout.acceptTempButton.visibility = View.GONE
-                                })
+                                uel.log(Action.ACCEPTS_TEMP_BASAL, Sources.Overview)
+                                handler.post { loop.acceptChangeRequest() }
+                                binding.v2ButtonsLayout.acceptTempButton.visibility = View.GONE
                             }
                         }
                     })
