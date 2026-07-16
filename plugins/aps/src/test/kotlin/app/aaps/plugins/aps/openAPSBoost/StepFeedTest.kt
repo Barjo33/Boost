@@ -86,4 +86,27 @@ class StepFeedTest {
         assertThat(StepFeed.sleepInActive(true, nightEnd - 1, nightEnd, sleepInMs, 10, 75)).isFalse()
         assertThat(StepFeed.sleepInActive(true, nightEnd + sleepInMs, nightEnd, sleepInMs, 10, 75)).isFalse()
     }
+
+    // ── Lie-in FAILSAFE decision (false-AWAKE gap) ───────────────────────────────────────────────
+
+    @Test fun `sleep-in window inactive - failsafe never engages regardless of detector`() {
+        assertThat(StepFeed.lieInFailsafeEngages(sleepInActive = false, autoBySleepActive = false, detectorSleeping = false)).isFalse()
+        assertThat(StepFeed.lieInFailsafeEngages(sleepInActive = false, autoBySleepActive = true, detectorSleeping = true)).isFalse()
+    }
+
+    @Test fun `auto-by-sleep OFF - failsafe engages on low steps (clock-only night mode, unchanged)`() {
+        assertThat(StepFeed.lieInFailsafeEngages(sleepInActive = true, autoBySleepActive = false, detectorSleeping = false)).isTrue()
+        // detector state is irrelevant when auto-by-sleep is off
+        assertThat(StepFeed.lieInFailsafeEngages(sleepInActive = true, autoBySleepActive = false, detectorSleeping = true)).isTrue()
+    }
+
+    @Test fun `auto-by-sleep ON and detector SLEEPING - failsafe stands down (detector drives)`() {
+        assertThat(StepFeed.lieInFailsafeEngages(sleepInActive = true, autoBySleepActive = true, detectorSleeping = true)).isFalse()
+    }
+
+    @Test fun `auto-by-sleep ON but detector AWAKE in the lie-in window - failsafe ENGAGES (false-AWAKE gap closed)`() {
+        // The regression the fix targets: a dawn false-AWAKE with the user still in bed (low 60m steps)
+        // previously left BOTH protections off. Steps are ground truth → the failsafe must re-engage.
+        assertThat(StepFeed.lieInFailsafeEngages(sleepInActive = true, autoBySleepActive = true, detectorSleeping = false)).isTrue()
+    }
 }
