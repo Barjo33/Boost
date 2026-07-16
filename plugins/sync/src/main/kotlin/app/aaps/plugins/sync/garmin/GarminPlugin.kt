@@ -523,6 +523,8 @@ class GarminPlugin @Inject constructor(
                     }
                 }
                 jo.addProperty("cob", loopHub.carbsOnboard)
+                jo.addProperty("loop", loopHub.loopStatus)
+                loopHub.lastLoopEpochMs?.let { jo.addProperty("loopMs", it) }
             }
             joa.add(jo)
         }
