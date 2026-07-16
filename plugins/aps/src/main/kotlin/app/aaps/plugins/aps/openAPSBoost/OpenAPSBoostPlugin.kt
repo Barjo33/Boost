@@ -249,9 +249,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
     // does NOT mask the user's / auto-config's stored dosing settings to factory defaults. The keys
     // keep defaultedBySM = true (they stay HIDDEN in Simple Mode); only the doser's read is unmasked.
     // See BoostDosingPreferences.kt + 2026-07_maxiob_consistency_REPORT.md.
-    private val dynIsfNormalTarget; get() = profileUtil.convertToMgdlDetect(preferences.getBoostDosing(UnitDoubleKey.ApsBoostDynIsfNormalTarget))
+    private val dynIsfNormalTarget; get() = profileUtil.convertToMgdlDetect(preferences.getBoostDosing(UnitDoubleKey.ApsBoostDynIsfNormalTarget, profileUtil))
     private val dynIsfVelocity; get() = preferences.getBoostDosing(DoubleKey.ApsBoostDynIsfVelocity) / 100.0
-    private val dynIsfBgCap; get() = profileUtil.convertToMgdlDetect(preferences.getBoostDosing(UnitDoubleKey.ApsBoostDynIsfBgCap))
+    private val dynIsfBgCap; get() = profileUtil.convertToMgdlDetect(preferences.getBoostDosing(UnitDoubleKey.ApsBoostDynIsfBgCap, profileUtil))
 
     // Boost SMB
     private val boostBolus; get() = preferences.getBoostDosing(DoubleKey.ApsBoostBolus)
@@ -290,7 +290,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
     // Post-exercise recovery
     private val postExerciseRecoveryEnabled; get() = preferences.getBoostDosing(BooleanKey.ApsBoostPostExerciseRecoveryEnabled)
     private val postExerciseRecoveryHours; get() = preferences.getBoostDosing(DoubleKey.ApsBoostPostExerciseRecoveryHours)
-    private val postExerciseRecoveryTarget; get() = profileUtil.convertToMgdlDetect(preferences.getBoostDosing(UnitDoubleKey.ApsBoostPostExerciseRecoveryTarget))
+    private val postExerciseRecoveryTarget; get() = profileUtil.convertToMgdlDetect(preferences.getBoostDosing(UnitDoubleKey.ApsBoostPostExerciseRecoveryTarget, profileUtil))
     private val postExerciseRecoveryScale; get() = preferences.getBoostDosing(DoubleKey.ApsBoostPostExerciseRecoveryScale)
     private val postExerciseMinDuration; get() = preferences.getBoostDosing(IntKey.ApsBoostPostExerciseMinDuration)
 
@@ -2038,7 +2038,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
         // Check BG vs profile target + offset
         val profile = profileFunction.getProfile() ?: return false
         val profileTarget = profile.getTargetMgdl()
-        val bgOffset = profileUtil.convertToMgdl(preferences.getBoostDosing(UnitDoubleKey.ApsBoostNightModeBgOffset), profileUtil.units)
+        val bgOffset = profileUtil.convertToMgdl(preferences.getBoostDosing(UnitDoubleKey.ApsBoostNightModeBgOffset, profileUtil), profileUtil.units)
         return bgCurrent < profileTarget + bgOffset
     }
 
