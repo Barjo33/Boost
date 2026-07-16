@@ -1,6 +1,9 @@
 package app.aaps.plugins.aps.openAPSBoostV5
 
+import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.aps.getBoostDosing
 import com.google.common.truth.Truth.assertThat
@@ -50,6 +53,33 @@ class BoostDosingPreferencesTest {
         val prefs = mock<Preferences>()
         whenever(prefs.getIfExists(DoubleKey.ApsBoostMaxIob)).thenReturn(null)   // getIfExists null == never persisted
         assertThat(prefs.getBoostDosing(DoubleKey.ApsBoostMaxIob)).isEqualTo(1.0)   // == defaultValue
+    }
+
+    // ── UnitDouble overload: the fallback default MUST be unit-converted (mmol night-mode bug) ──
+    // getIfExists(UnitDoubleKey) returns the stored value already run through fromMgdlToUnits, i.e. in
+    // DISPLAY units. On an unset key we must supply the default in the SAME frame — what get() does. The
+    // old code handed back the raw mg/dL default, so a mmol user's unset night-mode BG offset came back
+    // as 27 and convertToMgdl(27, MMOL) = 486 mg/dL downstream → SMBs disabled all night.
+
+    @Test fun `UnitDouble never-set key falls back to the UNIT-CONVERTED default, not raw mgdl`() {
+        val prefs = mock<Preferences>()
+        val profileUtil = mock<ProfileUtil>()
+        whenever(prefs.getIfExists(UnitDoubleKey.ApsBoostNightModeBgOffset)).thenReturn(null) // never persisted
+        whenever(profileUtil.units).thenReturn(GlucoseUnit.MMOL)
+        whenever(profileUtil.fromMgdlToUnits(27.0, GlucoseUnit.MMOL)).thenReturn(1.5)          // 27 mg/dL == 1.5 mmol
+        // Sanity: the raw default is 27 (mg/dL-canonical); the bug returned this unconverted.
+        assertThat(UnitDoubleKey.ApsBoostNightModeBgOffset.defaultValue).isEqualTo(27.0)
+        // The fix: the fallback is the unit-converted default (1.5), so convertToMgdl(1.5, MMOL)=27 downstream.
+        assertThat(prefs.getBoostDosing(UnitDoubleKey.ApsBoostNightModeBgOffset, profileUtil)).isEqualTo(1.5)
+    }
+
+    @Test fun `UnitDouble stored value is returned via getIfExists unchanged`() {
+        val prefs = mock<Preferences>()
+        val profileUtil = mock<ProfileUtil>()
+        // getIfExists already returns the converted stored value; getBoostDosing passes it through and
+        // never consults the default, so no conversion of the stored value happens here.
+        whenever(prefs.getIfExists(UnitDoubleKey.ApsBoostNightModeBgOffset)).thenReturn(2.0)
+        assertThat(prefs.getBoostDosing(UnitDoubleKey.ApsBoostNightModeBgOffset, profileUtil)).isEqualTo(2.0)
     }
 
     @Test fun `bit-identity - stored value is returned unchanged (== what get returns when unmasked)`() {

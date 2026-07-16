@@ -1,5 +1,6 @@
 package app.aaps.plugins.aps
 
+import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.keys.interfaces.BooleanPreferenceKey
 import app.aaps.core.keys.interfaces.DoublePreferenceKey
 import app.aaps.core.keys.interfaces.IntPreferenceKey
@@ -37,5 +38,20 @@ import app.aaps.core.keys.interfaces.UnitDoublePreferenceKey
 fun Preferences.getBoostDosing(key: DoublePreferenceKey): Double = getIfExists(key) ?: key.defaultValue
 fun Preferences.getBoostDosing(key: BooleanPreferenceKey): Boolean = getIfExists(key) ?: key.defaultValue
 fun Preferences.getBoostDosing(key: IntPreferenceKey): Int = getIfExists(key) ?: key.defaultValue
-fun Preferences.getBoostDosing(key: UnitDoublePreferenceKey): Double = getIfExists(key) ?: key.defaultValue
 fun Preferences.getBoostDosing(key: StringPreferenceKey): String = getIfExists(key) ?: key.defaultValue
+
+/**
+ * UnitDouble overload — the fallback default MUST be unit-converted.
+ *
+ * `getIfExists(UnitDoublePreferenceKey)` returns the stored value already run through
+ * `fromMgdlToUnits(...)` (see `PreferencesImpl.kt`), i.e. in the user's DISPLAY units. When the key
+ * was never persisted it returns null, and we must supply the default in the SAME display-units frame
+ * — exactly what `get(key)` does (`fromMgdlToUnits(key.defaultValue, units)`). The `key.defaultValue`
+ * on its own is the raw mg/dL-canonical default; handing it back unconverted meant a mmol/L user who
+ * never set the value got the mg/dL number reinterpreted as mmol downstream. Concretely the night-mode
+ * BG offset default (27 mg/dL) came back as 27 and `convertToMgdl(27, MMOL)` = 486 mg/dL → night mode
+ * disabled SMBs unconditionally all night. Converting the fallback restores parity with `get()`.
+ * (2026-07-16 — mmol night-mode unit regression from the 2026-07-08 getBoostDosing swap.)
+ */
+fun Preferences.getBoostDosing(key: UnitDoublePreferenceKey, profileUtil: ProfileUtil): Double =
+    getIfExists(key) ?: profileUtil.fromMgdlToUnits(key.defaultValue, profileUtil.units)
