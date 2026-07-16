@@ -35,6 +35,12 @@ interface LoopHub {
     /** Returns the factor by which the basal rate is currently raised (> 1) or lowered (< 1). */
     val temporaryBasal: Double
 
+    /** Short loop status for the watch: CLOSED / LGS / OPEN / SUSPEND / DISCONN / DISABLED / SUPERBOLUS. */
+    val loopStatus: String
+
+    /** Epoch-ms of the last APS run (loop "freshness"), or null if the loop has never run. */
+    val lastLoopEpochMs: Long?
+
     /** Returns the lower bound of the target glucose range. */
     val lowGlucoseMark: Double
 
