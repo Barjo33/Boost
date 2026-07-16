@@ -102,6 +102,16 @@ class LoopHubImpl @Inject constructor(
     override val lastLoopEpochMs: Long?
         get() = loop.lastRun?.lastAPSRun
 
+    /** Current DynISF / variable sensitivity in the user's glucose units. Prefer the live APS
+     *  variable_sens; fall back to the profile ISF; null if neither is available. */
+    override val variableSensInUnits: Double?
+        get() {
+            val mgdl = loop.lastRun?.constraintsProcessed?.variableSens
+                ?: currentProfile?.getIsfMgdl("GarminLoopHub")
+                ?: return null
+            return profileUtil.fromMgdlToUnits(mgdl, glucoseUnit)
+        }
+
     /** Returns true if the current profile is set of a limited amount of time. */
     override val isTemporaryProfile: Boolean
         get() {
