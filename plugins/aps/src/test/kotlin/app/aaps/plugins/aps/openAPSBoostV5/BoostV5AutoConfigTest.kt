@@ -43,6 +43,27 @@ class BoostV5AutoConfigTest {
         assertThat(s.fastCarbConfirm).isFalse()
     }
 
+    // 2026-07-17 — insulin-adding opt-in switches auto-enable ONLY for clearly well-controlled users.
+    @Test fun `well-controlled user auto-enables aggressive early confirm and velocity-budget floor`() {
+        val s = BoostV5AutoConfig.compute(profile(tbr70 = 0.6, sev54 = 0.1))!!   // user-H-like
+        assertThat(s.aggressiveEarlyConfirm).isTrue()
+        assertThat(s.velocityBudgetFloor).isTrue()
+    }
+
+    @Test fun `moderate-TBR user keeps the insulin-adding switches OFF`() {
+        // 2.5% <70 is fine for fastCarbConfirm (!hypoProne) but OVER the strict 1.5% well-controlled cut.
+        val s = BoostV5AutoConfig.compute(profile(tbr70 = 2.5, sev54 = 0.2))!!
+        assertThat(s.fastCarbConfirm).isTrue()
+        assertThat(s.aggressiveEarlyConfirm).isFalse()
+        assertThat(s.velocityBudgetFloor).isFalse()
+    }
+
+    @Test fun `low-70 but elevated-54 keeps the insulin-adding switches OFF`() {
+        val s = BoostV5AutoConfig.compute(profile(tbr70 = 1.0, sev54 = 0.5))!!   // <54 over the 0.3 cut
+        assertThat(s.aggressiveEarlyConfirm).isFalse()
+        assertThat(s.velocityBudgetFloor).isFalse()
+    }
+
     @Test fun `aggression is never auto-raised above neutral`() {
         // Even a pristine, never-low user does not get aggression > 1.0 on day one.
         val s = BoostV5AutoConfig.compute(profile(tbr70 = 0.5, sev54 = 0.0))!!
