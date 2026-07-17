@@ -495,16 +495,16 @@ class BoostV5AutoConfigTest {
         assertThat(resolved).doesNotContain(oldEra)
     }
 
-    @Test fun `roman regression — flag consumed, keys at defaults, rich history — caps get applied`() {
+    @Test fun `userH regression — flag consumed, keys at defaults, rich history — caps get applied`() {
         // user H: V6-active 06-30, months of history, TDD ~50U; committedCap stuck at factory 0.5
         // although his derived value is 1.24. After migration (nothing resolved because everything
         // is at stock), the next cycle must apply BOTH the committed cap and the cumulative cap.
-        val roman = profile(
+        val userH = profile(
             tdd = 49.6,                                          // 49.6/40 = 1.24 committed
             smb = listOf(0.5, 0.5, 0.5, 0.5, 0.5),               // p75 clipped at the old 0.5 cap
             manual = listOf(4.0, 4.0, 5.0, 5.0, 5.0, 6.0, 6.0, 6.0, 6.0, 6.0)  // p90 = 6.0 → confirmedCap 6.0
         )
-        val s = BoostV5AutoConfig.compute(roman)!!
+        val s = BoostV5AutoConfig.compute(userH)!!
         assertThat(s.confirmedCapU).isEqualTo(6.0)
         assertThat(s.committedCapU).isEqualTo(1.24)
         // cumulative = clamp(6.0 + 2×1.24, 1.0, 10.0) = 8.48 → 8.5. (2026-07-06 amendment #2:
