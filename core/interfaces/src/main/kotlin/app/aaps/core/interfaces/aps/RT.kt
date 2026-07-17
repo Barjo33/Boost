@@ -122,6 +122,12 @@ data class RT(
     //    (delivered-with-floor − what-unfloored-would-have-delivered; 0 when no uplift).
     // Null = floor conditions unmet either way, so the 2026-07-10 review reads one field regardless.
     var boostV5_floorWouldAdd: Double? = null,   // U — would-add (toggle OFF) / applied uplift (toggle ON); null = floor conditions unmet
+    // 2026-07-17 velocity-budget floor (user H) — the budget≈0 high tail (BG>180 ∧ oref insulinReq≈0),
+    // the population the composed floor excludes. DUAL semantics keyed on the per-user Advanced toggle
+    // (ApsBoostV5VelocityBudgetActive, default OFF, same fail-closed 14d-TBR gate): toggle OFF (shadow)
+    // = extra U the floor WOULD add (read-only); toggle ON = the uplift actually APPLIED (out-doses V1
+    // via the non-meal-cap exemption, committedCap+maxIOB bounded). Null = floor conditions unmet.
+    var boostV5_velocityBudgetWouldAdd: Double? = null, // U — would-add (toggle OFF) / applied uplift (toggle ON); null = conditions unmet
     // 2026-07-06 cumulative-cap telemetry gap: the rolling-60-min anti-stacking cap (enforced inside V1
     // AND re-checked at the V6 override seam) was invisible in NS — a cap suppression was
     // indistinguishable from a zero-dose decision. Written every Boost cycle at the override seam.
