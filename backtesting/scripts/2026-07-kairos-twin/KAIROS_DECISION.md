@@ -59,25 +59,28 @@ both are floor-pinned, both attack the TING variance lever from opposite sides o
   harm direction is bounded (removing insulin cannot cause a high-tail low), so it is validatable
   from observed outcomes. Removes the over-correction low where the recoverable variance lives.
 
-- **Rise — move the same insulin earlier (bounded, harm-neutral).** When the Twin forecast shows a
-  predictable rise crossing the band, bring forward the dose the loop would give anyway by a cycle or
-  two (the confirm-timing shave, already in the register as harm-neutral). Net insulin **unchanged**,
-  just earlier ⇒ validatable as harm-neutral. Shaves the 140–180 peak — the addressable TING loss —
-  without the unvalidatable "add net insulin" step.
+- **Rise — move the same insulin earlier?** *Tested and REJECTED as a Twin signal
+  (`TWIN_RISE_LEAD.md`, added 2026-07-18).* The Twin's forecast `fc30` predicts real rises **worse**
+  than oref's own `eventualBG` and even the naive BG-trend (FA 0.24 vs 0.14 vs 0.10, less lead) — a
+  rise is directly visible in the trend, there is no hidden state for the filter to add. The Twin's
+  value is **asymmetric: descent-only.** Rise-timing, if pursued at all, belongs to the incumbent's
+  existing confirm-timing levers (early-dosing audit), not to KAIROS.
 
-The synthesis: **the Twin re-times the incumbent's insulin — earlier on the predicted way up, gone on
-the predicted way down — never adding net insulin.** That compresses variance from both sides of an
-unannounced-meal excursion (the TING objective), keeps the low-tail as a hard floor, and every brick
-is shadow-first then priced at the two-test bar. It is not a controller optimising a forecast; it is
-a validated sensor retiming a proven reactive core. That is the ceiling identification permits — and,
-done brick by brick, the most effective automatic-meal AID we can honestly ship.
+The synthesis, corrected by the rise gate: **the Twin re-times the incumbent's insulin in ONE
+direction — gone earlier on the predicted way down.** The up-side is already handled as well as it
+can be by the visible trend; the Twin adds nothing there. That still attacks the TING variance lever
+where the recoverable variance actually lives (the post-meal over-correction low), keeps the low-tail
+as a hard floor, and is validatable (harm direction bounded). It is not a controller optimising a
+forecast; it is a validated **descent** sensor letting a proven reactive core give back insulin
+earlier on the way down. One brick, honestly — the ceiling identification permits.
 
 ## Next bricks
 
 1. **Bank the withdrawal shadow** (idea 4, live on the now-calibrated band) ~1–2 weeks → price the
    would-withhold signal against actual subsequent lows (the identifiable leg is already clear).
-2. **Build the rise-retiming shadow**: Twin-forecast-triggered earlier delivery of the *same* dose,
-   bounded, harm-neutral; log would-vs-did, characterise offline, then shadow.
+   **This is the one Twin brick that survived both gates.**
+2. ~~Rise-retiming shadow~~ — **REJECTED** (`TWIN_RISE_LEAD.md`): the Twin is dominated by the trend
+   on rises. Do not ship.
 3. **Federation prior** for the Twin (population-init per-person params) — cold-start a new user's
    sensor on the manifold of all metabolisms. Pure sensor work; safe.
 4. **Do NOT** re-open the forecast-MPC controller unless the insulin channel becomes identifiable —

@@ -93,6 +93,7 @@ A record of the data relationships, dosing levers, mechanisms and models we've e
 | HR → glucose-rise lead (meal signal) | No cephalic HR lift before a rise; HR is not a meal signal as sensed | 37k paired cycles; only real coupling is HR↑→BG↓ ~10 min (exercise), wrong direction |
 | Rolling-24h step load → insulin sensitivity | No reliable signal | matched-IOB forward-low hi/lo 1.06; residual slope wrong-signed; autosens corr −0.06 |
 | Learned bedtime → lead sleep detection | Bedtime too variable | onset SD ~92 min; learned ≈ fixed clock |
+| Twin forecast → lead RISES (rise-retiming) | Twin fc30 is WORSE than oref eventualBG and the naive BG-trend at predicting rises (FA 0.24 vs 0.14 vs 0.10, less lead) — a rise is directly visible in the trend, no hidden state to infer. Twin value is asymmetric: descent-only | 2026-07-18 `TWIN_RISE_LEAD.md`, 146 rises/7 users |
 | Dawn phenomenon → timed correction | Frequent but timing too loose | 82% of fasting nights, +55 mg/dL, but onset SD 75 min |
 | Meal-time anticipation | ≈ chance | onsets roughly uniform |
 | eventualBG as a forecast | Not predictive | R² −2.32 |
