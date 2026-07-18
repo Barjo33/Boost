@@ -107,6 +107,8 @@ A record of the data relationships, dosing levers, mechanisms and models we've e
 | Brake "34% of high-time" as a lever | Proximate over-attribution | brake is directionally right on audit (13% proven + 76% assumed; don't loosen) |
 | Cohort +13 pp as a clean Boost effect | Mostly overnight + selection/basal confound | +2.9 pp raw → +1.2 pp adjusted; permutation p ≈ 0.27 |
 | Post-exercise "delayed 2× ramp" | Window-length artefact | de-artefacted to ~1.2×, flat |
+| KAIROS Twin as a controller / forecast-MPC | Insulin gain non-identified: 8× SI invariance in the EnKF (Ra absorbs it); clean-fall direct fit unstable (−1.4× to 39×, R²≤0). Anchoring SI to clinical ISF fixes the forward gain but off-policy calibration still decays + band doesn't self-limit. TING planner fed the Twin is degenerate (65–202 U/day vs 19 delivered) and can't be closed-loop-validated (needs the off-policy counterfactual the Twin lacks) | 2026-07-18 `TWIN_OFFPOLICY.md`, `twin_identify.py`, `twin_ting.py`, `KAIROS_DECISION.md` |
+| Learn insulin sensitivity (SI) from CGM | Non-identifiable observationally — latent meal appearance Ra absorbs any insulin gain; needs a within-user micro-bolus probe, not a model | 2026-07-18 8× invariance + clean-fall instability |
 
 ---
 
