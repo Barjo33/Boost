@@ -147,6 +147,19 @@ data class RT(
     var boostV7_pool: String? = null,            // active regime pool + n at h=60, e.g. "quiet_flat(n=812)"; "meal(warming n=42)" below warm threshold (sizer abstains); "excluded" = cycle fits no pool (non-flat non-meal daytime — the unannounced-onset pollution, deliberately dropped)
     var boostV7_innovSensFrozen: Double? = null, // rolling 30-min innovation SUM (mg/dL) with sens FROZEN at profile ISF — Backtest-2 follow-up (adapted variable_sens absorbed the signal, d=0.02). Log-only
 
+    // KAIROS Twin SHADOW telemetry (2026-07-18) — a physiological Ensemble-Kalman forecaster
+    // (plugins/aps/.../openAPSBoostTwin). Bergman-minimal glucose + 2-compartment SC insulin +
+    // interstitial lag + a LATENT glucose-appearance state inferred from CGM (discovers unannounced
+    // meals). READ-ONLY: never feeds the dose path; delivered dosing is bit-identical with/without it.
+    // Validated out-of-sample ~2× better than oref's eventualBG at 30/60 min (backtesting/2026-07-kairos-twin).
+    var boostTwin_fc30: Double? = null,   // forecast CGM at 30 min (mg/dL)
+    var boostTwin_fc60: Double? = null,   // forecast CGM at 60 min (mg/dL)
+    var boostTwin_lo60: Double? = null,   // 60-min 5th percentile (90% band low)
+    var boostTwin_hi60: Double? = null,   // 60-min 95th percentile (90% band high)
+    var boostTwin_ra: Double? = null,     // inferred glucose appearance (mg/dL/min) — meal signal from CGM alone
+    var boostTwin_gi: Double? = null,     // Twin filtered glucose (mg/dL)
+    var boostTwin_insU: Double? = null,   // insulin the Twin assimilated this cycle (U; v0 basal from profile/temp — fidelity watch)
+
     // HR + sleep telemetry (2026-06-02) — emitted into NS devicestatus for retrospective
     // sleep-model tuning. Cadence = one observation per Boost cycle (~5 min), which
     // matches sleep-analysis granularity. Wear OS samples HR every 1 min; here we

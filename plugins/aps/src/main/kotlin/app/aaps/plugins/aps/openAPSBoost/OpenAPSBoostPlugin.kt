@@ -313,6 +313,11 @@ open class OpenAPSBoostPlugin @Inject constructor(
         )
     }
 
+    // KAIROS Twin — physiological EnKF forecaster, held in memory across cycles (re-converges in
+    // ~30 min after a restart; fail-safe). READ-ONLY telemetry; never touches the dose path. Uses the
+    // validated default per-person parameters. (2026-07-18)
+    private val twinShadow by lazy { app.aaps.plugins.aps.openAPSBoostTwin.TwinShadow() }
+
     // ---- Post-exercise recovery state ----
     @Volatile private var recoveryWindowEnd: Long = 0L
     @Volatile private var wasExerciseActive: Boolean = false
@@ -1454,6 +1459,29 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     hour = java.time.Instant.ofEpochMilli(now).atZone(java.time.ZoneId.systemDefault()).hour,
                 )
             }.onFailure { t -> aapsLogger.error(LTag.APS, "V7 shadow invocation failed (swallowed)", t) }
+            // KAIROS Twin shadow (2026-07-18): assimilate this cycle's CGM + insulin into the
+            // physiological EnKF and log a calibrated 30/60-min forecast + the inferred glucose
+            // appearance. READ-ONLY — writes only boostTwin_* telemetry; the delivered dose is
+            // untouched. Insulin this cycle = boluses(last 5 min) + basal (temp-adjusted). Belt-and-
+            // braces runCatching on top of TwinShadow's own — the shadow can NEVER break a cycle.
+            runCatching {
+                val fiveMinAgo = now - 5L * 60 * 1000
+                val bolusU = persistenceLayer.getBolusesFromTimeToTime(fiveMinAgo, now, true).sumOf { b -> b.amount }
+                val tb = persistenceLayer.getTemporaryBasalActiveAt(now)
+                val basalRate = when {
+                    tb == null    -> oapsProfile.current_basal
+                    tb.isAbsolute -> tb.rate
+                    else          -> oapsProfile.current_basal * tb.rate / 100.0
+                }
+                val basalU = basalRate * 5.0 / 60.0
+                val fc = twinShadow.runCycle(glucoseStatus.glucose, bolusU + basalU, basalU)
+                if (fc != null) {
+                    it.boostTwin_fc30 = fc.fc30; it.boostTwin_fc60 = fc.fc60
+                    it.boostTwin_lo60 = fc.lo60; it.boostTwin_hi60 = fc.hi60
+                    it.boostTwin_ra = fc.raMean; it.boostTwin_gi = fc.filteredGi
+                    it.boostTwin_insU = bolusU + basalU
+                }
+            }.onFailure { t -> aapsLogger.error(LTag.APS, "KAIROS Twin shadow failed (swallowed — dosing untouched)", t) }
             // Sleep gate (2026-06-14): do NOT let V5 drive the SMB while SLEEPING — fall back to V1's
             // (oref1/Boost) SMB, which already respects night mode. V5 still computes its shadow
             // telemetry above (runShadow ran), so the V5-vs-V1 comparison continues overnight; only
