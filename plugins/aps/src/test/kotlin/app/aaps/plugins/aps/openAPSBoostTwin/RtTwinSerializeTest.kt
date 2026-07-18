@@ -13,16 +13,10 @@ class RtTwinSerializeTest {
 
     @Test fun `RT serializes with the boostTwin fields populated`() {
         val rt = RT(runningDynamicIsf = false).apply {
-            boostTwin_fc30 = 120.0
-            boostTwin_fc60 = 132.5
-            boostTwin_lo60 = 95.0
-            boostTwin_hi60 = 170.0
-            boostTwin_ra = 0.42
-            boostTwin_gi = 118.3
-            boostTwin_insU = 0.35
+            boostTwin = "120.0,132.5,95.0,170.0,0.42,118.3,0.35"
         }
         val json = rt.serialize()
-        assertThat(json).contains("boostTwin_fc30")
-        assertThat(json).contains("boostTwin_ra")
+        assertThat(json).contains("boostTwin")
+        assertThat(json).contains("132.5")
     }
 }

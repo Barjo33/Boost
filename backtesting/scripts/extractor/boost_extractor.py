@@ -57,6 +57,21 @@ TRIO_TAG_RE = re.compile(
 )
 
 
+def _twin(sug: dict, i: int) -> Optional[float]:
+    """Split the packed KAIROS Twin csv (suggested.boostTwin = "fc30,fc60,lo60,hi60,ra,gi,insU")
+    into its i-th float. One field on the app side (ART verifier limit); 7 DB columns here."""
+    v = sug.get("boostTwin")
+    if not v:
+        return None
+    parts = str(v).split(",")
+    if i >= len(parts):
+        return None
+    try:
+        return float(parts[i])
+    except (ValueError, TypeError):
+        return None
+
+
 def parse_trio_tag(reason: str) -> Optional[dict]:
     """Parse the Trio boostV5 reason tag into the existing boostv5_*/ml_* fields."""
     m = TRIO_TAG_RE.search(reason or "")
@@ -403,17 +418,18 @@ def build_row(rec: dict, user_id: str) -> Optional[dict]:
         "boostv7_q50drift": sug.get("boostV7_q50Drift"),
         "boostv7_pool": sug.get("boostV7_pool"),
         "boostv7_innovsensfrozen": sug.get("boostV7_innovSensFrozen"),
-        # 2026-07-18 KAIROS Twin shadow — physiological EnKF forecaster telemetry (read-only; the
-        # Twin doses nothing). fc30/fc60 = forecast CGM at 30/60 min; lo60/hi60 = 60-min 90% band;
-        # ra = inferred glucose appearance (meal signal from CGM alone); gi = filtered glucose;
-        # insu = insulin the Twin assimilated this cycle (input-fidelity watch vs the offline recon).
-        "boosttwin_fc30": sug.get("boostTwin_fc30"),
-        "boosttwin_fc60": sug.get("boostTwin_fc60"),
-        "boosttwin_lo60": sug.get("boostTwin_lo60"),
-        "boosttwin_hi60": sug.get("boostTwin_hi60"),
-        "boosttwin_ra": sug.get("boostTwin_ra"),
-        "boosttwin_gi": sug.get("boostTwin_gi"),
-        "boosttwin_insu": sug.get("boostTwin_insU"),
+        # 2026-07-18 KAIROS Twin shadow — physiological EnKF forecaster telemetry (read-only; the Twin
+        # doses nothing). Packed by the app into ONE csv field "fc30,fc60,lo60,hi60,ra,gi,insU" (the
+        # legacy V3MLG3 ART verifier limit forbids 7 separate RT fields). Split back into columns here.
+        # fc30/fc60 = forecast CGM at 30/60 min; lo60/hi60 = 60-min 90% band; ra = inferred glucose
+        # appearance (meal signal); gi = filtered glucose; insu = insulin the Twin assimilated (fidelity watch).
+        "boosttwin_fc30": _twin(sug, 0),
+        "boosttwin_fc60": _twin(sug, 1),
+        "boosttwin_lo60": _twin(sug, 2),
+        "boosttwin_hi60": _twin(sug, 3),
+        "boosttwin_ra": _twin(sug, 4),
+        "boosttwin_gi": _twin(sug, 5),
+        "boosttwin_insu": _twin(sug, 6),
         "ml_hypo_risk": sug.get("mlHypoRisk"),
         "ml_meal_likely": sug.get("mlMealLikely"),
         # 2026-07-07 sensing hardening: which step feeds were live this cycle

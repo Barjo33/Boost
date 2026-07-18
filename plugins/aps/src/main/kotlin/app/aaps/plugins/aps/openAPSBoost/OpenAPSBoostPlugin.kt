@@ -1476,10 +1476,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 val basalU = basalRate * 5.0 / 60.0
                 val fc = twinShadow.runCycle(glucoseStatus.glucose, bolusU + basalU, basalU)
                 if (fc != null) {
-                    it.boostTwin_fc30 = fc.fc30; it.boostTwin_fc60 = fc.fc60
-                    it.boostTwin_lo60 = fc.lo60; it.boostTwin_hi60 = fc.hi60
-                    it.boostTwin_ra = fc.raMean; it.boostTwin_gi = fc.filteredGi
-                    it.boostTwin_insU = bolusU + basalU
+                    // Packed into one field (see RT.boostTwin KDoc — the legacy V3MLG3 verifier limit).
+                    it.boostTwin = "${fc.fc30},${fc.fc60},${fc.lo60},${fc.hi60},${fc.raMean},${fc.filteredGi}," +
+                        Round.roundTo(bolusU + basalU, 0.001)
                 }
             }.onFailure { t -> aapsLogger.error(LTag.APS, "KAIROS Twin shadow failed (swallowed — dosing untouched)", t) }
             // Sleep gate (2026-06-14): do NOT let V5 drive the SMB while SLEEPING — fall back to V1's

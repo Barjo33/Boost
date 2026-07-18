@@ -149,16 +149,14 @@ data class RT(
 
     // KAIROS Twin SHADOW telemetry (2026-07-18) — a physiological Ensemble-Kalman forecaster
     // (plugins/aps/.../openAPSBoostTwin). Bergman-minimal glucose + 2-compartment SC insulin +
-    // interstitial lag + a LATENT glucose-appearance state inferred from CGM (discovers unannounced
-    // meals). READ-ONLY: never feeds the dose path; delivered dosing is bit-identical with/without it.
-    // Validated out-of-sample ~2× better than oref's eventualBG at 30/60 min (backtesting/2026-07-kairos-twin).
-    var boostTwin_fc30: Double? = null,   // forecast CGM at 30 min (mg/dL)
-    var boostTwin_fc60: Double? = null,   // forecast CGM at 60 min (mg/dL)
-    var boostTwin_lo60: Double? = null,   // 60-min 5th percentile (90% band low)
-    var boostTwin_hi60: Double? = null,   // 60-min 95th percentile (90% band high)
-    var boostTwin_ra: Double? = null,     // inferred glucose appearance (mg/dL/min) — meal signal from CGM alone
-    var boostTwin_gi: Double? = null,     // Twin filtered glucose (mg/dL)
-    var boostTwin_insU: Double? = null,   // insulin the Twin assimilated this cycle (U; v0 basal from profile/temp — fidelity watch)
+    // interstitial lag + a LATENT glucose-appearance state inferred from CGM. READ-ONLY: never feeds
+    // the dose path; delivered dosing is bit-identical with/without it.
+    // PACKED into ONE csv field "fc30,fc60,lo60,hi60,ra,gi,insU" ON PURPOSE: RT is a huge @Serializable
+    // data class, and the legacy DetermineBasalBoostV3MLG3.determine_basal (which builds an RT) sits
+    // right at the ART method-verifier limit — adding 7 separate constructor fields tipped it into a
+    // VerifyError and crashed the app at startup (2026-07-18). One field keeps RT's constructor small.
+    // The extractor splits it back into 7 DB columns.
+    var boostTwin: String? = null,        // "fc30,fc60,lo60,hi60,ra,gi,insU" (mg/dL; ra mg/dL/min; insU U) or null
 
     // HR + sleep telemetry (2026-06-02) — emitted into NS devicestatus for retrospective
     // sleep-model tuning. Cadence = one observation per Boost cycle (~5 min), which
