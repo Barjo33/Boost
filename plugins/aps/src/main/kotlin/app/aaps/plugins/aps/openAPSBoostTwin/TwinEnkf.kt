@@ -24,6 +24,17 @@ class TwinEnkf(
     // forecast-only process noise: inject Ra/G uncertainty so the band honestly reflects unseen meals.
     private val qf = doubleArrayOf(0.0, 0.0, 0.0, 0.95, 2.2, 0.0)
     private val rSd = 6.0
+    // forecast calibration (2026-07-18, backtesting twin_calibrate.py) — fixes the 30-min band
+    // under-dispersion (held-out coverage 77→85% at 30 min, 86→91% at 60 min) and the on-device
+    // lo30/floorbreach over-fire. Three physical corrections mirrored from the validated Python:
+    //   inflate0 : additive EnKF covariance inflation at h=0 (the structural short-horizon error the
+    //              filter is over-confident about) — a FIXED width, so it lifts 30-min more than 60-min.
+    //   mealP/Ra : unannounced-meal risk as Poisson positive-Ra impulses → a right-skewed UPPER band.
+    // The point forecast is the ensemble MEDIAN so the meal skew fattens the upside without biasing it;
+    // the band draws an OBSERVED-CGM predictive (+ measurement noise rSd).
+    private val inflate0 = 28.0
+    private val mealP = 0.03
+    private val mealRa = 5.0
 
     /** Ensemble: [members] state vectors of length [TW_N]. */
     private val ens = Array(members) { DoubleArray(TW_N) }
@@ -80,19 +91,24 @@ class TwinEnkf(
      * reflects unseen future meals. Returns (mean, p5, p95) mg/dL — a calibrated forecast interval.
      */
     fun forecast(hSteps: Int, uPerStep: Double): Triple<Double, Double, Double> {
-        val gi = DoubleArray(members)
+        val gi = DoubleArray(members)          // clean forecast Gi (for the median point estimate)
+        val giObs = DoubleArray(members)       // + measurement noise (for the observed-CGM band)
         for (m in 0 until members) {
             var x = ens[m].copyOf()
+            x[TW_G] += rng.nextGaussian() * inflate0        // covariance inflation at h=0
+            x[TW_GI] += rng.nextGaussian() * inflate0
             repeat(hSteps) {
                 x = twinStep5(x, uPerStep, p)
                 for (i in 0 until TW_N) x[i] += qf[i] * rng.nextGaussian()
+                if (rng.nextDouble() < mealP) x[TW_RA] += kotlin.math.abs(rng.nextGaussian()) * mealRa
                 x[TW_G] = max(x[TW_G], 10.0); x[TW_GI] = max(x[TW_GI], 10.0)
             }
             gi[m] = x[TW_GI]
+            giObs[m] = x[TW_GI] + rng.nextGaussian() * rSd
         }
-        gi.sort()
-        val mean = gi.average()
-        return Triple(mean, percentile(gi, 5.0), percentile(gi, 95.0))
+        gi.sort(); giObs.sort()
+        val median = percentile(gi, 50.0)                   // point = median (robust to the meal skew)
+        return Triple(median, percentile(giObs, 5.0), percentile(giObs, 95.0))
     }
 
     private fun percentile(sorted: DoubleArray, pct: Double): Double {

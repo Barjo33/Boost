@@ -1474,7 +1474,15 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     else          -> oapsProfile.current_basal * tb.rate / 100.0
                 }
                 val basalU = basalRate * 5.0 / 60.0
-                val fc = twinShadow.runCycle(glucoseStatus.glucose, bolusU + basalU, basalU)
+                // Assimilate what WAS delivered this cycle (bolus + active basal), but forecast under
+                // the SCHEDULED (profile) basal, not the currently-active temp: a transient correction
+                // temp must not be projected forward for the whole 30–60 min horizon (that ran the
+                // open-loop forecast cold/warm and mis-fired the lo30 floor). Fidelity fix 2026-07-18;
+                // second-order in practice (basal dosed now barely acts within the horizon, and the
+                // off-policy test found the Twin's insulin gain is weak/unidentified — see
+                // backtesting/2026-07-kairos-twin/TWIN_OFFPOLICY.md).
+                val scheduledBasalU = oapsProfile.current_basal * 5.0 / 60.0
+                val fc = twinShadow.runCycle(glucoseStatus.glucose, bolusU + basalU, scheduledBasalU)
                 if (fc != null) {
                     // Ride in the reason string, NOT a new RT field (see RT KDoc — the legacy V3MLG3
                     // ART verifier limit). The extractor parses "twin=...;" back into DB columns.

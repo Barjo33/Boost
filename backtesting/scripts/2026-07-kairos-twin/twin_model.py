@@ -44,6 +44,16 @@ M=150                                  # ensemble size
 Qsd = np.array([0.02,0.02,1e-4, 0.55, 2.0, 0.6])
 Rsd = 6.0                               # CGM measurement noise (mg/dL)
 rng=np.random.default_rng(1)
+# ---- forecast calibration (2026-07-18, twin_calibrate.py) — fixes the 30-min under-dispersion ----
+# Baseline was under-dispersed (30-min 90%-band cov 77%, tails 10/13). Three physical corrections,
+# held-out-calibrated on tim: (INFLATE0) additive EnKF covariance inflation at h=0 for the structural
+# short-horizon error the filter is over-confident about; (MEAL_P/MEAL_RA) unannounced-meal risk as
+# Poisson positive-Ra impulses → right-skewed upper band; (+Rsd) the band predicts an OBSERVED CGM.
+# Point forecast = ensemble MEDIAN so the meal skew fattens the upside without biasing the estimate.
+# Result: 30-min cov 77→85%, 60-min 86→91%, RMSE unchanged. Mirrored in the Kotlin TwinEnkf.
+INFLATE0 = 28.0                        # mg/dL sd added to G,Gi at forecast start
+MEAL_P   = 0.03                        # per-member per-5-min meal-onset probability (forecast only)
+MEAL_RA  = 5.0                         # Ra impulse size (mg/dL/min, half-normal scale)
 
 def run_enkf(P, forecast_h=(6,12)):
     # init ensemble near a plausible fasting state
@@ -56,14 +66,22 @@ def run_enkf(P, forecast_h=(6,12)):
     fclo={h:np.full(N,np.nan) for h in forecast_h}; fchi={h:np.full(N,np.nan) for h in forecast_h}
     for i in range(N):
         # forecast from current posterior BEFORE assimilating i (roll fwd under KNOWN future insulin).
-        # Inject Ra/G process noise each step so the forecast ensemble captures the UNPREDICTABLE
-        # future-meal uncertainty — a pure-UAM twin must honestly not-know when a meal is coming.
+        # Symmetric process noise (model error) + right-skewed meal impulses (unpredictable future
+        # meals — a pure-UAM twin must honestly not-know when a meal is coming) + covariance inflation.
         Qf=np.array([0.0,0.0,0.0, 0.95, 2.2, 0.0])
         for h in forecast_h:
             if i+h<N:
                 xf=x.copy()
-                for j in range(h): xf=forward5(xf, INS[i+j], P) + Qf[:,None]*rng.standard_normal((6,M))
-                gi=xf[5]; fc[h][i]=gi.mean(); fclo[h][i]=np.percentile(gi,5); fchi[h][i]=np.percentile(gi,95)
+                xf[4]=xf[4]+rng.standard_normal(M)*INFLATE0            # covariance inflation at h=0
+                xf[5]=xf[5]+rng.standard_normal(M)*INFLATE0
+                for j in range(h):
+                    xf=forward5(xf, INS[i+j], P) + Qf[:,None]*rng.standard_normal((6,M))
+                    meal=(rng.random(M)<MEAL_P)                        # Poisson positive meal risk
+                    xf[3]=xf[3]+meal*np.abs(rng.standard_normal(M))*MEAL_RA
+                    xf[4]=np.maximum(xf[4],10.0)
+                gi_obs=xf[5]+rng.normal(0,Rsd,M)                       # band predicts an OBSERVED CGM
+                fc[h][i]=np.median(xf[5])                              # point = median (robust to skew)
+                fclo[h][i]=np.percentile(gi_obs,5); fchi[h][i]=np.percentile(gi_obs,95)
         # predict to i (add process noise)
         x=forward5(x, INS[i], P) + (Qsd[:,None]*rng.standard_normal((6,M)))
         x[3]=x[3]  # Ra free; keep others physical
