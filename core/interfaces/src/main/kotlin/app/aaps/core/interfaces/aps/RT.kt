@@ -148,15 +148,13 @@ data class RT(
     var boostV7_innovSensFrozen: Double? = null, // rolling 30-min innovation SUM (mg/dL) with sens FROZEN at profile ISF — Backtest-2 follow-up (adapted variable_sens absorbed the signal, d=0.02). Log-only
 
     // KAIROS Twin SHADOW telemetry (2026-07-18) — a physiological Ensemble-Kalman forecaster
-    // (plugins/aps/.../openAPSBoostTwin). Bergman-minimal glucose + 2-compartment SC insulin +
-    // interstitial lag + a LATENT glucose-appearance state inferred from CGM. READ-ONLY: never feeds
-    // the dose path; delivered dosing is bit-identical with/without it.
-    // PACKED into ONE csv field "fc30,fc60,lo60,hi60,ra,gi,insU" ON PURPOSE: RT is a huge @Serializable
-    // data class, and the legacy DetermineBasalBoostV3MLG3.determine_basal (which builds an RT) sits
-    // right at the ART method-verifier limit — adding 7 separate constructor fields tipped it into a
-    // VerifyError and crashed the app at startup (2026-07-18). One field keeps RT's constructor small.
-    // The extractor splits it back into 7 DB columns.
-    var boostTwin: String? = null,        // "fc30,fc60,lo60,hi60,ra,gi,insU" (mg/dL; ra mg/dL/min; insU U) or null
+    // (plugins/aps/.../openAPSBoostTwin), READ-ONLY (doses nothing). NOTE: its forecast is emitted
+    // as a "twin=fc30,fc60,lo60,hi60,ra,gi,insU;" tag appended to [reason], NOT as its own RT field.
+    // WHY: adding ANY field to this huge @Serializable data class shifts the register allocation of
+    // the legacy DetermineBasalBoostV3MLG3.determine_basal (which builds an RT and sits right at the
+    // ART method-verifier limit) and trips a VerifyError → instant startup crash (reproduced on an
+    // emulator 2026-07-18, both High- and Low-half register-aliasing). Riding in the existing reason
+    // string keeps RT's constructor byte-identical to the verified build. The extractor parses the tag.
 
     // HR + sleep telemetry (2026-06-02) — emitted into NS devicestatus for retrospective
     // sleep-model tuning. Cadence = one observation per Boost cycle (~5 min), which

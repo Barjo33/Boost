@@ -57,13 +57,17 @@ TRIO_TAG_RE = re.compile(
 )
 
 
-def _twin(sug: dict, i: int) -> Optional[float]:
-    """Split the packed KAIROS Twin csv (suggested.boostTwin = "fc30,fc60,lo60,hi60,ra,gi,insU")
-    into its i-th float. One field on the app side (ART verifier limit); 7 DB columns here."""
-    v = sug.get("boostTwin")
-    if not v:
+TWIN_RE = re.compile(r"twin=([-\d.,]+)")
+
+
+def _twin(reason: str, i: int) -> Optional[float]:
+    """Split the KAIROS Twin reason tag ("twin=fc30,fc60,lo60,hi60,ra,gi,insU;") into its i-th float.
+    It rides in `reason` (not its own RT field) to avoid the legacy V3MLG3 ART verifier crash; the app
+    packs it, we split it into 7 DB columns."""
+    m = TWIN_RE.search(reason or "")
+    if not m:
         return None
-    parts = str(v).split(",")
+    parts = m.group(1).split(",")
     if i >= len(parts):
         return None
     try:
@@ -423,13 +427,13 @@ def build_row(rec: dict, user_id: str) -> Optional[dict]:
         # legacy V3MLG3 ART verifier limit forbids 7 separate RT fields). Split back into columns here.
         # fc30/fc60 = forecast CGM at 30/60 min; lo60/hi60 = 60-min 90% band; ra = inferred glucose
         # appearance (meal signal); gi = filtered glucose; insu = insulin the Twin assimilated (fidelity watch).
-        "boosttwin_fc30": _twin(sug, 0),
-        "boosttwin_fc60": _twin(sug, 1),
-        "boosttwin_lo60": _twin(sug, 2),
-        "boosttwin_hi60": _twin(sug, 3),
-        "boosttwin_ra": _twin(sug, 4),
-        "boosttwin_gi": _twin(sug, 5),
-        "boosttwin_insu": _twin(sug, 6),
+        "boosttwin_fc30": _twin(reason, 0),
+        "boosttwin_fc60": _twin(reason, 1),
+        "boosttwin_lo60": _twin(reason, 2),
+        "boosttwin_hi60": _twin(reason, 3),
+        "boosttwin_ra": _twin(reason, 4),
+        "boosttwin_gi": _twin(reason, 5),
+        "boosttwin_insu": _twin(reason, 6),
         "ml_hypo_risk": sug.get("mlHypoRisk"),
         "ml_meal_likely": sug.get("mlMealLikely"),
         # 2026-07-07 sensing hardening: which step feeds were live this cycle
