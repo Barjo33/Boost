@@ -61,9 +61,11 @@ TWIN_RE = re.compile(r"twin=([-\d.,]+)")
 
 
 def _twin(reason: str, i: int) -> Optional[float]:
-    """Split the KAIROS Twin reason tag ("twin=fc30,fc60,lo60,hi60,ra,gi,insU;") into its i-th float.
-    It rides in `reason` (not its own RT field) to avoid the legacy V3MLG3 ART verifier crash; the app
-    packs it, we split it into 7 DB columns."""
+    """Split the KAIROS Twin reason tag into its i-th float. Tag (2026-07-18, 9 fields):
+    "twin=fc30,fc60,lo60,hi60,ra,gi,insU,lo30,floorbreach;" — lo30/floorbreach appended at the
+    END so existing index positions are unchanged (idea-4 descent-side shadow). It rides in
+    `reason` (not its own RT field) to avoid the legacy V3MLG3 ART verifier crash; index-safe for
+    old rows that carry only the first 7 fields (returns None past the split length)."""
     m = TWIN_RE.search(reason or "")
     if not m:
         return None
@@ -434,6 +436,8 @@ def build_row(rec: dict, user_id: str) -> Optional[dict]:
         "boosttwin_ra": _twin(reason, 4),
         "boosttwin_gi": _twin(reason, 5),
         "boosttwin_insu": _twin(reason, 6),
+        "boosttwin_lo30": _twin(reason, 7),
+        "boosttwin_floorbreach": _twin(reason, 8),
         "ml_hypo_risk": sug.get("mlHypoRisk"),
         "ml_meal_likely": sug.get("mlMealLikely"),
         # 2026-07-07 sensing hardening: which step feeds were live this cycle
@@ -642,6 +646,8 @@ ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boosttwin_hi60          double prec
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boosttwin_ra            double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boosttwin_gi            double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boosttwin_insu          double precision;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boosttwin_lo30          double precision;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boosttwin_floorbreach   double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS ml_hypo_risk          double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS ml_meal_likely        double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS v1_units              double precision;
@@ -717,6 +723,21 @@ def main():
     for r in rows:
         variant_counts[r["variant"]] = variant_counts.get(r["variant"], 0) + 1
     print(f"[parse] variant breakdown: {variant_counts}")
+
+    # Unit-normalise oref guard/pred BG to mg/dL. AAPS emits these in the user's DISPLAY unit —
+    # mmol/L for mmol users (median ~5, can be negative), mg/dL for others (median ~100). Per-VALUE
+    # detection is unsafe: oref projects genuine deep/negative mg/dL lows that overlap the mmol
+    # range (a bare "8" is ambiguous). Decide PER-USER from the batch median (this script runs one
+    # user per invocation) and scale the whole user's rows. Consistent for future + backfilled DBs.
+    for fld in ("reason_minGuardBG", "reason_minPredBG"):
+        vals = sorted(abs(r[fld]) for r in rows if r.get(fld) is not None)
+        if vals:
+            med = vals[len(vals) // 2]
+            if med < 30:  # mmol/L → mg/dL
+                for r in rows:
+                    if r.get(fld) is not None:
+                        r[fld] *= 18.0
+                print(f"[units] {fld}: mmol/L (batch median {med:.1f}) → scaled ×18 to mg/dL")
 
     # CGM rows
     cgm_rows = []

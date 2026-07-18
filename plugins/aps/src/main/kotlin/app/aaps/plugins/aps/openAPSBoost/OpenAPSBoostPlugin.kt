@@ -1477,9 +1477,16 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 val fc = twinShadow.runCycle(glucoseStatus.glucose, bolusU + basalU, basalU)
                 if (fc != null) {
                     // Ride in the reason string, NOT a new RT field (see RT KDoc — the legacy V3MLG3
-                    // ART verifier limit). The extractor parses "twin=...;" back into 7 DB columns.
+                    // ART verifier limit). The extractor parses "twin=...;" back into DB columns.
+                    // idea-4 shadow (2026-07-18): lo30 (30-min forecast FLOOR) is the actionable hypo
+                    // signal — validated to catch real lows at ⅓–½ the false-alarm rate of oref's
+                    // minGuardBG/minPredBG (backtesting/2026-07-kairos-twin/TWIN_HYPO_LEAD.md). floorbreach
+                    // = the would-withhold-this-cycle trigger (lo30 < 70 mg/dL). LOGGED, NOT APPLIED —
+                    // pure telemetry; the withdrawal ACTION is the policy leg (shadow-first, auto-config-
+                    // managed when built). lo60 is NOT actionable (band too wide — cries wolf, FA 0.56).
+                    val floorBreach = if (fc.lo30 < 70.0) 1 else 0
                     it.reason.append("twin=${fc.fc30},${fc.fc60},${fc.lo60},${fc.hi60},${fc.raMean},${fc.filteredGi}," +
-                        "${Round.roundTo(bolusU + basalU, 0.001)}; ")
+                        "${Round.roundTo(bolusU + basalU, 0.001)},${fc.lo30},$floorBreach; ")
                 }
             }.onFailure { t -> aapsLogger.error(LTag.APS, "KAIROS Twin shadow failed (swallowed — dosing untouched)", t) }
             // Sleep gate (2026-06-14): do NOT let V5 drive the SMB while SLEEPING — fall back to V1's
