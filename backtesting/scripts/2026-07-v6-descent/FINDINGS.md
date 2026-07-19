@@ -34,3 +34,34 @@ the natural candidate. That is the one genuine place the sensor programme and th
 Does `lo30` (or the Twin's forecast slope) separate STUCK from SLOW-DECLINE plateaus where minGuard
 can't? If it flags F's 22%-low cells while clearing A's 0%-low cells, the descent lever becomes
 Twin-gated and viable; if not, the plateau is a per-user trait, not a dosable moment.
+
+---
+
+## dr2 — the Twin lo30 does NOT gate the descent (decisive negative)
+Replayed the calibrated Twin EnKF offline over all users (insulin from DB: finaldose+basal), captured
+lo30 at every plateau cell (2508 cells, 14% actually go <70 in 3h). Head-to-head vs minGuard at
+predicting the ground-truth forward low:
+
+| forecast | AUC (low<70) | mean on go-low vs safe |
+|---|---|---|
+| minGuard | 0.49 (chance) | 93 vs 90 (sep −3) |
+| **Twin lo30** | **0.38 (WORSE than chance)** | 139 vs **124** — WRONG sign |
+
+lo30 is *higher* on the plateaus that actually crash — anti-predictive. At matched catch its false-alarm
+is worse than minGuard's (81% vs 71% at 70% catch). Reason: lo30 was validated for FAST descents into a
+low (idea-4); the PLATEAU lows are a different phenomenon — slow-decline / delayed absorption / activity,
+driven by factors OUTSIDE the glucose-insulin model. Also confounded by BG level (higher plateaus crash
+harder AND have higher lo30). Neither forecast can see the plateau low coming.
+
+## Verdict — the descent lever is NOT safely gateable
+The plateau lows aren't forecastable from the signals V6 (or the Twin) has. So you cannot tell at
+decision time which plateau is STUCK (safe to dose, A-type) vs SLOW-DECLINE (will crash, F-type). A
+blanket descent-dose crashes the F-type users, and no available gate prevents it. **Both meal-fix
+candidates — confirm-ramp (ff2) and descent-dosing (dr2) — are closed by their safety anchors.**
+
+The only surviving path is PER-USER: dose the plateau more ONLY for users whose plateaus demonstrably
+never go low (A: 0% of 45 cells) — an auto-config trait, not a general algorithm change, and a narrow
+population. The deeper lesson: V6's meal problems are real, but the dangerous outcome (the low) comes
+from what the algorithm can't observe — so "dose more/less" levers can't be safely gated. That is the
+identification wall at the SAFETY level, and it's why floors-first + per-user auto-config is the right
+architecture: you can't out-model the unobservable.
