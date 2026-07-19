@@ -23,11 +23,29 @@ confirmation point V1's UAM tiers dose ~0.1–0.3U LESS than V6's 1.8× confirm 
 counterfactual gets less insulin and plateaus higher. (tim/D also show V1 crashing a touch MORE despite
 lower mean dose — V1's UAM tiers are spikier meal-to-meal: bigger on some, smaller on others.)
 
-## This does NOT contradict the earlier −7.5 TING (V1 better) finding
-Different window. The −7.5 lived on the DESCENT/RECOVERY — V1's late recovery corrections that V6's
-high-IOB brake suppresses ([[v6-vs-v1-meal-regression-2026-07-19]]). The two are consistent: **V6 wins
-the confirm shot, V1 wins the recovery tail**; over the full meal window the recovery effect dominated
-to give V1 the net edge. So the descent, not the confirm shot, remains the lever (plateau-nudge line).
+## WHOLE-MEAL-WINDOW result (the proper answer — whole_meal_replay.py)
+Anchored on MEAL ONSET (not CONFIRMED — that biased to V6's aggressive confirm meals), projecting the
+full excursion. Current V1 is WORSE-or-TIED vs V6 on meal-window TING in ALL 8 users:
+
+| user | windows | V6 TING | V1 TING | V6 tail | V1 tail | net V1−V6 |
+|---|---|---|---|---|---|---|
+| tim | 54 | 45.7 | 34.5 | 138 | 200 | −0.9U |
+| E | 42 | 72.1 | 63.4 | 115 | 118 | −0.2U |
+| C | 29 | 58.9 | 53.5 | 116 | 129 | −0.6U |
+| B | 65 | 47.0 | 42.0 | 147 | 158 | −0.8U |
+| F | 45 | 33.6 | 29.3 | 142 | 161 | −0.6U |
+| D | 5 | 80.0 | 70.7 | 110 | 47(crash) | +5.3U |
+| A | 55 | 35.5 | 35.0 | 152 | 138 | +0.9U |
+| H | 50 | 50.9 | 50.6 | 134 | 128 | +0.2U |
+
+**The earlier −7.5 (V1 better) was the OLD ml-beta V1. The v7-shadow V1 has since been reined in**
+(post-rescue cap + cumulative-SMB cap + v12 ML), so it now net-doses LESS than V6 on the meal window
+for most users (tim −0.9, B −0.8, F −0.6) → under-recovers → HIGHER tail → worse TING. The very recovery
+corrections that gave old-V1 its edge are what the new guards throttle. Where current V1 still doses MORE
+(A, D), it overshoots into lows (D crash 80% vs V6 0%, tail 47) — the high-IOB brake's justification.
+
+⇒ The meal-window lever is NOT "revert toward V1". It's the descent/plateau-nudge line on V6 (add the
+recovery insulin UNDER V6's brake, not remove the brake). Confirm-only view below (V6 also wins there).
 
 ## Architecture fact that makes this a faithful current-V1 comparison
 OpenAPSBoostPlugin ~1345: ONE determine_basal call — the V1 DetermineBasalBoost — passed the RESOLVED
