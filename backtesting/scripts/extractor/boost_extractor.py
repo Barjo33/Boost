@@ -58,6 +58,24 @@ TRIO_TAG_RE = re.compile(
 
 
 TWIN_RE = re.compile(r"twin=([-\d.,]+)")
+PLATEAU_RE = re.compile(r"plateau=([^;]+);")
+
+
+def _plat(reason: str, i: int, cast=float):
+    """Post-meal plateau-nudge SHADOW tag (2026-07-19), READ-ONLY: doses nothing.
+    "plateau=trig,wouldNudgeU,bg,trend,iob,state,floor;" — trig(0/1), the would-nudge U, and the
+    trigger context; floor = why it did/didn't fire ('ok'|'n/a'|recent-low|post-rescue|cum-cap|
+    minguard|not-active|no-headroom). Mixed numeric+text, so match to ';' then split."""
+    m = PLATEAU_RE.search(reason or "")
+    if not m:
+        return None
+    parts = m.group(1).split(",")
+    if i >= len(parts):
+        return None
+    try:
+        return cast(parts[i])
+    except (ValueError, TypeError):
+        return None
 
 
 def _twin(reason: str, i: int) -> Optional[float]:
@@ -438,6 +456,14 @@ def build_row(rec: dict, user_id: str) -> Optional[dict]:
         "boosttwin_insu": _twin(reason, 6),
         "boosttwin_lo30": _twin(reason, 7),
         "boosttwin_floorbreach": _twin(reason, 8),
+        # 2026-07-19 post-meal plateau-nudge SHADOW (read-only; PLATEAU_NUDGE_SPEC.md). trig=would-fire
+        # this cycle; wouldnudge=U it would deliver; floor=why (ok/n/a/veto). Price on-device before active.
+        "boostv5_plateau_trig": _plat(reason, 0, int),
+        "boostv5_plateau_wouldnudge": _plat(reason, 1),
+        "boostv5_plateau_bg": _plat(reason, 2),
+        "boostv5_plateau_trend": _plat(reason, 3),
+        "boostv5_plateau_iob": _plat(reason, 4),
+        "boostv5_plateau_floor": _plat(reason, 6, str),
         "ml_hypo_risk": sug.get("mlHypoRisk"),
         "ml_meal_likely": sug.get("mlMealLikely"),
         # 2026-07-07 sensing hardening: which step feeds were live this cycle
@@ -648,6 +674,12 @@ ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boosttwin_gi            double prec
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boosttwin_insu          double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boosttwin_lo30          double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boosttwin_floorbreach   double precision;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boostv5_plateau_trig       double precision;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boostv5_plateau_wouldnudge double precision;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boostv5_plateau_bg         double precision;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boostv5_plateau_trend      double precision;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boostv5_plateau_iob        double precision;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boostv5_plateau_floor      text;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS ml_hypo_risk          double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS ml_meal_likely        double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS v1_units              double precision;

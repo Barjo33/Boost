@@ -1573,6 +1573,45 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 aapsLogger.info(LTag.APS, "V6-ACTIVE override skipped — Boost inactive; base oref1 SMB ${it.units ?: 0.0}U retained")
             }
 
+            // Post-meal PLATEAU-NUDGE shadow (2026-07-19) — READ-ONLY, delivers NOTHING.
+            // Finding: V6 under-recovers — it parks post-meal glucose at ~145-150 for hours
+            // (backtesting/2026-07-descent ff1). The per-cycle plateau low is UNFORECASTABLE (dr3:
+            // no signal — Twin forecast/floor/slope, oref minGuard/minPred, BG/IOB/trend — clears
+            // chance out-of-sample, best OOS AUC 0.55). So the lever is a base-rate + small-dose +
+            // hard-floor rule, per-user auto-config-gated in the active version (see
+            // backtesting/scripts/2026-07-v6-descent/PLATEAU_NUDGE_SPEC.md). This SHADOW logs the
+            // would-nudge + trigger/floor state via a `plateau=` reason tag so it can be banked +
+            // priced on-device before it ever doses. Belt-and-braces runCatching — never breaks a cycle.
+            runCatching {
+                val plateauNudgeU = 0.10
+                val bgMgdl = glucoseStatus.glucose
+                val trend = glucoseStatus.shortAvgDelta                       // mg/dL per 5 min
+                val iobNow = iobArray.firstOrNull()?.iob ?: 0.0
+                val committedCap = preferences.get(DoubleKey.ApsBoostV5CommittedCapU)
+                val maxIob = oapsProfile.max_iob
+                // oref1's forward-low guard, parsed from the reason built so far (mmol → mg/dL)
+                val mgRaw = Regex("minGuardBG ([0-9.]+)").find(it.reason.toString())?.groupValues?.getOrNull(1)?.toDoubleOrNull()
+                val minGuardMgdl = mgRaw?.let { m -> if (m < 30.0) m * 18.0 else m }
+                // trigger: post-meal plateau — above tight range, flat/falling, insulin on board
+                val inPlateau = bgMgdl in 145.0..199.9 && trend <= 1.7 && iobNow > 0.5
+                val nudgeRaw = minOf(plateauNudgeU, committedCap, maxOf(0.0, maxIob - iobNow))
+                // hard floors (can only tighten) — never nudge into a low
+                val floor = when {
+                    !inPlateau                                    -> "n/a"
+                    recentLowBG45Min < 75.0                       -> "recent-low"
+                    inPostRescueWindow                            -> "post-rescue"
+                    cumulativeCapReached                          -> "cum-cap"
+                    minGuardMgdl != null && minGuardMgdl < 85.0   -> "minguard"
+                    v5Asleep || !activityResult.boostActive       -> "not-active"
+                    nudgeRaw <= 0.0                               -> "no-headroom"
+                    else                                          -> "ok"
+                }
+                val wouldNudge = if (floor == "ok") nudgeRaw else 0.0
+                it.reason.append("plateau=${if (floor == "ok") 1 else 0},${Round.roundTo(wouldNudge, 0.001)}," +
+                    "${bgMgdl.toInt()},${Round.roundTo(trend, 0.1)},${Round.roundTo(iobNow, 0.01)}," +
+                    "${v5decision?.mealHypothesis ?: "?"},$floor; ")
+            }.onFailure { t -> aapsLogger.error(LTag.APS, "Plateau-nudge shadow failed (swallowed — dosing untouched)", t) }
+
             // V6: surface the anticipatory pre-meal target decision computed earlier this cycle.
             v6PreMealReason?.let { r -> it.reason.append(r) }
             // V6 meal-time learner: record a FRESH CONFIRMED commit (the event V5 treats as a meal)
