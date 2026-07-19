@@ -50,3 +50,34 @@ Twin signal that survived its gates.
 5/7 users (H,E lack V1 sleep telemetry); within-window V1/V6 split is a flash-date (≤~2wk internal
 gap; anything changed at the flash rides along); meal-onset detection is a CGM proxy; C has only 7 V6
 onsets. The mechanism is consistent across f1–f4 but the magnitude carries these confounds.
+
+---
+
+## Follow-up (velocity challenge) — the fix is the velocity gate, not the descent brake
+
+**f5 (descent, same-cycle + meal-aligned):** the plateau is NOT set by a harsher V6 descent brake.
+Same-cycle, in the descent (falling, IOB>1.5), V6's dose == V1's would-dose in every BG band (%V6<V1
+= 0–2%). But meal-aligned (transition window), V1 delivers **+0.77U MORE in the descent (t30–90)**
+while V6 front-loads **+0.31U MORE on the rise (t0–30)**, and V6 delivers LESS total (4.10 vs 4.57U).
+
+**f6/f7 (front-load trade, velocity-gated):** binning on PEAK (an outcome/collider) manufactured a
+front-load→lower-plateau benefit; gating on the pre-dose signal (velocity/accel at onset) it
+collapses — front-load only lowers the plateau on genuinely steep rises (>45 mg/dL/15min ≈ 90/30min);
+on modest rises it does not lower the plateau and adds crashes (flat rises crash 23%).
+
+**Resolved mechanism:** V6 over-front-loads MODEST rises → builds IOB → the (correct, both-algorithm)
+high-IOB reduction then suppresses the descent correction → less total meal insulin, higher plateau
+(143–150 vs V1's 132) → the −7.5 TING. The extra front-load doesn't even lower the peak (V1 reaches
+the same peak with less). Root cause = the velocity gate is mistuned.
+
+**THE FIX (existing constants, `velocityScaledDoseFactor` in DetermineBasalBoostV5.kt):**
+current `VELOCITY_RISE_HI=50, VELOCITY_SCALE_FLOOR=0.40` gives FULL front-load at 50/30min (≈25/15min,
+the no-benefit/crash band) and a 0.40 floor on flat rises. Retune **RISE_HI 50→90, FLOOR 0.40→0.15**
+(f8): cuts front-load −37% overall, concentrated in the flat/modest bands (crash 23%/10%, no plateau
+benefit) and **preserves the steep >90 band 1.00→1.00** (the only band where front-loading helps).
+
+This is INSULIN-REDUCING (safety direction; risk is higher peaks, not lows) and it is the OPPOSITE of
+the userH B3/A2 levers — the velocity gate is where the two reconcile: pull back the modest-rise floor
+for everyone, let per-user aggression modulate only the steep-rise response. Path: it's a policy
+change (outcome unvalidatable offline — the dose delta IS priced here), so auto-config-managed, watch
+the high tail, within-user trial at the two-test bar.
