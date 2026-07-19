@@ -47,6 +47,26 @@ corrections that gave old-V1 its edge are what the new guards throttle. Where cu
 ⇒ The meal-window lever is NOT "revert toward V1". It's the descent/plateau-nudge line on V6 (add the
 recovery insulin UNDER V6's brake, not remove the brake). Confirm-only view below (V6 also wins there).
 
+## OLD V1 (pre-ML, running LIVE, Feb–Apr) vs V6 — direct actuals (old_v1_era_vs_v6.sql)
+Not a shadow: old V1 was its own era before the ML/V6 line (~2026-05-01). Pure old-V1 exists for A,B,E,F,
+tim. Daytime (07–22 London) actual outcomes:
+
+| user | TING old→V6 | TIR old→V6 | TBR<70 old→V6 |
+|---|---|---|---|
+| A | 56.1→44.1 | 82.9→73.0 | 1.2→1.1 |
+| B | 67.9→56.8 | 83.6→75.7 | 3.1→2.0 |
+| tim | 67.1→61.1 | 85.1→81.7 | 2.9→3.4 |
+| E | 77.1→84.4 | 91.2→97.5 | 2.2→1.4 |
+| F | 45.4→48.0 | 63.0→77.9 | 4.3→2.4 |
+
+Old V1 higher TING for A(+12)/B(+11)/tim(+6) — genuinely tighter 63–140 — BUT more lows (B/E/F TBR up)
+and worse TIR for F (ran high). V6 safer (lower TBR, better TIR), slightly less tight-band TING; E/F
+better on V6. = **tighter-but-more-hypo old V1 vs safer V6** — the aggression V6's brake tames. TWO
+caveats: (1) SEASON — old V1 spring, V6 summer, can't separate here; (2) the within-cycle counterfactual
+(which removes season) says V1's DOSING POLICY doesn't beat V6 → the era TING edge is part season, part
+old-V1 dosing harder into more lows, NOT a free-lunch policy win. So old V1's tight-band edge came with a
+hypo cost V6 deliberately gave up; lever stays add-recovery-under-the-brake (plateau-nudge), not brake-off.
+
 ## Architecture fact that makes this a faithful current-V1 comparison
 OpenAPSBoostPlugin ~1345: ONE determine_basal call — the V1 DetermineBasalBoost — passed the RESOLVED
 cumulativeSmbCap60Min (line 1360). Its rT.units IS the logged `v1_units`, computed live each cycle WITH

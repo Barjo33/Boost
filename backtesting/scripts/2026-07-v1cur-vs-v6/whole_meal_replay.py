@@ -20,6 +20,9 @@ sys.path.insert(0, '../2026-07-v6-sim')
 from sim_lib import acted_fraction
 
 U = sys.argv[1]; HORIZON = 210
+LO = float(sys.argv[2]) if len(sys.argv) > 2 else 0.0          # optional onset epoch window (old/new split)
+HI = float(sys.argv[3]) if len(sys.argv) > 3 else 9e18
+TAG = sys.argv[4] if len(sys.argv) > 4 else "all"
 conn = psycopg2.connect("dbname=oref host=127.0.0.1 port=5432"); cur = conn.cursor()
 cur.execute("""select ts_epoch, cgm_mgdl, variable_sens, boostv5_state, boostv5_finaldose, v1_units, sleep_state
    from boost_decisions where user_id=%s and variant='boost-other' and cgm_mgdl is not null
@@ -45,7 +48,8 @@ for i in range(9, N):
     if EP[i]-EP[i-1] > 900: continue
     foot = BG[max(0, i-9):i+1].min()                             # trailing ~45min min
     if BG[i] > 130 and BG[i-1] <= 130 and foot < 120 and AWAKE[i] and (EP[i]-last) > 7200:
-        onsets.append(i); last = EP[i]
+        last = EP[i]
+        if LO <= EP[i] < HI: onsets.append(i)
 
 def ting(p): return 100.0*np.mean((p >= 63) & (p <= 140))
 def project(e0, k0):
@@ -73,9 +77,9 @@ for i in onsets:
         v6_crash=int(obs.min()<70), v1_crash=int(v1p.min()<70),
         v6_deep=int(obs.min()<54), v1_deep=int(v1p.min()<54),
         net_v1_minus_v6=net))
-json.dump(dict(user=U, isf=isf_med, n=len(meals), meals=meals), open(f"wm_{U}.json","w"))
+json.dump(dict(user=U, isf=isf_med, n=len(meals), meals=meals), open(f"wm_{U}_{TAG}.json","w"))
 def m(f): return round(np.mean([f(x) for x in meals]),1) if meals else 0
-print(f"{U}: {len(meals)} meal windows | TING% V6 {m(lambda x:x['v6_ting'])} vs V1 {m(lambda x:x['v1_ting'])}"
+print(f"{U} [{TAG}]: {len(meals)}mw | TING% V6 {m(lambda x:x['v6_ting'])} vs V1 {m(lambda x:x['v1_ting'])}"
       f" | tail V6 {m(lambda x:x['v6_tail'])} vs V1 {m(lambda x:x['v1_tail'])}"
       f" | %>140 V6 {m(lambda x:x['v6_t140'])} vs V1 {m(lambda x:x['v1_t140'])}"
       f" | crash% V6 {100*m(lambda x:x['v6_crash']):.0f} vs V1 {100*m(lambda x:x['v1_crash']):.0f}"
