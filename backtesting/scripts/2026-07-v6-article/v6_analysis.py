@@ -4,12 +4,14 @@ Boost V6 — cohort performance + dosing-mechanism analysis for the V6 article (
 
 Honest by construction (see CLAUDE.md + RELATIONSHIPS_REGISTER):
   - OUTCOMES (TIR/TING/TBR) are DESCRIPTIVE of the V6-active era. They are NOT a causal V6 effect:
-    the cross-user Boost-vs-oref comparison dissolved under a matched baseline (+2.9pp raw → +1.2pp
-    adjusted, permutation p≈0.27) and the within-user RCT has not been run. Reported per-user, then
-    summarised as the MEDIAN across users (within-subject > between; the cohort is small + self-selected).
-  - MECHANISM (V6 finalDose vs the V1 would-dose computed the SAME cycle) IS clean: it is a within-
-    cycle shadow comparison, no counterfactual needed. It shows HOW V6's policy differs from base
-    oref1 — where it restrains, where it front-loads — not that the difference improves outcomes.
+    no glucose simulator ⇒ no counterfactual vs the previous generation; the cohort is small +
+    self-selected; the within-user RCT has not been run. Reported per-user, then summarised as the
+    MEDIAN across users (within-subject > between).
+  - MECHANISM (V6 finalDose vs `v1_units`, the would-dose computed the SAME cycle) IS clean: a within-
+    cycle shadow comparison, no counterfactual needed. NOTE: `v1_units` is the PREVIOUS BOOST
+    generation (`DetermineBasalBoost`, the V1-gen Boost algorithm with its own UAM-Boost tiers), NOT
+    stock oref (CLAUDE.md: "V1 is Boost"). So it shows what V6 adds ON TOP OF an already-aggressive
+    predecessor — where it restrains, where it front-loads — not a gain over passive oref.
 
 Aggregates only; no raw traces leave the DB. Anonymised user tags (self→'tim', others A–H).
 """

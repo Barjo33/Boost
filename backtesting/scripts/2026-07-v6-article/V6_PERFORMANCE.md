@@ -20,14 +20,21 @@ Median across users (within-subject summary; the cohort is small + self-selected
 Per-user spread is large (TIR 77–99%) and tracks CV almost perfectly — consistent with the frontier
 finding that tight-range time is a **variability** problem (~1.3pp TING per 1% CV), not a dose-harder
 one. **These are outcomes WHILE on V6, not a measured V6 effect:** no glucose simulator ⇒ no
-counterfactual; the cross-user Boost-vs-oref advantage dissolved under a matched baseline (+2.9pp raw
-→ +1.2pp adjusted, permutation p≈0.27); the within-user RCT has not been run.
+counterfactual (how these users would have done on the previous Boost generation cannot be
+generated); the cohort is small + self-selected; the within-user RCT has not been run.
 
 ## Dosing mechanism — CLEAN (same-cycle `boostv5_finaldose` vs `v1_units`)
 
-Every cycle V6 records the dose base oref would have given. Comparing them, same user/cycle/glucose,
-needs no counterfactual. V6 **changes the dose on ~1 cycle in 11** (median: amplify 5.0%, restrain
-3.5%, identical 91.4%), net **+11%** insulin/day. Where it spends that insulin:
+**Baseline is PREVIOUS BOOST, not oref.** `v1_units` = `sug.units` from `DetermineBasalBoost` — the
+V1-generation Boost algorithm (its own UAM Boost tiers T3/T4/T5, committedCap, ML tier-downgrade;
+152 Boost-specific refs), NOT stock oref. CLAUDE.md: "V1 is Boost, not oref." So this is what V6
+adds *on top of an already-aggressive predecessor*, a demanding baseline — not a gain over passive
+oref. There is no stock-oref would-dose stored on the Android build.
+
+Every cycle V6 records the dose the previous Boost generation would have given. Comparing them, same
+user/cycle/glucose, needs no counterfactual. V6 **changes the dose on ~1 cycle in 11** (median:
+amplify 5.0%, restrain 3.5%, identical 91.4%), net **+11%** insulin/day (one user nets slightly
+less — the protective-tightening case). Where it spends that insulin:
 
 - **By glucose band (pooled, U/1000 cyc):** low <90 **+1.5**, in-band 90–140 +9.8, **mild-high
   140–180 +20.5**, high >180 +11.3. → concentrates on the addressable mild-high band; near-absent at lows.
@@ -49,7 +56,7 @@ there. Separating it needs a within-user randomised night (not run).
 
 ## What can / can't be claimed
 
-- Mechanism (how V6 differs from oref): **solid** — clean same-cycle comparison.
+- Mechanism (how V6 differs from the previous Boost generation): **solid** — clean same-cycle comparison.
 - Safety (lows held while dosing more): **well-supported** — observed fact of the era.
 - Outcome improvement: **not established** — no counterfactual, confounded cross-user comparison.
 - Generality: **limited** — 7 self-selected users, hypothesis-generating.
