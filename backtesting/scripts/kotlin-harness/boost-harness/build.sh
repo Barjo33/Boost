@@ -15,6 +15,7 @@ kotlinc \
   "$SRC/openAPSBoostTwin/TwinEnkf.kt" \
   "$SRC/openAPSBoostTwin/TwinShadow.kt" \
   "$SRC/openAPSBoostTwin/AnticipationBackoutShadow.kt" \
+  "$SRC/openAPSBoostTwin/TwinWithdrawalShadow.kt" \
   "$HERE/shims/HR.kt" \
   "$HERE/shims/Logging.kt" \
   "$SRC/openAPSBoost/SleepStateDetector.kt" \
