@@ -238,6 +238,10 @@ internal object BoostV5AutoConfigApply {
         )
         resolve(DoubleKey.ApsBoostMaxIob, suggestion.maxIobU)
         resolve(DoubleKey.ApsBoostBolus, suggestion.bolusCapU)
+        // 2026-07-20 V1-acceleration primer cap. NOT in doseCapKeys, so the raise-guard does not block
+        // it — the bolus-vs-temp-basal routing is the safety differentiator, and a tbr-routed
+        // (non-well-controlled) user still needs a non-zero cap to size the retractable temp-basal.
+        resolve(DoubleKey.ApsBoostV5PrimerCapU, suggestion.primerCapU)
         return resolutions
     }
 
