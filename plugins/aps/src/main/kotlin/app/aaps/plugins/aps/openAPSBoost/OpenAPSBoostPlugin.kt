@@ -894,11 +894,17 @@ open class OpenAPSBoostPlugin @Inject constructor(
     /** Max minutes the learned sleep window may move from the configured night start/end. */
     private val LEARNED_WINDOW_BAND_MIN = 90
 
-    private fun clampToConfiguredBand(learned: Int?, configured: Int, bandMin: Int): Int {
+    private fun clampToConfiguredBand(learned: Int?, configured: Int, bandMin: Int, allowEarlier: Boolean = true): Int {
         if (learned == null) return configured
-        // signed circular delta in [-720, 719]
+        // signed circular delta in [-720, 719] (positive = learned is LATER than configured)
         val delta = ((learned - configured + 1440 + 720) % 1440) - 720
-        val clamped = delta.coerceIn(-bandMin, bandMin)
+        // allowEarlier=false makes the nudge one-sided: learning may only move the bound LATER than the
+        // configured time, never earlier. Used for night-END (wake), where moving earlier would lift
+        // sleep protection before the user's own setting — the unsafe direction — and is a poor fit for a
+        // highly-variable waker (learned point-mean sits early; real-time detection catches genuine early
+        // wakes anyway). Night-START keeps the symmetric band (later-to-bed drift is expected + safe).
+        val loBand = if (allowEarlier) -bandMin else 0
+        val clamped = delta.coerceIn(loBand, bandMin)
         return ((configured + clamped) % 1440 + 1440) % 1440
     }
 
@@ -1624,7 +1630,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 // collapse seen when the hard-exit fed its own learned wake. No/insufficient data
                 // → effective == configured.
                 val effectiveNightStartMin = clampToConfiguredBand(agg.sleepStartMinAvg, configuredNightStartMin, LEARNED_WINDOW_BAND_MIN)
-                val effectiveNightEndMin = clampToConfiguredBand(agg.wakeMinAvg, configuredNightEndMin, LEARNED_WINDOW_BAND_MIN)
+                // wake side: one-sided — learning may only push the night-end LATER than configured, never
+                // earlier (never lift protection before the user's set wake). See clampToConfiguredBand.
+                val effectiveNightEndMin = clampToConfiguredBand(agg.wakeMinAvg, configuredNightEndMin, LEARNED_WINDOW_BAND_MIN, allowEarlier = false)
                 // Learned resting HR (sleep p10 median, ≥7 sessions) overrides the configured static value
                 // for sleep state evaluation; fallback is the existing user-set hrRestingBpm.
                 val effectiveHrResting = agg.restingHrBpm ?: hrRestingBpm
