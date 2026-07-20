@@ -1,5 +1,5 @@
 *.npz
 cache/
-out_*.txt
+out*.txt
 __pycache__/
 *.json

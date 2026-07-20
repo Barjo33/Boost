@@ -2,4 +2,5 @@
 .jsonjar
 __pycache__/
 *.class
-scenario_*.json
+*.json
+out*.txt
