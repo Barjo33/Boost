@@ -1,4 +1,5 @@
-*.json
-__pycache__/
 *.jar
-build/
+.jsonjar
+__pycache__/
+*.class
+scenario_*.json
