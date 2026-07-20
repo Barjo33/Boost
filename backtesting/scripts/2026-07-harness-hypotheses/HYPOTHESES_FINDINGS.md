@@ -42,6 +42,17 @@ the data, Boost's net glycaemic outcomes are statistically indistinguishable. Th
 across the whole session's search remains: **a DB-trained GBM is a genuinely better BG forecaster than the
 Twin (~2 mg/dL, SOLID)** — the sensor win, reconfirmed here at scale.
 
-Data note: pre-Feb extension attempted for tim (his NS has CGM back to Aug 2025) but there are NO loop/
-devicestatus records before Feb 2026 → the dosing DB can't extend; Feb is a hard boundary. Other users
-need the private site registry (not locally available) to extend at all.
+## EXTENDED-DATA RE-RUN (2026-07-20, after the Aug-2025 deep backfill — ~1949 user-days, all versions)
+All re-run on the full history (my earlier "no pre-Feb data" was a 504 fetch failure, now fixed via
+chunked pull). Consolidated, CI-backed:
+- **H12 (versions):** every glycaemic Δ still overlaps 0 → **v4.1.5 ≈ V5/V6 on outcomes** (strengthened).
+- **H4 (forecaster):** GBM − Twin **−2.41 [−2.46, −2.36]** mg/dL → GBM distinctly better; Twin adds 0.15
+  (negligible). The one durable positive. SOLID.
+- **Withdrawal:** 1949 user-days, still **7% justified / 93% unjustified / 50% covered** → not viable. SOLID.
+- **H2 (activity-gate):** DOWNGRADED — on 9 users Δ +4.1 **[−1.3, +12.7]** now overlaps 0 (was "helps" on
+  8). The gate is NOT a reliable rescue. (Discipline catching a small-cohort artifact.)
+- **H7 (compression):** AUC **0.50 [0.46, 0.53]** = chance. UNPROVEN.
+
+**Bottom line across all Boost data (Aug 2025 → now, every version):** the ONLY thing that survives is a
+DB-trained GBM being a better BG forecaster than the Twin (~2.4 mg/dL, SOLID). Every dosing/action lever is
+null-or-unproven, and versions didn't move net outcomes. The sensor is the win; the dosing levers are not.
