@@ -335,6 +335,11 @@ object SleepStateDetector {
         // consecutive cycles with avgHr above the wake floor; any miss (null or low) resets it.
         if (inputs.stepsToday >= 0) recordStepSample(newState.stepSamples, inputs.nowMs, inputs.stepsToday)
         val stepsInLookback = stepGrowth(newState.stepSamples, inputs.nowMs, WAKE_STEP_LOOKBACK_MIN)
+        // Unified strong-steps wake threshold (the user's ApsBoostSleepInSteps; constant fallback when the
+        // merge is off). Hoisted here so BOTH the PRE_SLEEP activity-escape and the SLEEPING steps-alone
+        // wake read the one value.
+        val strongStepsThreshold =
+            if (inputs.sleepInStepsThreshold > 0) inputs.sleepInStepsThreshold else WAKE_STEP_STRONG_THRESHOLD
         newState.hrHighStreak = if (avgHr != null && avgHr > wakeFloor) newState.hrHighStreak + 1 else 0
 
         debug.append("avgHr=${avgHr?.let { String.format("%.1f", it) } ?: "null"}")
@@ -411,8 +416,21 @@ object SleepStateDetector {
             }
 
             SleepState.PRE_SLEEP -> {
+                // Clear sustained activity releases PRE_SLEEP → AWAKE immediately, ANY time of night —
+                // never suppress dosing while the user is demonstrably up. Uses the same 60-min cumulative
+                // step growth vs the user's ApsBoostSleepInSteps threshold as the SLEEPING steps-alone wake,
+                // but UNGATED by clock/drought (PRE_SLEEP is not confirmed sleep, so activity is decisive).
+                // Fixes the 05:00 "up + BG rising but stuck PRE_SLEEP to the boundary" trap. NOT a genuine
+                // sleep→wake, so wakeReason stays null (does not train the wake learner).
+                if (stepsInLookback >= strongStepsThreshold) {
+                    newState = State(state = SleepState.AWAKE, enteredAtMs = inputs.nowMs,
+                                     lastFreshHrSampleMs = newState.lastFreshHrSampleMs,
+                                     stepSamples = newState.stepSamples, hrHighStreak = newState.hrHighStreak)
+                    transitioned = true
+                    debug.append(" | →AWAKE (activity ${stepsInLookback} steps/${WAKE_STEP_LOOKBACK_MIN}m ≥ $strongStepsThreshold)")
+                }
                 // Exit PRE_SLEEP if we've left the outer night window (morning exit before ever sleeping)
-                if (!inOuterWindow && !inPreSleep) {
+                else if (!inOuterWindow && !inPreSleep) {
                     newState = State(state = SleepState.AWAKE, enteredAtMs = inputs.nowMs,
                                      lastFreshHrSampleMs = newState.lastFreshHrSampleMs,
                                      stepSamples = newState.stepSamples, hrHighStreak = newState.hrHighStreak)
@@ -481,8 +499,6 @@ object SleepStateDetector {
                     val hrAboveWakeFloor = avgHr != null && avgHr > wakeFloor &&
                         newState.hrHighStreak >= WAKE_HR_SUSTAIN_CYCLES
                     val gentleWake = stepsConfirmWake && hrAboveWakeFloor && nearScheduledWake
-                    val strongStepsThreshold =
-                        if (inputs.sleepInStepsThreshold > 0) inputs.sleepInStepsThreshold else WAKE_STEP_STRONG_THRESHOLD
                     val strongStepsWake = stepsInLookback >= strongStepsThreshold && (droughtEstablished || inLieIn)
                     if (gentleWake || strongStepsWake) {
                         if (newState.wakeCandidateSinceMs == null) {
