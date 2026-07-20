@@ -18,18 +18,23 @@ never a safety floor.
 Each event: measured predictability (this session / prior probes), dose DIRECTION, action, and how safety
 is enforced. Direction is everything — reducing is safe to act on; adding must be retractable + gated.
 
-| Event | Predictability (source) | Direction | Anticipatory action | Safety enforcement |
+| Event | Predictability (MEASURED, kairos-lab E09) | Direction | Anticipatory action | Safety enforcement |
 |---|---|---|---|---|
-| **Activity / exercise onset** | AUC **0.85** (habit prior, [[anticipation-probes]]) | REDUCE | lower temp / raise target ahead of the walk | inherently safe; restore if no walk |
-| **Post-exercise delayed hypo** (recovery tail) | strong, universal (+2–3h, [[anticipation-probes]]) | REDUCE | pre-emptive zero-temp / target-up in the tail window | inherently safe; the single highest-value reducer |
-| **Meal onset** | AUC **~0.6**, meal-time spread 0.84 (E07) | ADD | tiny retractable temp-basal pre-position | back-out; per-user regular-eater gate ONLY |
+| **Post-exercise delayed hypo** (recovery-low) | AUC **0.72 median, PER-USER** (0.72–0.91 A/C/D/E; weak B/F/H) | REDUCE | pre-emptive zero-temp / target-up in the tail window | inherently safe; **the single prize**; keyed on recent-activity+IOB, not calendar |
+| **Activity / exercise onset** | AUC **0.62** (calendar-only — WEAK; NOT the 0.85 earlier probe) | REDUCE | lower temp / raise target ahead of the walk | inherently safe; restore if no walk; modest |
+| **Meal onset** | AUC **0.61**, meal-time spread 0.84 (E07/E09) | ADD | tiny retractable temp-basal pre-position | back-out; per-user regular-eater gate ONLY |
 | **Dawn phenomenon** | frequent (~82%) but timing-loose ([[anticipation-probes]]) | ADD | gentle early-AM temp-basal, wide window | back-out; time-locked so confirm is easy |
 | **Sleep onset / wake** | detector + learned window (already shipped) | posture | engage/lift night-mode; feeds all the above | real-time detection + one-sided clamp (07-20 fix) |
 | **Sensitivity regime** (illness / cycle / alcohol) | slow, per-user; TDD-trend + Twin drift | scale | nudge the sensitivity prior (not a discrete dose) | offline/periodic; damper-only, never a floor |
 
-**Design consequence of the ceilings:** the layer's confident wins are the REDUCERS (activity, recovery
-tail) — high predictability AND safe direction. The ADDERS (meal, dawn) are low/loose and risky, so they
-are small, retractable, and gated. We lead with the reducers.
+**⚠️ CORRECTION from E09 (2026-07-20):** the spec originally claimed "reducers are the prize, activity AUC
+0.85". The clean current-data test says otherwise — calendar-based ACTIVITY-ONSET anticipation is WEAK
+(0.62), same tier as meals. The one head that genuinely predicts (0.72, per-user) is the **recovery-low
+REDUCER**, and it works because it's keyed on RECENT ACTIVITY + IOB, i.e. REACT to the walk then anticipate
+the delayed low — not calendar. **Design consequence:** the layer's real, safe win is the recovery-low
+reducer (per-user gated). Meal/activity-onset/dawn are all weak ~0.6 calendar predictors that earn their
+place ONLY because back-out makes being wrong cheap. Lead with the recovery-low reducer; keep expectations
+for the rest modest. Calibration (ECE ~0.10–0.24) is workable for the reducer, poor for the meal adder.
 
 ## 2. The model (learned, per-person, pre-trained inference — rule #2 compliant)
 - **Retargeted from nightscout-ml**: its temporal LSTM + person-pattern features, but predicting the EVENT,
