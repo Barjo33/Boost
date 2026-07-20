@@ -4,10 +4,11 @@
   2. RESIDUAL MAP — where the OOF error concentrates (that IS the map of missing signal).
   3. CANDIDATE SIGNALS — for each candidate feature group, does adding it reduce OOS RMSE? (bootstrap CI).
 Full history, all users, GroupKFold by user. BG+30 target. Row-sampled for speed."""
-import numpy as np, psycopg2, pandas as pd
+import sys, numpy as np, psycopg2, pandas as pd
 from sklearn.model_selection import GroupKFold
 import lightgbm as lgb
 RNG = np.random.default_rng(0)
+HORIZON = int(sys.argv[1]) if len(sys.argv) > 1 else 30    # forecast horizon (minutes)
 VARPRIO = {"boost-other": 0, "trio-shadow": 1, "v1": 2, "v2": 3, "v3": 4, "v1-silent": 5}
 USERS = ["tim", "A", "B", "C", "D", "E", "F", "H", "G"]
 
@@ -27,11 +28,13 @@ with psycopg2.connect("dbname=oref host=127.0.0.1 port=5432") as conn:
                 if ep[j]-ep[j-1] > 900: return np.nan
                 j -= 1
             return cgm[j] if abs(ep[j]-t) < 400 else np.nan
-        def fwd(i, m=30):
+        def fwd(i, m=HORIZON):
             t = ep[i]+m*60; j = np.searchsorted(ep, t)
             c = [k for k in (j-1, j, j+1) if 0 <= k < n and abs(ep[k]-t) < 300]
             if not c: return np.nan
-            k = min(c, key=lambda k: abs(ep[k]-t)); return cgm[k] if not (ep[k]-ep[i] > 2400) else np.nan
+            k = min(c, key=lambda k: abs(ep[k]-t))
+            seg = ep[i:k+1]                                   # reject if a data gap (>20min) sits in the path
+            return cgm[k] if not (len(seg) >= 2 and np.diff(seg).max() > 1200) else np.nan
         d["d5"] = [cgm[i]-back(i, 5) for i in range(n)]; d["d15"] = [cgm[i]-back(i, 15) for i in range(n)]
         d["d30"] = [cgm[i]-back(i, 30) for i in range(n)]
         d["bg_std30"] = [np.std(cgm[max(0, i-6):i+1]) if i >= 2 else np.nan for i in range(n)]

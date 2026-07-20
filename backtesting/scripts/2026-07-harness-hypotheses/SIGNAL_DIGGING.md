@@ -45,10 +45,29 @@ the short-horizon forecast: they're too slow (TDD/DynISF move over days), too no
 trajectory. The big residual (rising/meal regimes) is dominated by **unannounced meals + exercise
 intensity, which are not in the data** (no meal announcements is the premise) → largely IRREDUCIBLE.
 
-## Two threads this opens (not yet tested)
-1. **Longer horizons (+90/+120):** momentum decays, so the SLOW signals (sensitivity regime, TDD,
-   circadian) that hurt at +30 may finally help where the regime matters more than the trajectory. The
-   "signals hurt" result is horizon-specific and worth re-testing at 2–3h.
-2. **The real opportunity may be DETECTION, not prediction:** the residual lives in meals we can't predict
-   — but could a signal DETECT the meal *earlier* (shrink the reaction lag)? That reframes the search from
-   "predict BG" to "flag the unannounced meal sooner", which is what the loop actually needs.
+## Two threads — BOTH TESTED (2026-07-20)
+
+### Thread 1 — longer horizon (+120): regime hypothesis REFUTED, HR a minor real signal.
+Base RMSE 39.5 @2h (prediction is just hard). Importances shift to IOB + time-of-day + steps (momentum
+decays, as expected). BUT the sensitivity/DynISF/TDD signals **still HURT, worse (+0.48)** — the "regime
+signal has a home at long horizon" idea is dead. The only signal that flips to helping is **heart rate
+(−0.13 [−0.15,−0.11])** — real and distinguishable, ~4× its +30 effect, but tiny against a base of 40. No
+meaningful predictive win.
+
+### Thread 2 — earlier meal DETECTION: no usable precursor; the glucose trajectory is the signal.
+Per meal, lead of each candidate over the reactive BG-delta trigger (`meal_detection.py`):
+- **HR appears to lead by ~15 min (86–100% of meals) — but it's a FALSE lead.** HR-crossing false-alarm
+  rate is **83–100%**: HR is above resting+12 most of the awake day (movement/stress), so its "15-min
+  lead" is just "HR was already up because the person was awake", not a meal-specific precursor. Same
+  sensitive-not-specific trap as lo30. (2 of 8 users have no HR at all.) NOT usable.
+- **Acceleration (curvature) leads by ~5 min [5.0, 9.8]** — real, CGM-derived (so specificity is
+  manageable). Modest but genuine: the 2nd derivative flags the meal ~5 min before the delta threshold.
+
+## Consolidated conclusion (signal digging + both threads)
+**The glucose trajectory — value, delta, and its curvature — is essentially ALL the signal there is.**
+Without meal announcements, you cannot know about an unannounced meal before its glucose signature, and no
+non-CGM precursor (HR, activity, sensitivity, TDD, ML) gives specific, usable early warning. The remaining
+residual is irreducible (unobserved carbs + exercise intensity). The ONE consistent, real, cheap win
+across every test is **acceleration (curvature)**: it improves the forecast (~0.16 mg/dL @30) AND detects
+the meal ~5 min earlier. Everything else we hoped carried hidden signal — the physiological state, the
+sensitivity regime, HR — is either non-specific or too slow/noisy. The well is, honestly, nearly dry.
