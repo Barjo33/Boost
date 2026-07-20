@@ -97,6 +97,7 @@ A record of the data relationships, dosing levers, mechanisms and models we've e
 | Dawn phenomenon → timed correction | Frequent but timing too loose | 82% of fasting nights, +55 mg/dL, but onset SD 75 min |
 | Meal-time anticipation | ≈ chance | onsets roughly uniform |
 | eventualBG as a forecast | Not predictive | R² −2.32 |
+| Crash-shape (spike→low) predictable AT confirm | No — chance. Rules out predict-and-restrain; vindicates the retractable back-out (unwind after the fact) as the only crash defence | 2026-07-20 `2026-07-postconfirm-accel/meal_shape.py`, OOS AUC 0.518 [0.485, 0.549], 2117 meals, GroupKFold by user |
 
 ### Models, methods, and corrected effect sizes
 | Item | Why discarded / corrected | Evidence |
@@ -122,6 +123,7 @@ A record of the data relationships, dosing levers, mechanisms and models we've e
 | Multi-day activity-load ISF bump (deviation-based) | Design on record but never built; this session tested only the simplest 24h form (null) — the full deviation form is untested |
 | Activity BG-rising override (Design 9) | Believed shipped but never coded in any branch; activity target still unguarded |
 | Menstrual-cycle / hormonal sensitivity | Literature review + 3 proposals on record; needs cycle-detection input, not built |
+| Tail-shape (under-recovery) predictable AT confirm | Weakly — OOS AUC 0.60 [0.58, 0.63] (2026-07-20 `meal_shape.py`); diffuse, partly second-meal clustering (time-of-day). Too weak to gate; only safe use is a weak prior to bring plateau-nudge on earlier. Low priority |
 
 ---
 
