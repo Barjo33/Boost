@@ -1505,9 +1505,21 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     it.reason.append("twin=${fc.fc30},${fc.fc60},${fc.lo60},${fc.hi60},${fc.raMean},${fc.filteredGi}," +
                         "${Round.roundTo(bolusU + basalU, 0.001)},${fc.lo30},$floorBreach; ")
                     // Anticipatory back-out shadow: run the retractable-anticipation state machine off the
-                    // Twin's Ra + BG, with mlMealLikely as the placeholder ARM trigger. READ-ONLY.
+                    // Twin's Ra + BG. ARM on the accelMeal onset detector (the best onset cue from signal
+                    // digging) with mlMealLikely retained as a secondary OR-trigger; armSrc is logged so the
+                    // two are compared on banked data (2026-07-20 ACCELMEAL_ARM_SPEC.md). READ-ONLY. The arm
+                    // computation duplicates the accelMeal block below by design, to keep the two shadows'
+                    // failure isolation independent — a fault here degrades to no-arm, never breaks a cycle.
+                    val accelArm = runCatching {
+                        val accel = glucoseStatus.shortAvgDelta - glucoseStatus.longAvgDelta
+                        val rising = glucoseStatus.delta > 0.0 || glucoseStatus.shortAvgDelta > 0.0
+                        val preConfirm = v5decision?.mealHypothesis == null ||
+                            v5decision.mealHypothesis == MealHypothesis.IDLE ||
+                            v5decision.mealHypothesis == MealHypothesis.OBSERVING
+                        accel > 2.0 && rising && preConfirm
+                    }.getOrDefault(false)
                     runCatching {
-                        backoutShadow.runCycle(now, glucoseStatus.glucose, fc.raMean, fc.lo30, it.mlMealLikely)
+                        backoutShadow.runCycle(now, glucoseStatus.glucose, fc.raMean, fc.lo30, it.mlMealLikely, accelArm)
                             ?.let { p -> it.reason.append("antBackout=$p; ") }
                     }.onFailure { t -> aapsLogger.error(LTag.APS, "Back-out shadow failed (swallowed — dosing untouched)", t) }
                 }
