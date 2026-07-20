@@ -64,8 +64,10 @@ ANTBACKOUT_RE = re.compile(r"antBackout=([^;]+);")
 
 def _antb(reason: str, i: int, cast=float):
     """Anticipatory back-out controller SHADOW tag (2026-07-20), READ-ONLY: doses nothing.
-    "antBackout=state,ra0,raNow,bg0,bgNow,confirmed,backedout,trip,mealLikely;" — state(IDLE|ARMED),
-    the Ra/BG at ARM vs now, and the confirm/back-out/low-trip flags. Mixed text+numeric → split on ','."""
+    "antBackout=state,ra0,raNow,bg0,bgNow,confirmed,backedout,trip,mealLikely,armSrc;" — state(IDLE|ARMED),
+    the Ra/BG at ARM vs now, the confirm/back-out/low-trip flags, and armSrc(accel|ml|-) = which trigger
+    armed this run (2026-07-20 ACCELMEAL_ARM: accelMeal onset detector OR the mlMealLikely placeholder;
+    field 9, absent in pre-accelArm data → None). Mixed text+numeric → split on ','."""
     m = ANTBACKOUT_RE.search(reason or "")
     if not m:
         return None
@@ -487,6 +489,7 @@ def build_row(rec: dict, user_id: str) -> Optional[dict]:
         "antbackout_bg0": _antb(reason, 3, int), "antbackout_bgnow": _antb(reason, 4, int),
         "antbackout_confirmed": _antb(reason, 5, int), "antbackout_backedout": _antb(reason, 6, int),
         "antbackout_trip": _antb(reason, 7, int), "antbackout_meallikely": _antb(reason, 8),
+        "antbackout_armsrc": _antb(reason, 9, str),
         "ml_hypo_risk": sug.get("mlHypoRisk"),
         "ml_meal_likely": sug.get("mlMealLikely"),
         # 2026-07-07 sensing hardening: which step feeds were live this cycle
@@ -712,6 +715,7 @@ ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_confirmed       integer;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_backedout       integer;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_trip            integer;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_meallikely      double precision;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_armsrc          text;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS ml_hypo_risk          double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS ml_meal_likely        double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS v1_units              double precision;
