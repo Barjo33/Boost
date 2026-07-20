@@ -27,14 +27,18 @@ is enforced. Direction is everything — reducing is safe to act on; adding must
 | **Sleep onset / wake** | detector + learned window (already shipped) | posture | engage/lift night-mode; feeds all the above | real-time detection + one-sided clamp (07-20 fix) |
 | **Sensitivity regime** (illness / cycle / alcohol) | slow, per-user; TDD-trend + Twin drift | scale | nudge the sensitivity prior (not a discrete dose) | offline/periodic; damper-only, never a floor |
 
-**⚠️ CORRECTION from E09 (2026-07-20):** the spec originally claimed "reducers are the prize, activity AUC
-0.85". The clean current-data test says otherwise — calendar-based ACTIVITY-ONSET anticipation is WEAK
-(0.62), same tier as meals. The one head that genuinely predicts (0.72, per-user) is the **recovery-low
-REDUCER**, and it works because it's keyed on RECENT ACTIVITY + IOB, i.e. REACT to the walk then anticipate
-the delayed low — not calendar. **Design consequence:** the layer's real, safe win is the recovery-low
-reducer (per-user gated). Meal/activity-onset/dawn are all weak ~0.6 calendar predictors that earn their
-place ONLY because back-out makes being wrong cheap. Lead with the recovery-low reducer; keep expectations
-for the rest modest. Calibration (ECE ~0.10–0.24) is workable for the reducer, poor for the meal adder.
+**⚠️ CORRECTED TWICE — read this (CONFIDENCE AUDIT, kairos-lab E10, bootstrap CIs):**
+1. The original "activity AUC 0.85" was cited from memory and is WRONG — measured 0.62.
+2. The follow-up "recovery-low is the prize (0.72, distinctly best)" is ALSO UNPROVEN. With bootstrap CIs,
+   recovery_low − meal (paired per-user) = −0.00 [−0.13, +0.23] → **NOT DISTINGUISHABLE.** The 0.72-vs-0.61
+   gap was 3 users (A/C/D), not a real difference.
+**What the CIs actually support:** all three heads (recovery_low 0.72 [0.57,0.82], activity 0.62
+[0.54,0.67], meal 0.61 [0.55,0.70]) are WEAK and mutually INDISTINGUISHABLE, per-user variable (H's
+recovery-low is even inverted, 0.27). **Design consequence:** do NOT privilege any single head; the layer
+rests on uniformly weak (~0.6–0.7) predictors, so expect a SMALL win at best, gate everything hard
+per-user, and rely on retractable back-out to make being-wrong cheap. The only SOLID, actionable fact is
+that the meal ADDER is weak → safe posture = reducers + retractability, applied modestly. The ACTION side
+(does pre-position+back-out improve outcomes) remains entirely UNTESTED/SPECULATIVE.
 
 ## 2. The model (learned, per-person, pre-trained inference — rule #2 compliant)
 - **Retargeted from nightscout-ml**: its temporal LSTM + person-pattern features, but predicting the EVENT,
