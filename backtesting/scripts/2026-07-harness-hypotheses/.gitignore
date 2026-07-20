@@ -1,0 +1,5 @@
+*.npz
+cache/
+out_*.txt
+__pycache__/
+*.json
