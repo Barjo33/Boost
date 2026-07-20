@@ -59,6 +59,23 @@ TRIO_TAG_RE = re.compile(
 
 TWIN_RE = re.compile(r"twin=([-\d.,]+)")
 PLATEAU_RE = re.compile(r"plateau=([^;]+);")
+ANTBACKOUT_RE = re.compile(r"antBackout=([^;]+);")
+
+
+def _antb(reason: str, i: int, cast=float):
+    """Anticipatory back-out controller SHADOW tag (2026-07-20), READ-ONLY: doses nothing.
+    "antBackout=state,ra0,raNow,bg0,bgNow,confirmed,backedout,trip,mealLikely;" — state(IDLE|ARMED),
+    the Ra/BG at ARM vs now, and the confirm/back-out/low-trip flags. Mixed text+numeric → split on ','."""
+    m = ANTBACKOUT_RE.search(reason or "")
+    if not m:
+        return None
+    parts = m.group(1).split(",")
+    if i >= len(parts):
+        return None
+    try:
+        return cast(parts[i])
+    except (ValueError, TypeError):
+        return None
 
 
 def _plat(reason: str, i: int, cast=float):
@@ -464,6 +481,12 @@ def build_row(rec: dict, user_id: str) -> Optional[dict]:
         "boostv5_plateau_trend": _plat(reason, 3),
         "boostv5_plateau_iob": _plat(reason, 4),
         "boostv5_plateau_floor": _plat(reason, 6, str),
+        # 2026-07-20 anticipatory back-out controller SHADOW (read-only; BACKOUT_CONTROLLER_SPEC.md).
+        "antbackout_state": _antb(reason, 0, str),
+        "antbackout_ra0": _antb(reason, 1), "antbackout_ranow": _antb(reason, 2),
+        "antbackout_bg0": _antb(reason, 3, int), "antbackout_bgnow": _antb(reason, 4, int),
+        "antbackout_confirmed": _antb(reason, 5, int), "antbackout_backedout": _antb(reason, 6, int),
+        "antbackout_trip": _antb(reason, 7, int), "antbackout_meallikely": _antb(reason, 8),
         "ml_hypo_risk": sug.get("mlHypoRisk"),
         "ml_meal_likely": sug.get("mlMealLikely"),
         # 2026-07-07 sensing hardening: which step feeds were live this cycle
@@ -680,6 +703,15 @@ ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boostv5_plateau_bg         double p
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boostv5_plateau_trend      double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boostv5_plateau_iob        double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boostv5_plateau_floor      text;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_state           text;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_ra0             double precision;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_ranow           double precision;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_bg0             double precision;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_bgnow           double precision;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_confirmed       integer;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_backedout       integer;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_trip            integer;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_meallikely      double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS ml_hypo_risk          double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS ml_meal_likely        double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS v1_units              double precision;
