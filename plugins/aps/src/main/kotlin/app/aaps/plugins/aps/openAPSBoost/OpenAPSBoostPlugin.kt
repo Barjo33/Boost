@@ -1512,6 +1512,23 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     }.onFailure { t -> aapsLogger.error(LTag.APS, "Back-out shadow failed (swallowed — dosing untouched)", t) }
                 }
             }.onFailure { t -> aapsLogger.error(LTag.APS, "KAIROS Twin shadow failed (swallowed — dosing untouched)", t) }
+            // Acceleration-based early-meal-detection SHADOW (2026-07-20). Signal digging over all Boost
+            // data found BG ACCELERATION (curvature) is the one signal worth adding: it detects an
+            // unannounced meal ~5 min before the delta-based confirm (and improves the forecaster). accel =
+            // shortAvgDelta − longAvgDelta (>0 = the rise is accelerating). Flags a would-be EARLIER
+            // meal-confirm when acceleration + a rise are present but the state has not CONFIRMED yet.
+            // READ-ONLY — logs accelMeal=; delivers NOTHING (shadow-first; a live earlier-confirm is a
+            // dosing change → two-test bar). Banks the on-device lead + false-alarm to price it.
+            runCatching {
+                val accel = glucoseStatus.shortAvgDelta - glucoseStatus.longAvgDelta
+                val rising = glucoseStatus.delta > 0.0 || glucoseStatus.shortAvgDelta > 0.0
+                val preConfirm = v5decision?.mealHypothesis == null ||
+                    v5decision.mealHypothesis == MealHypothesis.IDLE ||
+                    v5decision.mealHypothesis == MealHypothesis.OBSERVING
+                val trig = if (accel > 2.0 && rising && preConfirm) 1 else 0
+                it.reason.append("accelMeal=$trig,${Round.roundTo(accel, 0.1)},${Round.roundTo(glucoseStatus.shortAvgDelta, 0.1)}," +
+                    "${Round.roundTo(glucoseStatus.longAvgDelta, 0.1)},${glucoseStatus.glucose.toInt()},${v5decision?.mealHypothesis ?: "?"}; ")
+            }.onFailure { t -> aapsLogger.error(LTag.APS, "Accel-meal shadow failed (swallowed — dosing untouched)", t) }
             // Sleep gate (2026-06-14): do NOT let V5 drive the SMB while SLEEPING — fall back to V1's
             // (oref1/Boost) SMB, which already respects night mode. V5 still computes its shadow
             // telemetry above (runShadow ran), so the V5-vs-V1 comparison continues overnight; only
