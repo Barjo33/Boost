@@ -86,6 +86,7 @@ A record of the data relationships, dosing levers, mechanisms and models we've e
 | "Re-engage tuning" after confirmed highs | Same high-IOB problem | rejected 07-03 |
 | Blanket OBSERVING raise | Contraindicated outside the safe cell | 07-03 |
 | V4.4 post-SMB gate | Too restrictive to ever fire | engaged 0/99 then 0/115 (max delta far below trigger) |
+| Second confirm on continued post-confirm acceleration | Real prediction signal (peak +23 mg/dL, distinguishable) but NO low-rate headroom — accel group already crashes ~19%/severe ~6.6% at current dose, not lower than decel (Δ overlaps 0); per-user C/F crash MORE; the fast-carb overshoot shape. Engine already blocks it (Fix 6) + holds COMMITTED 1.0×, which is correct | 2026-07-20 `2026-07-postconfirm-accel/` (3,879 anchors, 9 users, cluster-boot CI + real-engine scenario run) |
 
 ### Signals and predictors
 | Relationship | Why discarded | Evidence |
