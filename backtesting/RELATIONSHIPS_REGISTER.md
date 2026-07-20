@@ -17,6 +17,8 @@ A record of the data relationships, dosing levers, mechanisms and models we've e
 | committedCap OBSERVING→CONFIRMED gate | ~41% block (tracks the trivial population), defensible | 07-02 | Shipped; STUCK-14% is the watch-item |
 | Fast-carb confirm latency | V5 stayed OBSERVING one cycle too long (0.3U vs 1.7U) → late peak/crash | 06-16 | Fast-carb fast-path |
 | V5 front-loads before highs | All users dose earlier ahead of highs | 06-15 shadow backtest | V5 design validated (severe-low pullback mixed) |
+| V1 acceleration gate vs V6 confirm | V1's `delta_accl>10` leads V6 CONFIRMED by median 15 min at 98% recall (precision 15%); V6 gated it away | 2026-07-20 `2026-07-v1-acceleration/`, 14,430 fires | Early-detection signal to reclaim (small/retractable only) |
+| V1 early acceleration bolus fizzle-safety | Fizzle-safe by size: pure (bolus-attributed) fizzle-low 4.4% vs 3.3% ambient, Δ +0.9% [−0.6, +3.0] — no excess. 69% of the raw fizzle-lows were DOWNSTREAM follow-through, not the entry | 2026-07-20 `v1_fizzle_pure.py`, V1-era Aug'25–Jul'26 | Restore entry + rely on V6 brake for follow-through; C/tim(U200) smaller cap |
 
 ### Exercise and activity
 | Relationship / lever | Finding | Evidence | Status |
@@ -126,6 +128,7 @@ A record of the data relationships, dosing levers, mechanisms and models we've e
 | Multi-day activity-load ISF bump (deviation-based) | Design on record but never built; this session tested only the simplest 24h form (null) — the full deviation form is untested |
 | Activity BG-rising override (Design 9) | Believed shipped but never coded in any branch; activity target still unguarded |
 | Menstrual-cycle / hormonal sensitivity | Literature review + 3 proposals on record; needs cycle-detection input, not built |
+| V1 early-primer reintegration into V6 engine | Design on record (`2026-07-v1-acceleration/REINTEGRATION_SPEC.md`): OBSERVING acceleration primer, netted off the commit-shot (move-not-add), V6 brake guards the follow-through, auto-config-sized. Shadow-first, not built |
 | Tail-shape (under-recovery) predictable AT confirm | Weakly — OOS AUC 0.60 [0.58, 0.63] (2026-07-20 `meal_shape.py`); diffuse, partly second-meal clustering (time-of-day). Too weak to gate; only safe use is a weak prior to bring plateau-nudge on earlier. Low priority |
 
 ---
