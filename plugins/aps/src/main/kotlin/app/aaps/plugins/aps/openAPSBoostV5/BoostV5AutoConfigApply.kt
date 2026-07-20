@@ -116,7 +116,8 @@ internal object BoostV5AutoConfigApply {
         DoubleKey.ApsBoostV5CommittedCapU,
         DoubleKey.ApsBoostCumulativeSmbCap60Min,
         DoubleKey.ApsBoostMaxIob,
-        DoubleKey.ApsBoostBolus
+        DoubleKey.ApsBoostBolus,
+        DoubleKey.ApsBoostV5PrimerCapU   // 2026-07-20 — NOT in doseCapKeys (routing is the safety, see BoostV5AutoConfig)
     )
 
     /** [managedDoubleKeys] paired with their suggested values (same stable order). */
@@ -127,7 +128,8 @@ internal object BoostV5AutoConfigApply {
         DoubleKey.ApsBoostV5CommittedCapU to s.committedCapU,
         DoubleKey.ApsBoostCumulativeSmbCap60Min to s.cumulativeSmbCap60MinU,
         DoubleKey.ApsBoostMaxIob to s.maxIobU,
-        DoubleKey.ApsBoostBolus to s.bolusCapU
+        DoubleKey.ApsBoostBolus to s.bolusCapU,
+        DoubleKey.ApsBoostV5PrimerCapU to s.primerCapU   // 2026-07-20 V1-acceleration primer
     )
 
     /**
