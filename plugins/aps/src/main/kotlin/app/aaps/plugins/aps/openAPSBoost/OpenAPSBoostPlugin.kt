@@ -317,6 +317,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
     // ~30 min after a restart; fail-safe). READ-ONLY telemetry; never touches the dose path. Uses the
     // validated default per-person parameters. (2026-07-18)
     private val twinShadow by lazy { app.aaps.plugins.aps.openAPSBoostTwin.TwinShadow() }
+    // Anticipatory back-out controller SHADOW (2026-07-20): retractable-anticipation state machine, held
+    // in memory across cycles. READ-ONLY — logs antBackout=...; delivers nothing. See BACKOUT_CONTROLLER_SPEC.
+    private val backoutShadow by lazy { app.aaps.plugins.aps.openAPSBoostTwin.AnticipationBackoutShadow() }
 
     // ---- Post-exercise recovery state ----
     @Volatile private var recoveryWindowEnd: Long = 0L
@@ -1501,6 +1504,12 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     val floorBreach = if (fc.lo30 < 70.0) 1 else 0
                     it.reason.append("twin=${fc.fc30},${fc.fc60},${fc.lo60},${fc.hi60},${fc.raMean},${fc.filteredGi}," +
                         "${Round.roundTo(bolusU + basalU, 0.001)},${fc.lo30},$floorBreach; ")
+                    // Anticipatory back-out shadow: run the retractable-anticipation state machine off the
+                    // Twin's Ra + BG, with mlMealLikely as the placeholder ARM trigger. READ-ONLY.
+                    runCatching {
+                        backoutShadow.runCycle(now, glucoseStatus.glucose, fc.raMean, fc.lo30, it.mlMealLikely)
+                            ?.let { p -> it.reason.append("antBackout=$p; ") }
+                    }.onFailure { t -> aapsLogger.error(LTag.APS, "Back-out shadow failed (swallowed — dosing untouched)", t) }
                 }
             }.onFailure { t -> aapsLogger.error(LTag.APS, "KAIROS Twin shadow failed (swallowed — dosing untouched)", t) }
             // Sleep gate (2026-06-14): do NOT let V5 drive the SMB while SLEEPING — fall back to V1's
