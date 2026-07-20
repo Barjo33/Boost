@@ -4,14 +4,18 @@
 BoostV1_415 = the early v4.1.5 Boost / no explicit v1/v6 telemetry, then V5V6). Validate-before-building
 discipline: every effect size has a bootstrap 95% CI + a distinguishable-from-baseline verdict.*
 
-## H12 — did Boost get better across versions? **No measurable change. (SOLID, season-confounded.)**
-Within-user paired Boost V1 (4.1.5) → V5/V6, median Δ [95% CI] — **every metric overlaps 0:**
-- ΔTING −2.0 [−4.8, +6.5] · ΔTIR −0.65 [−2.6, +3.5] · ΔTBR<70 −0.21 [−0.47, +0.47] · ΔCV −0.70 [−3.1, +1.4]
-Cohort medians are near-identical (TING 69 vs 70, TIR 88 vs 87, TBR 3.6 vs 3.5, CV 30 vs 29). Per-user it's
-a wash — some up (C +7 TING, F +7), some down (A −5, H −7), most flat. **The program's versions did not move
-the net glycaemic numbers.** (Season-confounded: V1=spring, V6=summer; but even so, no signal — the
-meal-window −7.5 regression is a within-window effect that washes out at the whole-day level, offset by
-night-mode gains.) Humbling and important: outcome-wise, v4.1.5 ≈ V5/V6.
+## H12 — did Boost get better across versions? **No measurable change. (SOLID — now on a deep V1 baseline.)**
+*Updated 2026-07-20 after the deep backfill: the Boost V1 era now reaches back to Aug 2025 (tim/A/D/F
+72–82k V1 cycles each; 9 users). The verdict STRENGTHENED — every metric still overlaps 0.*
+Within-user paired Boost V1 (4.1.5) → V5/V6, median Δ [95% CI], n=9:
+- ΔTING −1.6 [−5.4, +2.4] · ΔTIR −0.3 [−2.3, +3.5] · ΔTBR<70 −0.21 [−0.92, +0.28] · ΔTBR<54 +0.01 [−0.45,+0.24]
+  · ΔCV −0.9 [−3.1, +2.8] · Δmean +3 [−6, +4]
+Cohort medians near-identical (TING 68.9↔69.6, TIR 87.2↔85.7, TBR<70 3.93↔3.66, CV 31.2↔29.8, mean 125↔127).
+Per-user a wash (C +7 TING on V6, F +2 & CV 36→30, A −5, H −7; TBR lower on V6 for F/tim/D). **Across the
+whole arc from the original Boost v4.1.5 (back to Aug 2025) to V5/V6, net glycaemic outcomes did NOT
+measurably change** — the versions changed dosing *behaviour* (meal handling, brakes) but not the person's
+overall TIR/TING/TBR/CV. Season-confounded (V1 autumn–spring, V6 summer), but the null holds regardless.
+Robust, humbling headline: **v4.1.5 ≈ V5/V6 on outcomes.** (Deep-history extension: [[harness-hypotheses-batch]].)
 
 ## H4 — Twin+GBM hybrid forecaster? **GBM beats the Twin; the Twin adds ~nothing. (SOLID.)**
 BG+30 RMSE (OOS GroupKFold, n=308k): Twin 23.6, GBM 21.5, GBM+Twin 21.48.
