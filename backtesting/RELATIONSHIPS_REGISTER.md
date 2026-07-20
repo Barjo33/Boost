@@ -100,6 +100,7 @@ A record of the data relationships, dosing levers, mechanisms and models we've e
 | Dawn phenomenon → timed correction | Frequent but timing too loose | 82% of fasting nights, +55 mg/dL, but onset SD 75 min |
 | Meal-time anticipation | ≈ chance | onsets roughly uniform |
 | eventualBG as a forecast | Not predictive | R² −2.32 |
+| Founding-flow restoration (seed-hard→trigger-UAM→firm-up) into V6 | NOT supported broadly. On real meals V1≈V6 (same peak 183, same lows, delivery indistinguishable; the 15-min "lead" is the CONFIRM label not delivery). On gated high meals the WITHHELD ones peak lower (193 vs 207) with fewer lows (8.4 vs 12.4%) than the aggressively-dosed — aggressive-early associates with MORE lows (selection-confounded by meal size, but no evidence gating costs outcomes). Keep the primer per-user; don't build a graded aggressive ramp | 2026-07-20 `2026-07-founding-flow/`, 8 users both eras, within-user cluster-boot |
 | Crash-shape (spike→low) predictable AT confirm | No — chance. Rules out predict-and-restrain; vindicates the retractable back-out (unwind after the fact) as the only crash defence | 2026-07-20 `2026-07-postconfirm-accel/meal_shape.py`, OOS AUC 0.518 [0.485, 0.549], 2117 meals, GroupKFold by user |
 
 ### Models, methods, and corrected effect sizes
