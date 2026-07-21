@@ -18,6 +18,7 @@ A record of the data relationships, dosing levers, mechanisms and models we've e
 | Fast-carb confirm latency | V5 stayed OBSERVING one cycle too long (0.3U vs 1.7U) → late peak/crash | 06-16 | Fast-carb fast-path |
 | V5 front-loads before highs | All users dose earlier ahead of highs | 06-15 shadow backtest | V5 design validated (severe-low pullback mixed) |
 | V1 acceleration gate vs V6 confirm | V1's `delta_accl>10` leads V6 CONFIRMED by median 15 min at 98% recall (precision 15%); V6 gated it away | 2026-07-20 `2026-07-v1-acceleration/`, 14,430 fires | Early-detection signal to reclaim (small/retractable only) |
+| Primer confirm-net (credit accumulated fizzle IOB against the commit-shot) | Keeps every seed; at CONFIRM nets primer IOB beyond one base off the commit-shot → meal net-extra bounded to one base regardless of fizzle count. 87% of confirms follow ≥1 primer; nets off >0.1U on 57% (median 0.39U). Only removes insulin (safe-signed) | 2026-07-21 `2026-07-primer-clustering/primer_confirm_net.py`, 2170 meals | SHIPPED `6c439c8dee` (the one primer-cluster lever that survives) |
 | V1 early acceleration bolus fizzle-safety | Fizzle-safe by size: pure (bolus-attributed) fizzle-low 4.4% vs 3.3% ambient, Δ +0.9% [−0.6, +3.0] — no excess. 69% of the raw fizzle-lows were DOWNSTREAM follow-through, not the entry | 2026-07-20 `v1_fizzle_pure.py`, V1-era Aug'25–Jul'26 | Restore entry + rely on V6 brake for follow-through; C/tim(U200) smaller cap |
 
 ### Exercise and activity
@@ -87,6 +88,8 @@ A record of the data relationships, dosing levers, mechanisms and models we've e
 | RECOVERING-state SMB | Adds into a high-IOB tail → lows | rejected 07-03 |
 | "Re-engage tuning" after confirmed highs | Same high-IOB problem | rejected 07-03 |
 | Blanket OBSERVING raise | Contraindicated outside the safe cell | 07-03 |
+| Primer rolling-window cap (block fizzle-clustering) | ~1:1 seed:fizzle trade at every W×K — seeds and fizzles temporally interleaved, real meals often start right after a fizzle burst, so no window separates them. gap+reset identical (fizzles precede the confirm) | 2026-07-21 `2026-07-primer-clustering/primer_cap_sweep.py` |
+| Primer IOB-taper (shrink when recent primer-IOB high) | Cuts dips only ∝ cutting the dose everywhere incl. real-meal seeds (cap 0.5: dips −37%, seed −41%) — seeds fire after fizzle bursts so they get tapered too; ≈ a smaller global primer | 2026-07-21 `2026-07-primer-clustering/primer_iob_taper.py` |
 | V4.4 post-SMB gate | Too restrictive to ever fire | engaged 0/99 then 0/115 (max delta far below trigger) |
 | Second confirm on continued post-confirm acceleration | Real prediction signal (peak +23 mg/dL, distinguishable) but NO low-rate headroom — accel group already crashes ~19%/severe ~6.6% at current dose, not lower than decel (Δ overlaps 0); per-user C/F crash MORE; the fast-carb overshoot shape. Engine already blocks it (Fix 6) + holds COMMITTED 1.0×, which is correct | 2026-07-20 `2026-07-postconfirm-accel/` (3,879 anchors, 9 users, cluster-boot CI + real-engine scenario run) |
 
