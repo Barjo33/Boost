@@ -232,8 +232,12 @@ object HrActivityCalculator {
             !lowSteps && zone <= HrZone.ZONE_2_LIGHT ->
                 ExerciseState.LIGHT_AEROBIC to Confidence.MEDIUM
 
-            // Resistance: low steps but HR clearly elevated (zone 3–4)
-            lowSteps && zone >= HrZone.ZONE_3_MODERATE && zone <= HrZone.ZONE_4_HARD ->
+            // Resistance / non-step exercise: HR clearly elevated (zone 3–4) with steps below the
+            // MODERATE-aerobic threshold. 2026-07-21 FIX: was `lowSteps` (<30), which left a DEAD ZONE —
+            // 30–100 steps + zone 3/4 matched no branch and fell through to RESTING, so a cyclist/rower
+            // with incidental stepping mis-classified RESTING and the INACTIVE branch then ADDED insulin
+            // (real incident: BG 85 falling 12/5min got profile 130% at zone3). Widen to !moderateSteps.
+            !moderateSteps && zone >= HrZone.ZONE_3_MODERATE && zone <= HrZone.ZONE_4_HARD ->
                 ExerciseState.RESISTANCE to Confidence.MEDIUM
 
             // Stress: low steps + zone 2–3 (elevated HR without movement)
@@ -261,4 +265,19 @@ object HrActivityCalculator {
             debugInfo = debug.toString()
         )
     }
+
+    /**
+     * 2026-07-21 SAFETY GUARD — the belt-and-braces companion to the RESISTANCE dead-zone fix above.
+     *
+     * The inactivity branch RAISES basal (adds insulin) on the assumption the user is sedentary. An
+     * ELEVATED heart rate flatly contradicts that assumption: zone ≥ 3 (HRR ≥ 40%) is exercise-range,
+     * whatever the step count says. A real incident added profile 130% at zone3 into a BG falling
+     * 12 mg/dL per 5 min because the step count (64) landed in the classifier dead zone and the state
+     * came back RESTING. This guard keys on the HR **zone directly**, so it holds even if the fused
+     * exerciseState is wrong — the inactivity insulin must never fire while the heart says exercise.
+     *
+     * @return true when the inactivity profile-raise must be suppressed (raise target instead).
+     */
+    fun inactivitySuppressedByElevatedHr(result: HrClassificationResult?): Boolean =
+        result != null && result.hrZone >= HrZone.ZONE_3_MODERATE
 }
