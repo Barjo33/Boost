@@ -607,6 +607,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             primerCapU = if (activeMode) preferences.getBoostDosing(DoubleKey.ApsBoostV5PrimerCapU) else 0.0,
             primerUseTempBasal = preferences.getBoostDosing(BooleanKey.ApsBoostV5PrimerTbrFallback) &&
                 !preferences.getBoostDosing(BooleanKey.ApsBoostV5PrimerBolusMode),
+            nowMs = dateUtil.now(),   // 2026-07-21 wall-clock for the primer-IOB accumulator decay
         )
     }
 

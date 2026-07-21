@@ -59,7 +59,8 @@ class PrimerTest {
         assertThat(d.primerBolusU).isWithin(1e-9).of(0.35)
         assertThat(d.finalDose).isAtLeast(0.35)                               // folded into the delivered SMB
         assertThat(d.newPersistedState.primerAppliedU).isWithin(1e-9).of(0.35)
-        assertThat(d.newPersistedState.primerNettingResidualU).isWithin(1e-9).of(0.05)  // 0.35 − base 0.30
+        assertThat(d.newPersistedState.primerNettingResidualU).isWithin(1e-9).of(0.0)   // netting deferred to CONFIRMED
+        assertThat(d.newPersistedState.primerIobU).isWithin(1e-9).of(0.35)              // accrued for the confirm-time net-off
     }
 
     @Test fun `primer off when primerCapU is 0`() {
@@ -105,12 +106,28 @@ class PrimerTest {
         assertThat(withResidual.newPersistedState.primerNettingResidualU).isWithin(1e-9).of(0.0)
     }
 
-    @Test fun `primer resets on IDLE (session over)`() {
+    @Test fun `primer resets on IDLE but the IOB accumulator carries (cross-session)`() {
         val idleInputs = observingAccelInputs().copy(delta = -2.0, shortAvgDelta = -2.0, deltaAccl = 0.0, mlMealLikely = 0.0, eventualBg = 90.0)
-        val stale = V5PersistedState(mealHypothesis = MealHypothesisState(MealHypothesis.IDLE), primerAppliedU = 0.35, primerNettingResidualU = 0.05)
+        val stale = V5PersistedState(mealHypothesis = MealHypothesisState(MealHypothesis.IDLE),
+            primerAppliedU = 0.35, primerNettingResidualU = 0.05, primerIobU = 0.3)
         val d = determineBasal.decide(idleInputs, stale)
         assertThat(d.mealHypothesis).isEqualTo(MealHypothesis.IDLE)
-        assertThat(d.newPersistedState.primerAppliedU).isWithin(1e-9).of(0.0)
-        assertThat(d.newPersistedState.primerNettingResidualU).isWithin(1e-9).of(0.0)
+        assertThat(d.newPersistedState.primerAppliedU).isWithin(1e-9).of(0.0)          // session guard resets
+        assertThat(d.newPersistedState.primerNettingResidualU).isWithin(1e-9).of(0.0)  // netting resets
+        assertThat(d.newPersistedState.primerIobU).isWithin(1e-9).of(0.3)              // accumulator carries (nowMs=0 → no decay)
+    }
+
+    @Test fun `CONFIRM nets accumulated primer IOB beyond one base off the commit-shot (Tim's rule)`() {
+        // Fast-path confirm from IDLE with 0.7U accumulated primer IOB (prior fizzles) on board.
+        val ci = observingAccelInputs().copy(delta = 8.0, shortAvgDelta = 7.0, deltaAccl = 15.0,
+            mlMealLikely = 0.9, fastCarbConfirmEnabled = true, eventualBg = 200.0, primerCapU = 0.3)
+        val idle = V5PersistedState(mealHypothesis = MealHypothesisState(MealHypothesis.IDLE))
+        val withIob = determineBasal.decide(ci, idle.copy(primerIobU = 0.7))
+        val atBase  = determineBasal.decide(ci, idle.copy(primerIobU = 0.3))  // == one base → nets 0
+        assertThat(withIob.mealHypothesis).isEqualTo(MealHypothesis.CONFIRMED)
+        // net-off = 0.7 − 0.3 base = 0.4 removed from the commit-shot (which is ≥ 0.4 here)
+        assertThat(atBase.finalDose - withIob.finalDose).isWithin(1e-9).of(0.4)
+        // credited excess consumed → accumulator held at one base (no double-credit next meal)
+        assertThat(withIob.newPersistedState.primerIobU).isWithin(1e-9).of(0.3)
     }
 }
