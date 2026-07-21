@@ -753,7 +753,23 @@ open class OpenAPSBoostPlugin @Inject constructor(
             } else if (StepFeed.inactivityEligible(stepsAvailable, currentProfileSwitch, recentSteps60Min, inactivitySteps)) {
                 // Inactivity confirmed on a LIVE feed — check HR for stress. (F1 2026-07-07: a dark
                 // feed can no longer reach this branch — "no steps" must not mean "sedentary".)
-                if (hrStressDetection &&
+                if (hrIntegrationEnabled && HrActivityCalculator.inactivitySuppressedByElevatedHr(hrClassification)) {
+                    // 2026-07-21 CRITICAL SAFETY: an elevated HR (zone ≥ 3) with a low step count is
+                    // probable NON-STEP exercise (cycling, rowing, resistance). The inactivity branch
+                    // adds insulin (profile → inactivityPct); a real incident raised profile 130% at
+                    // zone3 while BG fell 12 mg/dL per 5 min because 64 steps landed in the classifier
+                    // dead zone and came back RESTING. Keying on the HR ZONE directly (not the fused
+                    // state), suppress the profile-raise entirely and raise the target instead.
+                    activityState = "RESISTANCE"
+                    val elevatedHrTarget = 160.0
+                    if (!tempTargetSet) {
+                        activityMinBg = elevatedHrTarget
+                        activityMaxBg = elevatedHrTarget
+                        activityTargetBg = elevatedHrTarget
+                    }
+                    aapsLogger.debug(LTag.APS, "Inactivity SUPPRESSED — HR elevated (${hrClassification?.hrZone?.label}, ${String.format("%.0f", hrClassification?.averageHrBpm ?: 0.0)} bpm) with low steps → non-step exercise; raising target to $elevatedHrTarget, profile UNCHANGED (NOT adding insulin)")
+                    debug.append("\nInactivity SUPPRESSED (HR ${hrClassification?.hrZone?.label} elevated, 60m steps $recentSteps60Min) → target $activityTargetBg, profile unchanged")
+                } else if (hrStressDetection &&
                     hrClassification?.exerciseState == HrActivityCalculator.ExerciseState.STRESS &&
                     hrClassification.confidence != HrActivityCalculator.Confidence.LOW
                 ) {
