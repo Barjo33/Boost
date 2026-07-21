@@ -88,6 +88,8 @@ class V5StateStore(private val preferences: Preferences, private val aapsLogger:
                 // pre-primer state → default 0.0 (safe: no primer credited, no netting owed).
                 primerAppliedU = json.optDouble("primerAppliedU", 0.0),
                 primerNettingResidualU = json.optDouble("primerNettingResidualU", 0.0),
+                primerIobU = json.optDouble("primerIobU", 0.0),                              // 2026-07-21 cross-session accumulator
+                primerIobUpdatedMs = json.optLong("primerIobUpdatedMs", 0L),
                 // lastCycleScore is deliberately NOT in the JSON blob (see V5PersistedState KDoc) —
                 // it lives only in the in-memory cache. Cold start → null → scoreReadyStreak=false
                 // → legacy confirm timing for the first cycle. (2026-07-03)
@@ -119,6 +121,8 @@ class V5StateStore(private val preferences: Preferences, private val aapsLogger:
             .put("mlMealLikelyNullStreak", state.mlMealLikelyNullStreak)
             .put("primerAppliedU", state.primerAppliedU)                     // 2026-07-20 primer session state
             .put("primerNettingResidualU", state.primerNettingResidualU)
+            .put("primerIobU", state.primerIobU)                            // 2026-07-21 cross-session accumulator
+            .put("primerIobUpdatedMs", state.primerIobUpdatedMs)
         preferences.put(StringKey.ApsBoostV5State, json.toString())
     }
 
