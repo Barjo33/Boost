@@ -14,6 +14,7 @@ A record of the data relationships, dosing levers, mechanisms and models we've e
 | Age-gate −1 when score-ready | Harm-neutral, ~1.5 U/day shifted | 07-03 | Score-ready lever |
 | OBSERVING raise, restricted cell | Only defensible in BG≥140 ∧ IOB<5% TDD | 07-03 | Blanket raise contraindicated |
 | Post-rescue meal-state cap | 27% of removed insulin sat pre-low (worst-priced found) | 07-04 backtest | Shipped: suppress meal-state exemption when recentLow<75 |
+| Composed post-rescue rebound guard (scale T7/T8 in-window) | Tier demotion alone doesn't restrain: T7/T8 uncapped by fastCarbScale + delta-weighted ISF inflates insulinReq → 3.55U at BG 97 post-hypo (user-H 2026-07-23 double incident, loop disabled). Graduated scale on FINAL microBolus in-window: 34% [32,37] of removed insulin sat pre-low (new best-priced; LOUO floor 27% dropping D); cost 9% genuine meals at 0.80U median | 07-23 `2026-07-postrescue-rebound-guard/` (103k dosing cycles) | Shipped `51e7663a36` (V7-shadow) + `0eb4a65b39` (experimental); no velocity escape in-window (Fix D argument) |
 | committedCap OBSERVING→CONFIRMED gate | ~41% block (tracks the trivial population), defensible | 07-02 | Shipped; STUCK-14% is the watch-item |
 | Fast-carb confirm latency | V5 stayed OBSERVING one cycle too long (0.3U vs 1.7U) → late peak/crash | 06-16 | Fast-carb fast-path |
 | V5 front-loads before highs | All users dose earlier ahead of highs | 06-15 shadow backtest | V5 design validated (severe-low pullback mixed) |
