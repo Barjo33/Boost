@@ -1694,8 +1694,13 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 // oref1's forward-low guard, parsed from the reason built so far (mmol → mg/dL)
                 val mgRaw = Regex("minGuardBG ([0-9.]+)").find(it.reason.toString())?.groupValues?.getOrNull(1)?.toDoubleOrNull()
                 val minGuardMgdl = mgRaw?.let { m -> if (m < 30.0) m * 18.0 else m }
-                // trigger: post-meal plateau — above tight range, flat/falling, insulin on board
-                val inPlateau = bgMgdl in 145.0..199.9 && trend <= 1.7 && iobNow > 0.5
+                // trigger: post-meal plateau — above tight range, flat/falling, insulin on board.
+                // SHADOW band widened past the spec's 200 ceiling (2026-07-25): a live stuck-high at
+                // 219-247 with IOB ~2 showed insulinReq≈0 above 200 too (eventualBG≈target — the
+                // efficacy deficit is invisible to IOB), so bank those episodes as well. The tag
+                // records BG, so [145,200) vs [200,250) price separately; the ACTIVE nudge spec
+                // band stays [145,200) until the upper band earns its own verdict.
+                val inPlateau = bgMgdl in 145.0..249.9 && trend <= 1.7 && iobNow > 0.5
                 val nudgeRaw = minOf(plateauNudgeU, committedCap, maxOf(0.0, maxIob - iobNow))
                 // hard floors (can only tighten) — never nudge into a low
                 val floor = when {
