@@ -60,6 +60,25 @@ TRIO_TAG_RE = re.compile(
 TWIN_RE = re.compile(r"twin=([-\d.,]+)")
 PLATEAU_RE = re.compile(r"plateau=([^;]+);")
 ANTBACKOUT_RE = re.compile(r"antBackout=([^;]+);")
+ANTICIP_RE = re.compile(r"anticip=([^;]+);")
+
+
+def _anticip(reason: str, i: int, cast=float):
+    """Per-user ANTICIPATION SHADOW tag (2026-07-27), READ-ONLY: doses nothing.
+    "anticip=pEx,pMeal,srcEx,srcMeal,exArm,exConf,exBO,mealArm,mealConf,mealBO,minsEx,minsMeal,nEx,nMeal;"
+    pEx/pMeal = p(onset within 45min) or '-' (unfitted); srcEx/srcMeal = peruser|blend|prior; the
+    arm/confirm/backout edge flags per lever (0/1); minutes since last onset; banked onset counts.
+    Field 0/1 may be '-' → None. Mixed text+numeric → split on ','."""
+    m = ANTICIP_RE.search(reason or "")
+    if not m:
+        return None
+    parts = m.group(1).split(",")
+    if i >= len(parts):
+        return None
+    try:
+        return cast(parts[i])
+    except (ValueError, TypeError):
+        return None
 
 
 def _antb(reason: str, i: int, cast=float):
@@ -490,6 +509,14 @@ def build_row(rec: dict, user_id: str) -> Optional[dict]:
         "antbackout_confirmed": _antb(reason, 5, int), "antbackout_backedout": _antb(reason, 6, int),
         "antbackout_trip": _antb(reason, 7, int), "antbackout_meallikely": _antb(reason, 8),
         "antbackout_armsrc": _antb(reason, 9, str),
+        # 2026-07-27 per-user ANTICIPATION SHADOW (read-only; ANTICIPATION_ARCHITECTURE_SPEC.md).
+        "anticip_p_ex": _anticip(reason, 0), "anticip_p_meal": _anticip(reason, 1),
+        "anticip_src_ex": _anticip(reason, 2, str), "anticip_src_meal": _anticip(reason, 3, str),
+        "anticip_ex_arm": _anticip(reason, 4, int), "anticip_ex_conf": _anticip(reason, 5, int),
+        "anticip_ex_bo": _anticip(reason, 6, int), "anticip_meal_arm": _anticip(reason, 7, int),
+        "anticip_meal_conf": _anticip(reason, 8, int), "anticip_meal_bo": _anticip(reason, 9, int),
+        "anticip_mins_ex": _anticip(reason, 10, int), "anticip_mins_meal": _anticip(reason, 11, int),
+        "anticip_n_ex": _anticip(reason, 12, int), "anticip_n_meal": _anticip(reason, 13, int),
         "ml_hypo_risk": sug.get("mlHypoRisk"),
         "ml_meal_likely": sug.get("mlMealLikely"),
         # 2026-07-07 sensing hardening: which step feeds were live this cycle
@@ -716,6 +743,20 @@ ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_backedout       integer;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_trip            integer;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_meallikely      double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_armsrc          text;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS anticip_p_ex               double precision;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS anticip_p_meal             double precision;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS anticip_src_ex             text;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS anticip_src_meal           text;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS anticip_ex_arm             integer;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS anticip_ex_conf            integer;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS anticip_ex_bo              integer;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS anticip_meal_arm           integer;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS anticip_meal_conf          integer;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS anticip_meal_bo            integer;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS anticip_mins_ex            integer;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS anticip_mins_meal          integer;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS anticip_n_ex               integer;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS anticip_n_meal             integer;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS ml_hypo_risk          double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS ml_meal_likely        double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS v1_units              double precision;

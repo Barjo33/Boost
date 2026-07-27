@@ -320,6 +320,24 @@ open class OpenAPSBoostPlugin @Inject constructor(
     // Anticipatory back-out controller SHADOW (2026-07-20): retractable-anticipation state machine, held
     // in memory across cycles. READ-ONLY — logs antBackout=...; delivers nothing. See BACKOUT_CONTROLLER_SPEC.
     private val backoutShadow by lazy { app.aaps.plugins.aps.openAPSBoostTwin.AnticipationBackoutShadow() }
+    // Per-user ANTICIPATION shadow (2026-07-27): refits per-user exercise/meal onset-hazard models
+    // offline, predicts p(onset) at 45-min lead, runs the two retractable arms in shadow. READ-ONLY —
+    // logs anticip=...; delivers nothing. Onset history persists as a StringKey JSON blob (V7 idiom).
+    // See openAPSBoostTwin/ANTICIPATION_ARCHITECTURE_SPEC.md (Phase 1+2). Runs in the shared engine, so
+    // it covers plain Boost, V5/V6, and the V7-shadow line identically.
+    private val anticipShadow by lazy {
+        app.aaps.plugins.aps.openAPSBoostTwin.AnticipationShadow(
+            loadState = { preferences.get(StringKey.ApsBoostAnticipHistory) },
+            saveState = { preferences.put(StringKey.ApsBoostAnticipHistory, it) },
+            logError = { msg, t -> aapsLogger.error(LTag.APS, msg, t) },
+            weekMinuteOf = { ms ->
+                val z = java.time.Instant.ofEpochMilli(ms).atZone(java.time.ZoneId.systemDefault())
+                app.aaps.plugins.aps.openAPSBoostTwin.AnticipationHabitModel.weekMinute(
+                    z.dayOfWeek.value - 1, z.hour * 60 + z.minute
+                )
+            },
+        )
+    }
 
     // ---- Post-exercise recovery state ----
     @Volatile private var recoveryWindowEnd: Long = 0L
@@ -1718,6 +1736,22 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     "${bgMgdl.toInt()},${Round.roundTo(trend, 0.1)},${Round.roundTo(iobNow, 0.01)}," +
                     "${v5decision?.mealHypothesis ?: "?"},$floor; ")
             }.onFailure { t -> aapsLogger.error(LTag.APS, "Plateau-nudge shadow failed (swallowed — dosing untouched)", t) }
+
+            // Per-user ANTICIPATION shadow (2026-07-27) — READ-ONLY, delivers NOTHING. Records this
+            // cycle's exercise/meal onset, refits the per-user habit models offline, predicts p(onset)
+            // at a 45-min lead, and runs the two retractable arms in shadow. Appends anticip=... .
+            // Belt-and-braces on top of the shadow's own try/catch — can never break a cycle.
+            runCatching {
+                anticipShadow.runCycle(
+                    reason = it.reason,
+                    nowMs = now,
+                    steps5Min = recentSteps5Min,
+                    mealStateName = v5decision?.mealHypothesis?.name,
+                    bg = glucoseStatus.glucose,
+                    delta = glucoseStatus.delta,
+                    inPostRescueWindow = inPostRescueWindow,
+                )
+            }.onFailure { t -> aapsLogger.error(LTag.APS, "Anticipation shadow invocation failed (swallowed)", t) }
 
             // V6: surface the anticipatory pre-meal target decision computed earlier this cycle.
             v6PreMealReason?.let { r -> it.reason.append(r) }
