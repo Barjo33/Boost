@@ -18,10 +18,14 @@ class V7ResidualTrackerTest {
     private val cycleMs = 300_000L
 
     /** Drive [n] consecutive 5-min cycles with constant inputs, starting at [startMs]. */
+    /** Old constant-BGI5 projection, kept in tests to preserve the residual arithmetic. */
+    private fun proj(bg: Double, bgi5: Double?): DoubleArray? =
+        bgi5?.let { b -> DoubleArray(V7ResidualTracker.HORIZONS_MIN.size) { i -> bg + b * V7ResidualTracker.HORIZONS_MIN[i] / 5.0 } }
+
     private fun drive(tracker: V7ResidualTracker, n: Int, bg: Double, bgi5: Double?, regime: V7Regime?, startMs: Long = 0L): Long {
         var t = startMs
         repeat(n) {
-            tracker.onCycle(t, bg, bgi5, regime)
+            tracker.onCycle(t, bg, proj(bg, bgi5), regime)
             t += cycleMs
         }
         return t
@@ -76,10 +80,10 @@ class V7ResidualTrackerTest {
     @Test fun `excluded cycles pool nothing but still mature earlier projections`() {
         val tracker = V7ResidualTracker()
         // One MEAL projection at t=0, then excluded cycles (regime null) supply the observations.
-        tracker.onCycle(0L, 100.0, -2.0, V7Regime.MEAL)
+        tracker.onCycle(0L, 100.0, proj(100.0, -2.0), V7Regime.MEAL)
         var t = cycleMs
         repeat(20) {
-            tracker.onCycle(t, 100.0, -2.0, null)
+            tracker.onCycle(t, 100.0, proj(100.0, -2.0), null)
             t += cycleMs
         }
         // The MEAL projection matured at all three horizons off excluded-cycle observations…
@@ -107,7 +111,7 @@ class V7ResidualTrackerTest {
         assertThat(tracker.count(V7Regime.QUIET_FLAT, 30)).isEqualTo(V7ResidualTracker.WARM_MIN_SAMPLES - 1)
         assertThat(tracker.quantiles(V7Regime.QUIET_FLAT, 30)).isNull()
         // One more cycle matures the 150th sample → warm.
-        tracker.onCycle((V7ResidualTracker.WARM_MIN_SAMPLES + 5) * cycleMs, 100.0, 0.0, V7Regime.QUIET_FLAT)
+        tracker.onCycle((V7ResidualTracker.WARM_MIN_SAMPLES + 5) * cycleMs, 100.0, proj(100.0, 0.0), V7Regime.QUIET_FLAT)
         assertThat(tracker.count(V7Regime.QUIET_FLAT, 30)).isEqualTo(V7ResidualTracker.WARM_MIN_SAMPLES)
         assertThat(tracker.quantiles(V7Regime.QUIET_FLAT, 30)).isNotNull()
     }
@@ -119,7 +123,7 @@ class V7ResidualTrackerTest {
         val end = drive(tracker, 20, bg = 100.0, bgi5 = 0.0, regime = V7Regime.MEAL)
         assertThat(tracker.count(V7Regime.MEAL, 30)).isEqualTo(14) // 20 cycles − 6 not yet due
         // 22 days later: everything in the pool predates the window → evicted.
-        tracker.onCycle(end + 22L * 86_400_000L, 100.0, 0.0, V7Regime.MEAL)
+        tracker.onCycle(end + 22L * 86_400_000L, 100.0, proj(100.0, 0.0), V7Regime.MEAL)
         assertThat(tracker.count(V7Regime.MEAL, 30)).isEqualTo(0)
     }
 
@@ -144,10 +148,10 @@ class V7ResidualTrackerTest {
 
     @Test fun `persistence round-trip preserves PENDING projections - they mature after a restart`() {
         val tracker = V7ResidualTracker()
-        tracker.onCycle(0L, 100.0, -2.0, V7Regime.MEAL) // in-flight projection, nothing matured
+        tracker.onCycle(0L, 100.0, proj(100.0, -2.0), V7Regime.MEAL) // in-flight projection, nothing matured
         val restored = V7ResidualTracker.deserialize(tracker.serialize())
         assertThat(restored.count(V7Regime.MEAL, 30)).isEqualTo(0)
-        restored.onCycle(30 * 60_000L, 100.0, null, null) // observation 30 min later
+        restored.onCycle(30 * 60_000L, 100.0, proj(100.0, null), null) // observation 30 min later
         assertThat(restored.count(V7Regime.MEAL, 30)).isEqualTo(1)
         assertThat(restored.median(V7Regime.MEAL, 30)).isNull() // still cold — abstains
     }
@@ -164,11 +168,11 @@ class V7ResidualTrackerTest {
 
     @Test fun `multi-invoke in the same 5-min bucket dedups to a single projection`() {
         val tracker = V7ResidualTracker()
-        tracker.onCycle(0L, 100.0, -2.0, V7Regime.MEAL)
-        tracker.onCycle(60_000L, 101.0, -2.0, V7Regime.MEAL)  // same bucket → replaces
+        tracker.onCycle(0L, 100.0, proj(100.0, -2.0), V7Regime.MEAL)
+        tracker.onCycle(60_000L, 101.0, proj(101.0, -2.0), V7Regime.MEAL)  // same bucket → replaces
         var t = cycleMs
         repeat(8) {
-            tracker.onCycle(t, 100.0, null, null)
+            tracker.onCycle(t, 100.0, proj(100.0, null), null)
             t += cycleMs
         }
         assertThat(tracker.count(V7Regime.MEAL, 30)).isEqualTo(1)
@@ -176,12 +180,12 @@ class V7ResidualTrackerTest {
 
     @Test fun `a missed maturation window (data gap) yields no sample for that horizon only`() {
         val tracker = V7ResidualTracker()
-        tracker.onCycle(0L, 100.0, -2.0, V7Regime.MEAL)
+        tracker.onCycle(0L, 100.0, proj(100.0, -2.0), V7Regime.MEAL)
         // Next observation 40 min later: the 30-min window (due 30, late tol +5) was missed…
-        tracker.onCycle(40 * 60_000L, 100.0, null, null)
+        tracker.onCycle(40 * 60_000L, 100.0, proj(100.0, null), null)
         assertThat(tracker.count(V7Regime.MEAL, 30)).isEqualTo(0)
         // …but the 60-min horizon still matures on time.
-        tracker.onCycle(60 * 60_000L, 100.0, null, null)
+        tracker.onCycle(60 * 60_000L, 100.0, proj(100.0, null), null)
         assertThat(tracker.count(V7Regime.MEAL, 60)).isEqualTo(1)
     }
 }

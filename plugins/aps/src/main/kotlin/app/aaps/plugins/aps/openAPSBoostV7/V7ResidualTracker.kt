@@ -47,13 +47,15 @@ fun classifyV7Regime(mealState: MealHypothesis?, delta: Double, shortAvgDelta: D
  * the 2026-07 foundation report; the SIZING rule built on it was NO-GO and is instrumented
  * read-only by [V7Shadow]).
  *
- * Each cycle it records the IOB-only projection the foundation backtests used
- * (v7_common.py's expected-BG model — the honest subset of what the telemetry carries):
- *
- *     BGI5        = −iob_activity × variable_sens × 5      [mg/dL per 5 min]
- *     projBG(t+h) = bg(t) + BGI5 × h/5                     [constant-activity hold]
- *
- * for h ∈ {30, 60, 90} min. When a horizon matures (a later cycle lands inside the maturation
+ * Each cycle it records the IOB-only projection at h ∈ {30, 60, 90} min. Since 2026-07-27 the
+ * projection is oref's decaying-activity IOB prediction curve (rT.predBGs.IOB — the purple
+ * IOB-only line), passed in by [V7Shadow]. The original substrate held the INSTANTANEOUS
+ * activity constant over the horizon (projBG = bg + BGI5 × h/5), which overstates the fall in
+ * proportion to IOB; field calibration 2026-07-27 showed the resulting pLow90 error is monotone
+ * in IOB (high-IOB tertile predicted 36% vs 14% realised; low-IOB 9% vs 27%) and the QUIET_FLAT
+ * 30-min median residual sat at +15 mg/dL instead of ≈0 — a bias the regime pools cannot absorb
+ * because they are not IOB-conditioned. SERIAL_VERSION bumped 1→2: the residual definition
+ * changed, so persisted v1 pools deserialize to a cold tracker and re-warm (~3-6 days). When a horizon matures (a later cycle lands inside the maturation
  * window), residual = observed − projected is added to the pool keyed by the REGIME AT
  * PROJECTION TIME ([V7Regime] — the criterion-(b) debiasing). Pools are windowed (~21 days,
  * size-capped) and expose empirical quantiles (numpy-style linear interpolation, matching the
@@ -107,7 +109,7 @@ class V7ResidualTracker {
          *  the ≤5% left tail is NOT fittable (report §1 tail honesty). */
         val POOL_PERCENTILES = doubleArrayOf(5.0, 25.0, 50.0, 75.0, 95.0)
 
-        private const val SERIAL_VERSION = 1
+        private const val SERIAL_VERSION = 2
 
         /** Deserialize a persisted blob; blank/corrupt → fresh tracker (cold start, fails safe). */
         fun deserialize(raw: String?): V7ResidualTracker {
@@ -167,13 +169,15 @@ class V7ResidualTracker {
     /**
      * One engine invoke: mature any due horizons against the observed [bg], evict expired
      * samples, then record this cycle's projection (only when the cycle classifies into a
-     * regime AND a finite [bgi5] is available — otherwise the cycle contributes observations
-     * to maturation but no new projection).
+     * regime AND finite [projections] aligned with [HORIZONS_MIN] are available — otherwise the
+     * cycle contributes observations to maturation but no new projection).
      */
-    fun onCycle(nowMs: Long, bg: Double, bgi5: Double?, regime: V7Regime?) {
+    fun onCycle(nowMs: Long, bg: Double, projections: DoubleArray?, regime: V7Regime?) {
         mature(nowMs, bg)
         evict(nowMs)
-        if (regime != null && bgi5 != null && bgi5.isFinite() && bg > 0.0) record(nowMs, bg, bgi5, regime)
+        if (regime != null && projections != null && projections.size == HORIZONS_MIN.size &&
+            projections.all { it.isFinite() } && bg > 0.0
+        ) record(nowMs, projections, regime)
     }
 
     private fun mature(nowMs: Long, bg: Double) {
@@ -205,13 +209,12 @@ class V7ResidualTracker {
         }
     }
 
-    private fun record(nowMs: Long, bg: Double, bgi5: Double, regime: V7Regime) {
+    private fun record(nowMs: Long, projections: DoubleArray, regime: V7Regime) {
         // Multi-invoke dedup: a projection in the same 5-min bucket replaces the previous one
         // (final invoke of the cycle wins — offline loader's DISTINCT ON ... ORDER BY ts DESC).
         val last = pending.lastOrNull()
         if (last != null && last.tsMs / CYCLE_BUCKET_MS == nowMs / CYCLE_BUCKET_MS) pending.removeLast()
-        val projections = DoubleArray(HORIZONS_MIN.size) { bg + bgi5 * HORIZONS_MIN[it] / 5.0 }
-        pending.addLast(Pending(nowMs, regime, projections, BooleanArray(HORIZONS_MIN.size)))
+        pending.addLast(Pending(nowMs, regime, projections.copyOf(), BooleanArray(HORIZONS_MIN.size)))
     }
 
     /** Sample count for a (regime, horizon) pool. */

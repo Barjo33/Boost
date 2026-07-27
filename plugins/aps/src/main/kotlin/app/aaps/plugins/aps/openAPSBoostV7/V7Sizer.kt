@@ -79,8 +79,10 @@ object V7Sizer {
      */
     data class Inputs(
         val bg: Double,
-        /** IOB-only expected 5-min ΔBG: −iob_activity × variable_sens × 5 (mg/dL / 5 min). */
-        val bgi5: Double,
+        /** Undosed IOB-only projection of BG at the h=60 horizon (mg/dL) — oref's decaying-
+         *  activity predBGs.IOB curve at 60 min (2026-07-27; replaces the constant-BGI5 hold,
+         *  whose fall-overstatement grew with IOB and drove the pLow90 miscalibration). */
+        val base60: Double,
         /** Adapted variable_sens (mg/dL/U) — the sens the projection used; also prices the dose. */
         val sens: Double,
         /** V5 meal-hypothesis state this cycle; null = V5 decision unavailable (abstain). */
@@ -117,7 +119,7 @@ object V7Sizer {
     fun size(inp: Inputs): Result? {
         val state = inp.state ?: return null
         val budget = inp.budgetU ?: return null
-        if (!inp.sens.isFinite() || inp.sens <= 0.0 || !inp.bg.isFinite() || !inp.bgi5.isFinite()) return null
+        if (!inp.sens.isFinite() || inp.sens <= 0.0 || !inp.bg.isFinite() || !inp.base60.isFinite()) return null
         if (inp.residualQuantiles.size != KNOT_PROBS.size || inp.residualQuantiles.any { !it.isFinite() }) return null
 
         // Envelope — 03's bounds, verbatim order. budget ≤ 0 ⇒ 0 (restraint preserved by construction).
@@ -131,7 +133,7 @@ object V7Sizer {
         if (env <= 0.0) return Result(DoubleArray(COST_RATIOS.size), 0.0)
 
         // Predictive distribution: base + interpolated residual draws (graded left tail).
-        val base = inp.bg + inp.bgi5 * 12.0
+        val base = inp.base60
         val draws = DoubleArray(TAIL_PROBS.size) { base + interpolateQuantile(TAIL_PROBS[it], inp.residualQuantiles) }
 
         val steps = floor(min(env, GRID_MAX_U) / GRID_STEP + 1e-9).toInt()
@@ -174,15 +176,16 @@ object V7Sizer {
 
     /**
      * p(BG < 70 within 90 min) read off the piecewise-linear CDF of the regime pool's h=90
-     * quantiles, evaluated at the UNDOSED projection (base90 = bg + BGI5 × 18): the probability
-     * that residual < 70 − base90. LEFT-SHOULDER TRUNCATION: below the 5% knot the tail is not
-     * fitted (report §1 tail honesty), so values under 0.05 read 0.0. DISPLAY ONLY — never used
-     * for permission (the chance constraint, when it comes, may only tighten).
+     * quantiles, evaluated at the UNDOSED projection [base90] (oref's decaying-activity
+     * predBGs.IOB value at 90 min, 2026-07-27): the probability that residual < 70 − base90.
+     * LEFT-SHOULDER TRUNCATION: below the 5% knot the tail is not fitted (report §1 tail
+     * honesty), so values under 0.05 read 0.0. DISPLAY ONLY — never used for permission (the
+     * chance constraint, when it comes, may only tighten).
      */
-    fun pLow(bg: Double, bgi5: Double, horizonMin: Int, quantiles90: DoubleArray): Double? {
-        if (!bg.isFinite() || !bgi5.isFinite()) return null
+    fun pLow(base90: Double, quantiles90: DoubleArray): Double? {
+        if (!base90.isFinite()) return null
         if (quantiles90.size != KNOT_PROBS.size || quantiles90.any { !it.isFinite() }) return null
-        val threshold = LOW_BG - (bg + bgi5 * horizonMin / 5.0)
+        val threshold = LOW_BG - base90
         if (threshold < quantiles90.first()) return 0.0            // left of the validated shoulder
         if (threshold >= quantiles90.last()) return 1.0
         for (i in 1 until KNOT_PROBS.size) {

@@ -100,10 +100,18 @@ class V7Shadow(
             .also { this.tracker = it }
 
         // 1. Substrate — record this cycle's IOB-only projection + mature due horizons.
-        val bgi5 = if (variableSens != null && variableSens > 0.0 && iobActivity.isFinite())
-            -iobActivity * variableSens * 5.0 else null
+        // 2026-07-27: the projection is oref's decaying-activity IOB prediction curve
+        // (rT.predBGs.IOB, the purple line — trailing-flat values are truncated by oref, so
+        // clamp to the last element). The previous constant-BGI5 hold overstated the 90-min
+        // fall in proportion to IOB (field calibration: high-IOB tertile predicted 36% low
+        // vs 14% realised; QUIET_FLAT median residual +15 instead of ≈0).
+        val iobCurve = rT.predBGs?.IOB
+        val bases: DoubleArray? = if (iobCurve != null && iobCurve.size >= 2)
+            DoubleArray(V7ResidualTracker.HORIZONS_MIN.size) { i ->
+                iobCurve[minOf(V7ResidualTracker.HORIZONS_MIN[i] / 5, iobCurve.size - 1)].toDouble()
+            } else null
         val regime = classifyV7Regime(v5State, delta, shortAvgDelta, hour)
-        tracker.onCycle(nowMs, bg, bgi5, regime)
+        tracker.onCycle(nowMs, bg, bases, regime)
         runCatching { saveState(tracker.serialize()) }
             .onFailure { t -> logError("V7 shadow persist failed (state kept in memory)", t) }
 
@@ -123,10 +131,10 @@ class V7Shadow(
             rT.boostV7_q50Drift = tracker.median(regime, 30)?.let { round1(it) }
 
             // Criterion (a) instrument: the sizing rule at R = 4/7/10 — warm pools only.
-            if (q60 != null && bgi5 != null) {
+            if (q60 != null && bases != null && variableSens != null && variableSens > 0.0) {
                 val result = V7Sizer.size(
                     V7Sizer.Inputs(
-                        bg = bg, bgi5 = bgi5, sens = variableSens!!,
+                        bg = bg, base60 = bases[1], sens = variableSens,
                         state = v5State, budgetU = v5BudgetU,
                         committedCapU = committedCapU, confirmedCapU = confirmedCapU,
                         v1WouldDoseU = v1WouldDoseU, postRescueWindow = postRescueWindow,
@@ -149,8 +157,8 @@ class V7Shadow(
 
             // Display-only left-shoulder p(BG<70 within 90 min) — never permission.
             val q90 = tracker.quantiles(regime, 90)
-            if (q90 != null && bgi5 != null) {
-                rT.boostV7_pLow90 = V7Sizer.pLow(bg, bgi5, 90, q90)?.let { round3(it) }
+            if (q90 != null && bases != null) {
+                rT.boostV7_pLow90 = V7Sizer.pLow(bases[2], q90)?.let { round3(it) }
             }
         }
 

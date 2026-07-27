@@ -28,7 +28,7 @@ class V7SizerTest {
 
     private fun inputs(
         bg: Double = 200.0,
-        bgi5: Double = 0.0,
+        base60: Double = bg,
         sens: Double = 80.0,
         state: MealHypothesis? = MealHypothesis.CONFIRMED,
         budgetU: Double? = 2.0,
@@ -40,7 +40,7 @@ class V7SizerTest {
         smbVol60MinU: Double = 0.0,
         quantiles: DoubleArray = debiased,
     ) = V7Sizer.Inputs(
-        bg = bg, bgi5 = bgi5, sens = sens, state = state, budgetU = budgetU,
+        bg = bg, base60 = base60, sens = sens, state = state, budgetU = budgetU,
         committedCapU = committedCapU, confirmedCapU = confirmedCapU,
         v1WouldDoseU = v1WouldDoseU, postRescueWindow = postRescueWindow,
         cumulativeCapU = cumulativeCapU, smbVol60MinU = smbVol60MinU,
@@ -133,13 +133,13 @@ class V7SizerTest {
 
     @Test fun `pLow interpolates the piecewise-linear CDF between the validated knots`() {
         val q90 = doubleArrayOf(-45.0, -15.0, 0.0, 15.0, 45.0)
-        // bg 100, bgi5 0 → threshold 70−100 = −30, halfway between q5(−45) and q25(−15) → p 0.15.
-        assertThat(V7Sizer.pLow(100.0, 0.0, 90, q90)!!).isWithin(1e-9).of(0.15)
+        // base90 100 → threshold 70−100 = −30, halfway between q5(−45) and q25(−15) → p 0.15.
+        assertThat(V7Sizer.pLow(100.0, q90)!!).isWithin(1e-9).of(0.15)
     }
 
     @Test fun `pLow truncates left of the 5 pct knot - the unfittable tail reads zero`() {
         val q90 = doubleArrayOf(-45.0, -15.0, 0.0, 15.0, 45.0)
-        assertThat(V7Sizer.pLow(200.0, 0.0, 90, q90)!!).isWithin(1e-9).of(0.0)   // threshold −130 < q5
-        assertThat(V7Sizer.pLow(25.0, 0.0, 90, q90)!!).isWithin(1e-9).of(1.0)    // threshold 45 ≥ q95
+        assertThat(V7Sizer.pLow(200.0, q90)!!).isWithin(1e-9).of(0.0)   // threshold −130 < q5
+        assertThat(V7Sizer.pLow(25.0, q90)!!).isWithin(1e-9).of(1.0)    // threshold 45 ≥ q95
     }
 }

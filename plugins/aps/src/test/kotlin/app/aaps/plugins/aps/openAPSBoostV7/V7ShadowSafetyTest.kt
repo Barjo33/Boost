@@ -1,5 +1,6 @@
 package app.aaps.plugins.aps.openAPSBoostV7
 
+import app.aaps.core.interfaces.aps.Predictions
 import app.aaps.core.interfaces.aps.RT
 import app.aaps.plugins.aps.openAPSBoostV5.DetermineBasalBoostV5
 import app.aaps.plugins.aps.openAPSBoostV5.MealHypothesis
@@ -50,7 +51,7 @@ class V7ShadowSafetyTest {
             }
             pools.put("MEAL:$h", flat)
         }
-        return JSONObject().put("v", 1).put("pend", JSONArray()).put("pools", pools).toString()
+        return JSONObject().put("v", 2).put("pend", JSONArray()).put("pools", pools).toString()
     }
 
     /** Debiased pool → sizer doses 1.65/1.60/1.40 (pinned in V7SizerTest) → breadcrumb fires. */
@@ -64,6 +65,9 @@ class V7ShadowSafetyTest {
         rate = 1.2
         duration = 30
         variable_sens = 80.0
+        // Flat undosed IOB curve at bg=200 → base60/base90 = 200, matching the old
+        // bgi5=0 constant-hold arithmetic the pinned sizer expectations were built on.
+        predBGs = Predictions(IOB = List(19) { 200 })
         this.reason = StringBuilder(reason)
     }
 
