@@ -98,10 +98,26 @@ associational by construction.)*
 **Post-meal exercise is the single sharpest failure mode.** When a meal is followed by
 activity within two hours, the low rate over the next three hours is **23% (95% CI 20–26)**,
 against **14% (12–17)** for meals not followed by exercise — the confidence intervals do not
-overlap. Meal-time insulin, correct at the moment it was given, lands into a body that has
-since become far more sensitive, and the loop delivered it before it could know. This is the
-scenario the fully closed loop is worst equipped for: the disturbance and the insulin arrive
-together, and the sensitising event comes after both.
+overlap.
+
+The obvious explanation — committed meal insulin landing into a sensitised body — is,
+on this cohort's data, **wrong**. If the low were dose-driven, the crashers would carry more
+insulin; they carry **less** (median 0.96 U on board at exercise onset, against 1.61 U for those
+who don't crash), on an identical meal bolus, and crash risk falls monotonically as insulin
+rises — **32% at low IOB, 22% at mid, 18% at high**. In the post-meal window, more insulin on
+board is *protective*, not dangerous. *(SOLID — cohort, 686 meal+exercise events.)*
+
+The mechanism is a **carbohydrate-counterweight failure, not insulin excess.** Exercise
+recruits a largely fixed, insulin-independent glucose drain — contraction-mediated muscle
+uptake plus amplified sensitivity. Whether it tips into hypo depends on the counterweight
+present: how fast carbohydrate is still appearing from the meal, and the starting BG. Insulin
+on board tracks that counterweight — high IOB marks a big meal still actively absorbing, which
+offsets the drain; low IOB marks a small or finished meal (or a loop that has already withdrawn
+insulin), so the drain runs unopposed and BG falls through 70. Crashers also start with less
+headroom (BG 114 vs 136). The dose is not the culprit; the missing carbohydrate is. And the
+loop cannot supply it: the defence this needs is *glucose in*, while the loop's only lever is
+*insulin out* — which, in exactly these cases, it has usually already spent. The controller is
+on the wrong side of the problem.
 
 **The danger outlasts the exercise, and outlasts the loop's memory of it.** After an activity
 bout ends, the low hazard stays elevated at around **19–20% for a full five hours** (0–2 h:
