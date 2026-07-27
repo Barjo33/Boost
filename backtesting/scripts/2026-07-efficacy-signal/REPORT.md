@@ -65,11 +65,16 @@ it says whether the insulin is *acting*. Deviation — the loop's own model resi
 plausible efficacy proxy — is **0.474, below chance.** And recent-SMB stacking, a natural crash
 driver, is flat across tertiles: **15% / 19% / 17%** crash rate low→high.
 
-**The dose-independent mechanism candidate is refuted.** The Twin's inferred glucose-appearance
-Ra — the one feature that could separate "carbs masking working insulin" from "genuine
-resistance" independent of dose — does not discriminate: **AUC 0.473; high-Ra vs low-Ra crash
-rate 28% vs 28%** (n = 460). And it only populates on **12% of stuck-highs** — the Twin abstains
-during exactly the uncertain dynamics where an efficacy read would matter.
+**The dose-independent mechanism candidate does not discriminate — but is badly under-powered.**
+The Twin's inferred glucose-appearance Ra — the one feature that could separate "carbs masking
+working insulin" from "genuine resistance" independent of dose — shows **AUC 0.473; high-Ra vs
+low-Ra crash rate 28% vs 28%** (n = 460 cycles). The n looks adequate but is not: the Twin has
+only existed since 2026-07-18, so those 460 cycles collapse to just **~30 independent stuck-high
+episodes**. (The earlier "12% coverage" figure was a window artifact — over the Twin's own era Ra
+covers **88–94% of stuck-highs**, and Ra is never the null field when the Twin tag is present.
+The Twin does not abstain; it is simply young.) So Ra is neither confirmed nor cleanly refuted —
+it is untestable at episode level until more data accrues (see the pre-registered re-run,
+`RERUN_PROTOCOL.md`).
 
 ## Verdict
 
@@ -79,9 +84,10 @@ not-working insulin beyond the glucose trajectory and the size of the dose alrea
 nearest thing our data offers is insulin-on-board magnitude — which is not efficacy.
 
 **Confidence: SOLID for the negative on the crash** (robust to model class, replicated across
-single-feature and multivariate views); **PROVISIONAL on the weak stall increment**, which is
-dose-magnitude rather than efficacy and weak in any case. The Twin-Ra refutation is
-**PROVISIONAL** — n = 460, 12% coverage — but the coverage gap is itself the point.
+single-feature and multivariate views, cohort-wide, no Twin dependence); **PROVISIONAL on the
+weak stall increment**, which is dose-magnitude rather than efficacy and weak in any case. The
+Twin-Ra strand is **INCONCLUSIVE, not refuted** — ~30 independent episodes is too few to decide,
+and a pre-registered re-run is scheduled for when the Twin era reaches adequate power (~1 Sep 2026).
 
 ## What this means
 
@@ -100,8 +106,9 @@ dose-magnitude rather than efficacy and weak in any case. The Twin-Ra refutation
 - We tested prediction of the forward outcome from existing observables. A signal could exist
   that we simply lack the instrument for (interstitial insulin, absorption-site data, a
   tracer). The negative is "not in our telemetry," not "impossible."
-- The Twin-Ra test is under-powered and under-covered; more Twin data, or forcing Ra output
-  through the uncertain window, could revisit it — though the abstention pattern is discouraging.
+- The Twin-Ra test is under-powered (the Twin is ~10 days old → ~30 independent episodes), not
+  under-covered (Ra populates 88–94% of stuck-highs in-era). No code change helps; it is a
+  data-accrual wait. Pre-registered confirmatory re-run in `RERUN_PROTOCOL.md`.
 - Longer horizons or alternative labels were not exhausted; the negative is consistent across
   the two we tested.
 

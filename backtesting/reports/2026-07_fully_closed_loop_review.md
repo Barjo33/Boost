@@ -193,7 +193,7 @@ exactly on chance for the crash, the loop's deviation signal sits *below* chance
 features that flicker at all are measures of *how much* insulin is on board — not whether it is
 acting. The one dose-independent candidate that could in principle separate masking carbs from
 genuine resistance did not discriminate at all. *(SOLID for the crash; PROVISIONAL overall —
-single dataset, one under-covered candidate.)* The blind spot, in other words, is not hiding in
+single dataset; the one dose-independent candidate is young rather than refuted.)* The blind spot, in other words, is not hiding in
 the telemetry we have; closing it is a sensing problem, not a modelling one. Until faster
 insulin or a real efficacy sensor arrives, the fully closed loop will remain what this data
 shows it to be: quietly excellent overnight and for well-matched physiologies, honest but
