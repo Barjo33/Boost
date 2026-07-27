@@ -181,11 +181,24 @@ simulator to generate the counterfactual, the cohort is small and self-selected,
 real test is within-person over time. Two things would help more than any algorithm we could
 write: **faster insulin**, which would shrink the meal-lag the whole design fights, and a true
 **efficacy signal** — some way to know that delivered insulin is or is not working — which
-would close the one blind spot underneath both the stuck high and the rebound crash. Neither
-exists today. Until they do, the fully closed loop will remain what this data shows it to be:
-quietly excellent overnight and for well-matched physiologies, honest but imperfect against
-unannounced meals, and at its most vulnerable around exercise — where its only lever is the
-one it has already spent.
+would close the one blind spot underneath both the stuck high and the rebound crash.
+
+We went looking for that efficacy signal in this cohort's own data, and did not find it.
+Out-of-sample and cohort-wide, we asked whether anything observable at a stuck high — the
+loop's own model deviation, the insulin's activity, recent dosing, or even the Twin's inferred
+carb-appearance rate — could tell, *beyond the glucose curve and the dose already given*,
+whether the insulin would work (the high settles) or would not (it stalls, or over-corrects
+into a crash). Nothing beat the trajectory: a linear model on the full feature set lands
+exactly on chance for the crash, the loop's deviation signal sits *below* chance, and the only
+features that flicker at all are measures of *how much* insulin is on board — not whether it is
+acting. The one dose-independent candidate that could in principle separate masking carbs from
+genuine resistance did not discriminate at all. *(SOLID for the crash; PROVISIONAL overall —
+single dataset, one under-covered candidate.)* The blind spot, in other words, is not hiding in
+the telemetry we have; closing it is a sensing problem, not a modelling one. Until faster
+insulin or a real efficacy sensor arrives, the fully closed loop will remain what this data
+shows it to be: quietly excellent overnight and for well-matched physiologies, honest but
+imperfect against unannounced meals, and at its most vulnerable around exercise — where its only
+lever is the one it has already spent.
 
 ---
 
