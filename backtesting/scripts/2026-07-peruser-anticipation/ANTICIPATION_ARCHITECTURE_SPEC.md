@@ -1,8 +1,13 @@
 # Per-user anticipation architecture — full spec (2026-07-27)
 
-**Status: SPECULATIVE.** Design and reasoning only. Nothing here doses. Every component ships
-shadow-first, is priced per-user on banked data, and crosses to live dosing only through the
-two-test bar (absolute TBR gates + relative pricing + a pre-registered within-user trial).
+**Status: Phases 1+2 BUILT (shadow, read-only, doses nothing); Phases 3+4 pending.** Every
+component ships shadow-first, is priced per-user on banked data, and crosses to live dosing only
+through the two-test bar (absolute TBR gates + relative pricing + a pre-registered within-user
+trial). BUILT 2026-07-27 (commit `5ea788a911`, Boost-V7-shadow): `AnticipationHabitModel`,
+`AnticipationOnsetStore`, `RetractableArm`, `AnticipationShadow` in `openAPSBoostTwin/`, wired into
+the shared `OpenAPSBoostPlugin.runEngine` (covers plain Boost, V5/V6, and V7-shadow — one
+instrument, both engines), `StringKey.ApsBoostAnticipHistory`, extractor `anticip=` parser + 14 DB
+columns, 11 unit tests green. Now banking; Phase 3 pricing runs once history accrues.
 
 ## 0. What this rests on (measured this session)
 
@@ -139,8 +144,8 @@ users. A user can hold zero, one — never both.
 
 | Phase | What | Doses? | Exit criterion |
 |---|---|---|---|
-| **1** | Build Component A; log `p_ex45`, `p_meal45` + source to telemetry | No | predictor live-matches the offline AUCs (0.72–0.83 exercise) on banked data |
-| **2** | Wire Component B arming (population + predictor + context gates) into the back-out shadow; log would-arm / would-action / confirm / back-out + forward outcome | No | arming fires in the right population/context; false-arm rate characterised |
+| **1** ✅ BUILT | Component A (`AnticipationHabitModel` + `AnticipationOnsetStore`) + telemetry `anticip=`; log `p_ex45`, `p_meal45` + source | No | predictor live-matches the offline AUCs (0.72–0.83 exercise) on banked data |
+| **2** ✅ BUILT | Component B arming (`RetractableArm` ×2 in `AnticipationShadow`, context-gated: no-arm-in-post-rescue); log arm / confirm / back-out per lever | No | arming fires in the right population/context; false-arm rate characterised |
 | **3** | Price per-user on banked data: does exercise-pre-reduce prevent post-meal-exercise lows at acceptable cost? does meal-move-earlier cut post-meal TAR with **no** low increase? Bootstrap CI, per-user + pooled | No | pre-registered thresholds met, CI excludes null, floors respected |
 | **4** | Within-user trial, **one lever at a time**, live, auto-config-gated, kill-switch-bounded | Yes | pre-registered within-user win; absolute TBR gate held |
 
