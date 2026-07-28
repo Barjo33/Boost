@@ -110,7 +110,12 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         .preferencesId(PluginDescription.PREFERENCE_SCREEN)
         .preferencesVisibleInSimpleMode(false)
         .showInList { config.APS }
-        .description(R.string.description_boost_v5),
+        .description(R.string.description_boost_v5)
+        // Boost V6 is the default APS engine on a fresh install (moved from OpenAPSSMBPlugin) — this
+        // fork exists to run V6, so a clean DB selects it directly rather than starting on stock SMB.
+        // Exactly one APS plugin may carry .setDefault(); PluginStore force-enables it when nothing
+        // else is selected and disables every other APS plugin (single-engine invariant).
+        .setDefault(),
     aapsLogger, rh
 ), APS, PluginConstraints {
 

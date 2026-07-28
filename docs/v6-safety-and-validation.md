@@ -76,8 +76,9 @@ likewise reverted after a full-cohort re-run didn't support it.
 - **Android and the Trio (Swift) port are kept in numeric parity**, checked line-for-line.
 - **What is *not* claimed:** there is no glucose-outcome simulation and no clinical-equivalence pass
   on simulated glucose. The tools validate *decisions and forecasts*, plus real single-user outcomes
-  — not a population glucose-outcome guarantee. **For everyone but the developer, shadow is the
-  supported mode.**
+  — not a population glucose-outcome guarantee. This is an **experimental dosing algorithm**; a shadow
+  mode (the "Boost" plugin) is available for anyone who wants to watch before going active, but the
+  supported path is Boost V6 active, seeded from your own history.
 
 ## Testing & evidence
 
