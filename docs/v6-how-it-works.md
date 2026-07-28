@@ -29,7 +29,13 @@ IDLE → OBSERVING → CONFIRMED → COMMITTED → RECOVERING → IDLE
   scratch and re-dosing a meal that is already handled.
 
 The headline trade-off versus the old tier ladder: V6 deliberately **holds back in OBSERVING**
-where the tiers might already fire, then **catches up hard in CONFIRMED** once the meal is real.
+where the tiers might already fire, then **catches up hard in CONFIRMED** once the meal is real. This
+is the central design choice, and it cuts both ways. *Confirming — and dosing — earlier in the cycle
+means acting on CGM evidence that is more speculative:* a rise only a few minutes old that might still
+fizzle. Waiting a cycle costs a slightly higher peak but avoids dosing into a rise that never becomes
+a meal. Boost's default posture is to wait for proof; the opt-in "aggressive early confirm" lever
+(see [advanced settings](v6-advanced-settings.md)) moves that line earlier for users who can absorb
+the occasional early dose that wasn't needed.
 
 > 👁️ **See it live: the Boost Overview V2.** Enable *"Use Boost Overview V2 (dark theme)"* in the
 > Overview plugin settings. It is the live window into V6's internals — the meal-hypothesis state

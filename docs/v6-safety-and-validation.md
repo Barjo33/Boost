@@ -16,8 +16,9 @@ This is the point people most often get wrong about Boost, so it is stated plain
   users it never saw in training) throttles the aggression budget and can only ever *reduce*
   delivery. The **meal-likelihood score** is one bounded input (weight 0.20, renormalised away when
   the model is unavailable) into the otherwise rule-based meal-confirm score — it can help recognise
-  a meal *earlier*, but every dose that follows passes the same caps and gates. Neither model can
-  *add* a dose or relax a limit.
+  a meal *earlier* (which necessarily means acting on more speculative CGM evidence), but every dose
+  that follows passes the same caps and gates, and in non-meal states Boost stays capped at what the
+  base engine would do. Neither model can *add* a dose or relax a limit.
 - **Personalisation ≠ training.** Auto-config and the learned baselines derive *suggestions* from
   **your own history** — they tune settings, they do not learn the dose.
 - **Validation is replay on real history, not curve-fitting.** Candidate changes are scored against
