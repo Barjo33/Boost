@@ -16,8 +16,8 @@ AndroidAPS sizes one isolated micro-bolus each cycle, from scratch. **Boost V6 i
 way.** Nothing else about how AndroidAPS runs your pump is touched.
 
 The result is a system that holds back before a meal is proven, then catches up firmly once it is —
-and that you tune with **three dials, not twenty-four** (most people never touch even those, because
-Boost sets them from your own history on day one).
+and that you tune with **just three dials** (far fewer than before), most of which you never touch,
+because Boost sets them from your own history on day one.
 
 > *Naming:* the plugin is labelled **"Boost V6"**, but its code and its settings keys still carry the
 > earlier **"V5"** name (`ApsBoostV5…`) from its lineage — V1 → V2 → V3 → v4.4 → v4.4.2 → V6. If you
@@ -69,7 +69,7 @@ a safety limit.
 |---|---|---|---|---|
 | **Aggression** | 0.7–1.6 (1.0) | How firm the **one meal catch-up shot** is (it scales the CONFIRMED commit only — routine holds are bounded by the caps, not this). | a bigger catch-up shot on confirmed meals — for people who peak high | a gentler meal response |
 | **HypoCaution** | 1.0–2.0 (1.0) | How hard Boost **backs off when its hypo-risk model is worried** (it does nothing while risk is low). | more insulin trimmed on elevated risk = more hypo-defensive | **1.0 is the floor** = least caution |
-| **Sensitivity** | 0.8–1.2 (1.0) | A **whole-budget calibration** for how the engine suits you (not a dynamic-ISF multiplier). | firmer overall — for insulin-resistant users | gentler overall — for users it runs hot on |
+| **Sensitivity** | 0.8–1.2 (1.0) | A single **overall-strength dial for the whole engine** — one number that scales *all* of Boost's dosing up or down. **Despite the name it is NOT your insulin sensitivity / ISF** (that lives in your profile); it's just "how much Boost, overall." Reach for it when Boost feels uniformly too strong or too weak for you. | firmer everywhere — if Boost runs too weak for you | gentler everywhere — if Boost runs too strong for you |
 
 **How to use them:** start from the auto-config values, change **one at a time**, and check the
 caps and Max IOB first — if a cap or the IOB clamp is what's binding, more Aggression changes

@@ -99,15 +99,20 @@ the Trio (Swift) port.
 - **Fast-carb confirm** (on) — a sharp, accelerating, score-corroborated rise jumps straight to
   CONFIRMED in one cycle. Suppressed within an hour of a low (< 80 mg/dL). Auto-config turns it off
   for a low-prone history.
-- **Aggressive early confirm** (off) — brings the meal confirm forward a
-  cycle when the score is already convincing, for users who otherwise peak before the catch-up shot
-  lands. Auto-config-managed; on only for a well-controlled history.
+- **Aggressive early confirm** (off) — brings the meal confirm forward a cycle when the score is
+  already convincing, for users who otherwise peak before the catch-up shot lands. **Understand the
+  trade-off before enabling it:** confirming a cycle earlier means *delivering the meal bolus sooner,
+  on CGM evidence that is by definition more speculative* — a rise that is still only a few minutes
+  old and might yet fizzle. You are buying a lower late peak at the cost of a higher chance of dosing
+  into a rise that doesn't become a meal. That is exactly why it is auto-config-managed and switched
+  on **only for a well-controlled history** — the users who can absorb the occasional early dose that
+  didn't need to happen.
 
 ### Aggression levers (not guards)
 - **Velocity budget** (off) — puts a small floor under the velocity
   factor so a fast rise isn't throttled to nothing. Auto-config-managed; on only for well-controlled.
 - **Phase-3 composed brake floor** (off) — enforces a 25% floor on the composed soft-brake multiplier
-  during active meal sessions above 160 mg/dL with eventualBG above target, fixing the soft-brake
+  during active meal sessions above 160 mg/dL with eventualBG at least 20 mg/dL above target, fixing the soft-brake
   stack compounding to sub-pump-step zero doses mid-meal. All hard gates and dose caps still apply.
   Unlike the two switches above, this is **not** auto-config-managed — it is a **live runtime,
   fail-closed gate**: it self-holds the floor the moment your trailing 14-day time-below-range leaves
