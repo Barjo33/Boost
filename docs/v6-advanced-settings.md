@@ -115,6 +115,18 @@ the Trio (Swift) port.
   on only for a well-controlled history — the users who can absorb the occasional early dose that
   didn't need to happen.
 
+- **Acceleration primer** (`ApsBoostV5PrimerCapU`, default 0.0 = off) — when glucose is *accelerating*
+  hard in OBSERVING (before the meal has confirmed), the primer delivers a small anticipatory dose to
+  get ahead of a fast rise instead of waiting a full cycle. Like the setting above, this is
+  *delivering insulin earlier on more speculative CGM evidence* — so it is made safe two ways. First,
+  **confirm-net**: any primer insulin that fired is credited against the eventual CONFIRMED
+  catch-up shot, so a meal's *total* net-extra is bounded to about one base dose no matter how many
+  primers fizzled first (this is why it validated fizzle-safe — only ~+0.9% extra low risk). Second,
+  **safety-routed delivery**: auto-config sizes the primer from your own routine SMB (a fraction of
+  the Committed cap, capped at 0.6 U) and routes it as a **bolus for a well-controlled history** but as
+  a **retractable temp-basal for everyone else** — a temp-basal unwinds if the meal doesn't
+  materialise, a bolus cannot. `ApsBoostV5PrimerBolusMode` forces the bolus route if you want it.
+
 ### Aggression levers (not guards)
 - **Velocity budget** (off) — puts a small floor under the velocity
   factor so a fast rise isn't throttled to nothing. Auto-config-managed; on only for well-controlled.
