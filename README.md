@@ -132,7 +132,7 @@ Two risk inputs pull dosing back *before* trouble, not after:
   insulin (it can only ever reduce delivery — see §7), and
 - a **recent-low penalty** damps the meal-confirm score for a window after any low.
 
-Four further guards (July 2026) bound the state machine's edges:
+Several further guards (July 2026) bound the state machine's edges:
 
 - in **non-meal states** (IDLE / OBSERVING / RECOVERING) V6 **never doses more than V1 would** on the
   same inputs — only a confirmed meal hypothesis can out-dose V1;
@@ -140,10 +140,16 @@ Four further guards (July 2026) bound the state machine's edges:
   routine hold cycle** — otherwise V6 keeps observing rather than burning its confirm on a trivial
   upswing;
 - the single-cycle **fast-carb confirm is suppressed for an hour after any BG below 80**, so a
-  rescue-carb rebound is never treated as a new meal; and
-- for **45 minutes after any BG below 75**, even a confirmed meal hypothesis **can't out-dose the
-  hypo-restrained V1 base** — a rescue-carb rebound inherits V1's post-rescue restraint instead of
-  drawing a full V6 catch-up shot.
+  rescue-carb rebound is never treated as a new meal;
+- for **45 minutes after any BG below 75** two things restrain a rescue-carb rebound: a confirmed meal
+  hypothesis **can't out-dose the hypo-restrained V1 base**, *and* the **composed rebound guard** scales
+  down whatever SMB the fallback tiers would deliver in that window (BG-graded: ~30% below 6.7 mmol/L
+  ramping back to full by 9.4). This closes the "confirm-crash" — the case where a modest rebound after
+  a low was over-treated and then crashed a second time; and
+- during **elevated-heart-rate exercise** Boost **stops adding insulin** — the activity classifier no
+  longer mis-reads a moving-but-low-step exercise session as resting, and the resting branch no longer
+  ignores an elevated heart rate (a critical safety fix — the loop was previously able to add insulin
+  as BG fell during hard exercise).
 
 Every stock AndroidAPS safety gate still runs underneath — most importantly the hard
 **`minGuardBG ≥ 80`** gate, which blocks dosing into a projected low regardless of any Boost setting.
@@ -162,6 +168,10 @@ These shape **sensitivity and timing only** — never the guardrails:
   lower it. *(Currently shadow — logs what it would do; see §5/§8.)*
 - **Heart rate & sleep** — see §6.
 - **Meal-time learning** — an anticipatory pre-meal target around habitual meal times. *(Shadow.)*
+- **Anticipation (routine learning)** — a per-user onset-hazard model that learns *when* you tend to
+  eat and exercise (from your own history, refit periodically — never in the dosing loop) and predicts
+  the next meal/walk about 45 minutes ahead. It exists to make future anticipatory dosing *retractable*
+  and per-user. *(Shadow — logs `anticip=` telemetry, doses nothing; see §7/§8.)*
 
 > Design rule for every learner: **learn the user's personal baseline, act on *deviation* from it, keep
 > the clinical absolutes fixed.** Personalise the dials (sensitivity, activity response); never the
@@ -198,12 +208,20 @@ limits. Then:
 | Setting (range) | Rule |
 |---|---|
 | **HypoCaution** (1.0–2.0) | `clamp(1.0 + max(0, TBR<70% − 4)/4 + max(0, TBR<54% − 1)×0.5, 1.0, 2.0)` — climbs above 1.0 only as time-low exceeds the consensus targets (4% / 1%). |
-| **Aggression** (0.7–1.3) | `0.85` if hypo-prone; `0.92` if TBR<70% > 4%; else **1.0**. Never set above 1.0. |
+| **Aggression** (0.7–1.6) | `0.85` if hypo-prone; `0.92` if TBR<70% > 4%; else **1.0**. Auto-config never sets it above 1.0; the ceiling was widened to **1.6** for users who tune upward manually (some run consistently high and want a firmer confirm shot). |
 | **Confirmed cap** (0–7.5 U) | `clamp(max(p90 of meal boluses, p95 of SMBs), 1.5, 7.5)` — covers your biggest *typical* single dose so real meals aren't clipped. The meal-bolus p90 only participates with **≥ 10 manual boluses** in the window (a percentile of a handful of boluses is noise, not a habit); below that the cap comes from the SMB p95 alone. |
 | **Committed cap** (0–2.5 U) | `clamp(max(p75 of SMBs, TDD/40), 0.25, 2.5)` — your routine per-cycle hold (whichever of the two terms is larger). |
 | **Cumulative SMB cap / 60 min** (≥ 1 U) | `clamp(Confirmed cap + 2×Committed cap, 1.0, 10.0)` — bounds dose *frequency*: one confirm shot plus two holds per hour, clamped only to the preference range. Computed from the **final operative** per-shot caps (kept-or-derived), so a kept user value sizes the hourly budget, not a derivation that never applied. |
 | **Max IOB / Bolus cap** | carried from your existing limits (clamped to range). |
 | **Fast-carb confirm** | **off** if hypo-prone, otherwise on. |
+| **Confirm-sooner (A2)** | opt-in; enabled only for a **well-controlled** history — brings the meal confirm forward a cycle when the score is already convincing, for users who otherwise peak before the catch-up shot lands. |
+| **Velocity-budget floor (C5)** | opt-in; enabled only for a well-controlled history — puts a small floor under the velocity factor so a fast rise isn't throttled to nothing. |
+
+**Auto-config-managed switches.** New dosing toggles are **never shipped default-on (or default-off)
+for everyone**; auto-config derives each one's per-user default from your own history. Any switch that
+can *add* insulin (confirm-sooner, velocity-budget floor, the composed-brake floor) is enabled **only
+for users whose time-below-range is within consensus targets** — a strict low-burden cut — and stays off
+otherwise. You can always override in Advanced.
 
 **TBR raise-guard:** a dose-cap **raise** (Confirmed / Committed / Cumulative going *up* from the
 current value) is **not auto-applied when 14-day time-below-70 exceeds 4%** — it is surfaced as a
@@ -244,8 +262,9 @@ All Boost settings live under the plugin preferences. Defaults shown; most are a
 > dedicated bypass, so they are no longer masked back to factory defaults as they once were.
 
 **Dosing**
-- **Aggression** `0.7–1.3` (1.0) — scales the **CONFIRMED catch-up shot** (the state machine's one
-  discretionary dose); routine holds are bounded by the caps below, not this knob.
+- **Aggression** `0.7–1.6` (1.0) — scales the **CONFIRMED catch-up shot** (the state machine's one
+  discretionary dose); routine holds are bounded by the caps below, not this knob. Auto-config seeds it
+  at neutral or below; the ceiling was raised to 1.6 for users who choose to run firmer.
 - **HypoCaution** `1.0–2.0` (1.0) — scales the aggression budget down; higher = more hypo-defensive.
 - **Sensitivity** `0.8–1.2` (1.0) — scales the **aggression budget** (below 1.0 for sensitive users, above for resistant); it is not a DynISF multiplier.
 - **CONFIRMED dose cap** `0–7.5 U` (2.5) — hard limit on the meal-confirm commit shot.
@@ -254,6 +273,8 @@ All Boost settings live under the plugin preferences. Defaults shown; most are a
   default is deliberately non-binding; auto-config (§4) tightens it to your history. `0` disables it.
 - **Max IOB** `0.1–12 U` and **Bolus cap** `0.1–10 U` — overall Boost insulin limits.
 - **Fast-carb confirm** (on) — single-cycle confirm on a sharp, accelerating, score-corroborated rise.
+- **Confirm-sooner / Velocity-budget floor** (auto-config opt-ins) — two per-user levers for users who
+  run high and confirm late; enabled only for a well-controlled history (§4). Off by default.
 - **Phase-3 composed brake floor** (off) — enforces a 25% floor on the composed soft-brake multiplier
   during active meal sessions above 160 mg/dL with eventualBG above target, fixing the soft-brake
   stack compounding to sub-pump-step zero doses mid-meal (July 2026). All hard gates and dose caps
@@ -401,10 +422,15 @@ in **shadow**. **This is real-world experience and shadow analysis, not a clinic
 **Developer's own V6-active glycaemia** (honest, full picture):
 - **Time in range (70–180): ~85%**, mean ~6.9 mmol/L.
 - **Normal weeks: within hypo targets** — TBR<70 ~2.5–3%, severe <54 < 0.5%.
-- **Very-high-activity weeks** (multi-day festival / heavy training): **hypo above target** — TBR<70
-  7–8%, severe <54 2–3.5%. This is **exercise-into-correction** (a correction firing into an
-  already-falling, activity-driven BG), not a baseline dosing fault; the activity-load ISF mitigation
-  (§5) is in shadow and is the next thing to land. **Watch this if you run it through heavy exercise.**
+- **High-activity weeks** (multi-day festival / heavy training): **hypo above target**. The exercise
+  lows are the loop's hardest case — most are activity-driven, and the loop's only lever is to withhold
+  insulin, which it has often already done. Two July-2026 changes help directly: the loop now **stops
+  adding insulin during elevated-heart-rate exercise** (§3), and the composed rebound guard prevents the
+  post-rescue confirm-crash. Analysis of the cohort shows the residual post-meal-exercise low is a
+  *carbohydrate-counterweight* effect (exercise's insulin-independent glucose uptake landing when the
+  meal's carb flux is thin), not over-dosing — the next lever is per-user *anticipatory* insulin
+  withdrawal, which the anticipation shadow (§3) is banking data toward. **Still watch this if you run it
+  through heavy exercise.**
 
 Period reports live in `backtesting/` (`SHADOW_EQUIVALENCE_REPORT.md`, `V5_VS_V1_SUMMARY.md`,
 `EPISODE_IMPACT_REPORT.md`, `IDLE_FASTPATH_REPORT.md`).
