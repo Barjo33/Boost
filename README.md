@@ -68,7 +68,7 @@ a safety limit.
 | Lever | Range (default) | What it is | Turn it **up** → | Turn it **down** → |
 |---|---|---|---|---|
 | **Aggression** | 0.7–1.6 (1.0) | How firm the **one meal catch-up shot** is (it scales the CONFIRMED commit only — routine holds are bounded by the caps, not this). | a bigger catch-up shot on confirmed meals — for people who peak high | a gentler meal response |
-| **HypoCaution** | 1.0–2.0 (1.0) | How hard Boost **backs off when its hypo-risk model is worried**. | more insulin trimmed on elevated risk = more hypo-defensive | less trimming (least caution at 1.0) |
+| **HypoCaution** | 1.0–2.0 (1.0) | How hard Boost **backs off when its hypo-risk model is worried** (it does nothing while risk is low). | more insulin trimmed on elevated risk = more hypo-defensive | **1.0 is the floor** = least caution |
 | **Sensitivity** | 0.8–1.2 (1.0) | A **whole-budget calibration** for how the engine suits you (not a dynamic-ISF multiplier). | firmer overall — for insulin-resistant users | gentler overall — for users it runs hot on |
 
 **How to use them:** start from the auto-config values, change **one at a time**, and check the

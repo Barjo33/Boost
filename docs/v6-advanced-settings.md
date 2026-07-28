@@ -99,12 +99,12 @@ the Trio (Swift) port.
 - **Fast-carb confirm** (on) — a sharp, accelerating, score-corroborated rise jumps straight to
   CONFIRMED in one cycle. Suppressed within an hour of a low (< 80 mg/dL). Auto-config turns it off
   for a low-prone history.
-- **Aggressive early confirm** (off; the study called this *A2*) — brings the meal confirm forward a
+- **Aggressive early confirm** (off) — brings the meal confirm forward a
   cycle when the score is already convincing, for users who otherwise peak before the catch-up shot
   lands. Auto-config-managed; on only for a well-controlled history.
 
 ### Aggression levers (not guards)
-- **Velocity budget** (off; the study called this *C5*) — puts a small floor under the velocity
+- **Velocity budget** (off) — puts a small floor under the velocity
   factor so a fast rise isn't throttled to nothing. Auto-config-managed; on only for well-controlled.
 - **Phase-3 composed brake floor** (off) — enforces a 25% floor on the composed soft-brake multiplier
   during active meal sessions above 160 mg/dL with eventualBG above target, fixing the soft-brake
