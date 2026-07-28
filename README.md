@@ -39,25 +39,42 @@ still runs underneath.
 **→ Full detail: [How Boost V6 works](docs/v6-how-it-works.md)** (the dosing core, the state machine,
 the July-2026 safety guards, and the learners).
 
-## Getting started safely
+## Getting started
 
-For anyone but the developer, the supported path is **shadow first** — watch what Boost *would* do
-before it does anything:
+**Boost V6 is the default APS engine in this fork**, and you go straight to it — there is no need to
+run an older engine first. On its first active cycle it **seeds its three dials and its dose caps from
+your own recent dosing history** (the last 14 days), so it starts where your prior control left off
+rather than on a stranger's numbers. That history is read from the AndroidAPS database, and it is
+already there if you **upgraded in place**, **restored your AndroidAPS database**, or have
+**Nightscout sync (NSClient) enabled** — which backfills up to ~100 days of your treatments and CGM
+into the database on first load. It draws from **whatever you were running before — standard
+AndroidAPS/oref or an earlier Boost** — because it only reads dosing history and glucose, not the
+engine that produced them.
 
-1. **Install the build and select the "Boost" plugin** as your APS (note: **"Boost"**, *not*
-   "Boost V6"). In this mode Boost computes what it would dose and logs it to Nightscout, but it
-   **does not drive your pump** — your existing engine still doses.
-2. **Watch it for ~2 weeks.** Use the **[Analyser](https://tim2000s.github.io/Boost-in-AAPS_3.4/boost_analyser.html)**
-   on your own Nightscout data to see, cycle by cycle, what Boost would have delivered versus what
-   actually dosed — a real paired comparison, not a simulation.
-3. **Only then decide** whether to switch the active **"Boost V6"** plugin on. A freshly built copy
-   never auto-doses; going active is a deliberate choice.
+1. **Install the build.** On a fresh setup Boost V6 is already selected as the APS engine; on an
+   in-place upgrade your existing selection is kept, so switch the APS plugin to **"Boost V6"** if you
+   want it.
+2. **Make sure your history is present** before you rely on the auto-tuning — enable Nightscout sync,
+   or restore your AndroidAPS database, so the last two weeks of dosing are in the app. With no
+   history at all, Boost waits and runs on conservative factory defaults until enough data
+   accumulates, tuning itself once it has.
+3. **It tunes itself and tells you what it set.** You should rarely need to change anything; the three
+   dials below are the only ones you would normally touch.
+
+**Prefer to watch before you switch?** You still can. Selecting the **"Boost"** plugin (instead of
+"Boost V6") runs the same engine with the V6 layer in **shadow** — it logs what it *would* dose to
+Nightscout without driving your pump — and the
+**[Analyser](https://tim2000s.github.io/Boost-in-AAPS_3.4/boost_analyser.html)** compares V1 vs V6 on
+your own data. That is optional now, not a required warm-up.
 
 | APS plugin you select | What drives your pump |
 |---|---|
-| (any non-Boost engine) | unchanged — Boost not involved |
-| **"Boost"** | the engine with the V6 override in **shadow** — logs what it *would* do, does not dose |
-| **"Boost V6"** | **active** — the state machine drives the SMB |
+| **"Boost V6"** *(default)* | **active** — the state machine drives the SMB |
+| **"Boost"** | the same engine with the V6 override in **shadow** — logs what it *would* do, does not dose |
+| (any other engine) | unchanged — Boost not involved |
+
+> ⚠️ Going active means an experimental algorithm is dosing your pump. **You are the safety system** —
+> watch it, understand it, and keep your own limits (max-IOB, max-bolus) sensible.
 
 ## The three levers
 
@@ -111,5 +128,6 @@ newcomer is **Tuning Guide → Simulator → Analyser**:
 
 ---
 
-*Boost is a research fork. For everyone but the developer, **shadow is the supported mode**. Read the
-code, understand the risk, watch before you switch.*
+*Boost is a research fork and an **experimental dosing algorithm**. Read the code, understand the
+risk, and keep your own safety limits sensible. Shadow mode (the "Boost" plugin) is there if you want
+to watch before you switch.*

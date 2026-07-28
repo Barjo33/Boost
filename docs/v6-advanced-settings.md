@@ -23,6 +23,13 @@ co-adapted to the individual, so the safe onboarding is to **start where your pr
 off** — not a cold jump to a stranger's numbers. It reads only dosing history + glycaemia, so it
 works from **any prior engine** (standard oref/AndroidAPS, not just Boost).
 
+That history is read from the **AndroidAPS database** — so it is available immediately if you
+upgraded in place, restored your database, or have **Nightscout sync (NSClient)** enabled (its first
+load backfills up to ~100 days of your treatments and CGM into the database). On a genuinely empty
+database with no sync, there is nothing to read: Boost holds conservative factory defaults and
+retries each cycle until enough history accrues. There is no separate "import from Nightscout" step
+inside Boost — it relies on the same local database the rest of AndroidAPS uses.
+
 **The guard-rails:**
 
 - Runs in the background while V6 is active. Rather than a single global "done" flag, **each setting
