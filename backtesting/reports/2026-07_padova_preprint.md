@@ -7,11 +7,12 @@ analysis; the code and data-processing steps are open and reproducible.]*
 
 Background. The UVA/Padova type 1 diabetes simulator has been accepted since 2008 as a
 substitute for animal trials in the pre-clinical testing of automated insulin delivery
-(AID). Most closed-loop control algorithms are screened on it before they reach a clinical
-trial, so its resemblance to real-world glucose data bears directly on which systems are
-judged safe. That resemblance has seldom been measured against real-world data at scale.
+(AID). Control algorithms bound for regulatory approval are screened on it in place of
+animal studies, and it is the standard platform for in-silico work on new controllers, so
+its resemblance to real-world glucose data bears directly on which systems are judged safe.
+That resemblance has seldom been measured against real-world data at scale.
 
-Methods. We compared the community-standard open implementation of the simulator
+Methods. We compared the open reference implementation of the simulator
 (simglucose, the 2008 model, all thirty virtual personae across three age classes) with
 four independent real-world AID datasets covering roughly 192 users, many with more than a
 year of five-minute continuous glucose data. The four are a fully closed loop (Boost), an
@@ -26,13 +27,15 @@ persona class and reached real-world glucose variability only through its child 
 Five of the eleven statistics were reproduced by no persona at any age: the fat tail of
 unannounced-meal rises, the speed of hypoglycaemia recovery and its rebound, sensor
 compression artefacts, and high-frequency sensor noise. A sixth, week-to-week
-insulin-sensitivity drift, is zero in the 2008 model by construction. We then implemented
-the two later S2013 refinements most likely to help, time-varying insulin sensitivity and
-glucagon counter-regulation. The first brought variability into range but overshot the
-diurnal amplitude; the second narrowed the hypoglycaemia-recovery gap without closing it.
-The remaining structural gaps did not move.
+insulin-sensitivity drift, is zero in the 2008 model by construction. We then reconstructed
+the later S2013 model as closely as the open literature allows, adding its time-varying
+insulin sensitivity and its glucagon counter-regulation to the personae together and
+measuring the whole reconstruction. It reached the real range on none of the eleven
+signatures for the adult personae. Its additions raised variability part-way without
+reaching the real band, pushed the autocorrelation and diurnal amplitude, which the 2008
+model had matched, out of range, and left the structural gaps untouched.
 
-Conclusions. Testing on the community-standard platform exercises a smooth, announced-meal,
+Conclusions. Testing on the open 2008 platform exercises a smooth, announced-meal,
 stationary, clean-sensor regime, and it is largely blind to the unannounced meals, variable
 insulin efficacy, sensor artefacts and drifting sensitivity that shape real-world safety.
 We read this not as grounds to distrust simulation but as grounds to change how it is
@@ -70,7 +73,7 @@ makes the comparison credible.
 
 This paper reports that comparison and draws one conclusion from it. We show that
 independent real-world AID datasets agree closely enough to serve as a target, we measure
-where the community-standard simulator meets that target and where it does not, and we
+where the open 2008 simulator meets that target and where it does not, and we
 argue from the pattern of the misses that fidelity to real data should be measured rather
 than assumed.
 
@@ -83,11 +86,16 @@ carries three hundred in-silico subjects; the freely distributed academic versio
 open-source simglucose package that reimplements the 2008 model [6], carry the canonical
 thirty, ten adults, ten adolescents and ten children.
 
-That distinction sets our scope. The version we test, simglucose, is the 2008 model, and it
-is the tool the open AID community actually builds and evaluates against, both in
-reinforcement-learning research and in the algorithm work of the OpenAPS, AndroidAPS and
-Trio projects whose data we compare it with. Its fidelity is not an academic curiosity; it
-describes the world these algorithms are tuned in before they reach anyone.
+That distinction sets our scope. The version we test, simglucose, is the open
+reimplementation of the 2008 model and the instance of the simulator anyone can run. It is
+the common tool in academic and reinforcement-learning work on glucose-control algorithms,
+and it shares the model structure and the virtual population of the FDA-accepted version. It
+is worth being clear about who does and does not use it. Commercial systems bound for
+regulatory approval are tested on the licensed UVA/Padova simulator, so the platform gates
+that pathway. The open-source AID systems whose data we use here, by contrast, are for the
+most part not developed or validated against any simulator at all; they are iterated on
+real-world use. That works in our favour rather than against us, because it means the
+real-world data we hold the simulator against was not itself shaped by the simulator.
 
 The simulator has been revised since 2008. The S2013 version [2] added intraday and
 interday variability of insulin sensitivity fitted to clinical data, a dawn-phenomenon
@@ -96,7 +104,7 @@ was accepted by the FDA in 2013, later extended from single-meal to single-day s
 [3], and validated against clinical-trial traces [4]. Physical-activity effects have been
 added to the model family in separate work. Section 6 measures what the two most relevant of
 these revisions do and do not fix. The point here is narrower: the freely available,
-community-standard tool is the 2008 model, and that is what we measure.
+openly runnable version is the 2008 model, and that is what we measure.
 
 ## 3. Methods
 
@@ -262,101 +270,79 @@ The obvious objection is that we tested the 2008 model and that later versions a
 It is a fair objection and part of it is correct, so it deserves a measured answer rather
 than an argued one.
 
-The central change in the S2013 version over 2008 is time-varying insulin sensitivity,
-within and across days, fitted from clinical data [2], together with a dawn-phenomenon
-component. We built that mechanism into the 2008 personae, scaling both the
-insulin-dependent glucose uptake and the hepatic insulin action by a common time-varying
-factor with a day-to-day coefficient of variation of 22% and a dawn amplitude of 20%, values
-in the clinically observed range. Nothing else changed. The meals, the announcement, the
-sensor and the controller are identical to the 2008 baseline, so any difference is due to the
-sensitivity process alone. This is an S2013-style augmentation of the 2008 personae rather
-than the licensed S2013 model, which is not freely available, and it is meant to isolate the
-effect of the headline refinement rather than to reproduce the whole version.
+The main change from 2008 to S2013 is time-varying insulin sensitivity, within and across
+days and with a dawn component, fitted from clinical data [2]. S2013 also adds a glucagon
+counter-regulation model that raises endogenous glucose production during a low, and it
+improves the glucose kinetics of hypoglycaemia. We reconstructed the version as closely as
+the open literature allows by adding the first two of these to the 2008 personae together and
+measuring the whole reconstruction; we did not implement the improved hypoglycaemia kinetics,
+which we note as a caveat. The sensitivity factor scales the insulin-dependent glucose uptake
+and the hepatic insulin action with a day-to-day coefficient of variation of 22% and a dawn
+amplitude of 20%, and the counter-regulation raises endogenous glucose production in
+proportion to how far below 80 mg/dL glucose has fallen and how fast it is falling.
+Everything else, the meals, the announcement, the sensor and the controller, is identical to
+the 2008 baseline, so any difference is due to the two additions. Their magnitudes are
+clinically plausible values rather than the certified per-subject parameters, so the
+reconstruction isolates what the additions do rather than reproducing the licensed model
+exactly.
 
-Table 2. Adult personae, 2008 versus the S2013-style time-varying-sensitivity augmentation,
-against the real-world envelope (per-persona median).
+Table 2. Adult personae, the 2008 baseline and the reconstructed S2013 with both additions
+together, against the real-world envelope. Each entry is the per-persona median.
 
-| Signature | Real range | 2008 | S2013-style | Effect |
-|---|---|---|---|---|
-| Glucose variability (CV%) | 30 to 34 | 23 | 32 | into range |
-| Diurnal amplitude (mg/dL) | 35 to 56 | 47 | 65 | overshoots |
-| Outcome SD at a stuck high (mg/dL) | 27 to 34 | 21 | 20 | unchanged |
-| Rise tail (%) | 3.7 to 6.6 | 1.0 | 1.3 | unchanged |
-| Hypo recovery (min) | 50 to 59 | 113 | 116 | unchanged |
-| Hypo rebound (%) | 23 to 28 | 0 | 0 | unchanged |
-| Compression lows (/30d) | 1.9 to 5.3 | 0 | 0 | unchanged |
-| Sensor jitter (mg/dL) | 4.5 to 6.7 | 2.4 | 2.3 | unchanged |
+| Signature | Real range | 2008 | Reconstructed S2013 |
+|---|---|---|---|
+| Glucose variability (CV%) | 30 to 34 | 23 | 28 |
+| Rise tail P(rise>10)/5min (%) | 3.7 to 6.6 | 1.0 | 1.2 |
+| Autocorrelation @30 min | 0.78 to 0.87 | 0.84 | 0.90 |
+| Autocorrelation @60 min | 0.50 to 0.68 | 0.66 | 0.77 |
+| Outcome SD at a stuck high (mg/dL) | 27 to 34 | 21 | 18 |
+| Diurnal amplitude (mg/dL) | 35 to 56 | 47 | 60 |
+| Hypo recovery to 100 (min) | 50 to 59 | 113 | 106 |
+| Hypo rebound above 180 (%) | 23 to 28 | 0 | 0 |
+| Compression lows (/30d) | 1.9 to 5.3 | 0 | 1.4 |
+| Sensor jitter (mg/dL) | 4.5 to 6.7 | 2.4 | 2.3 |
+| ISF drift (weekly %CV) | 8 to 22 | 0 | 0 |
 
-![Figure 2. Adult personae, the 2008 baseline in grey and the S2013-style
-time-varying-sensitivity augmentation in orange, against the real-world range in blue. The
-refinement lifts overall variability into range and pushes the diurnal amplitude past it,
-while leaving the structural gaps where they were.](../scripts/2026-07-insilico/fidelity_suite/fig_s2013.png)
+![Figure 2. Adult personae, the 2008 baseline in grey and the reconstructed S2013 in green,
+against the real-world range in blue. The reconstruction reaches the real range on none of
+the eleven signatures, and it moves the two autocorrelations and the diurnal amplitude, which
+2008 had matched, out of range.](../scripts/2026-07-insilico/fidelity_suite/fig_s2013_reconstructed.png)
 
-The result is sharp. The refinement does one useful thing to fidelity, lifting overall
-glucose variability from below the real range into it. It also overshoots the diurnal
-amplitude, pushing a statistic the 2008 model had already matched out of range. It does
-nothing to the stuck-high outcome spread, because sensitivity that varies slowly is nearly
-constant over the half hour that statistic looks ahead, so the model's insulin still acts too
-predictably. And it leaves the structural gaps untouched to two significant figures: the
-announced-meal rise tail, the untreated-hypo recovery and its rebound, and the sensor
-compression rate and noise are all unmoved, because none of them depends on insulin
-sensitivity. The adolescent and child personae behave the same way.
+Taken as one model, the reconstruction matches none of the eleven signatures for the adult
+personae, and the reason is instructive. The two additions pull in opposite directions on
+variability, since the time-varying sensitivity widens the glucose distribution while the
+counter-regulation damps the lows that widen it. Overall variability therefore rises only
+from 23 to 28% and stays below the real band, and the stuck-high outcome spread does not
+improve but narrows, from 21 to 18 mg/dL against a real 27 to 34. What the additions mainly
+do is make the glucose curve smoother and more regular, which moves it the wrong way: the
+30- and 60-minute autocorrelations rise above the real range and the diurnal amplitude
+overshoots, all three being quantities the 2008 model had reproduced. The
+hypoglycaemia-recovery gap narrows, from about 113 to 106 minutes, but stays close to twice
+the real 50 to 59, and the rebound is still absent, because endogenous glucose release is not
+the carbohydrate a person eats to treat a low. The unannounced-meal rise tail, the sensor
+jitter and the sensitivity drift do not move at all. The small non-zero compression reading
+is a detector artefact, since a sharp counter-regulatory reversal has the same shape as a
+sensor compression low, so the model has gained lows that resemble the artefact rather than
+the artefact itself. The exact size of the overshoots depends on the magnitudes we chose,
+which are plausible rather than fitted, but the direction, smoother and more regular rather
+than more realistic on the disturbances, is intrinsic to what the refinements change.
 
-Several things follow. The refinements are not what the open AID community uses; its
-standard tool is the 2008 model, and algorithms trained and screened on it inherit its gaps.
-The refinement, now measured rather than argued, does not touch the features behind most of
-the failures, since meals are still announced, hypoglycaemia is still untreated by
-carbohydrate, and the sensor still has no compression artefact. Real CGM lows are often
-sensor artefacts and real highs often begin with unannounced food, so a simulator that omits
-both leaves out two of the commonest triggers of a consequential automated decision. The
-licensed S2013 also bundles changes we did not implement here. Most do not act on the
-scenario or the sensor, but one, the glucagon counter-regulation model, does act on how a low
-resolves and could in principle move the hypo-recovery and rebound results, so we measured it
-too and report it in Section 6.1. To our knowledge no version, before this work, has been
-benchmarked against a real-world distributional envelope. The claim that a refinement closes
-a gap is an empirical one, and where we could test it, it closed a single gap of eight and
-opened a second.
+Two things follow, and neither depends on the reconstruction being exact. The structural
+gaps, the unannounced-meal rise, the untreated hypoglycaemia, the sensor behaviour and the
+sensitivity drift, do not move under either addition, and they cannot, because none of them
+is a matter of insulin sensitivity or counter-regulation; that result is
+magnitude-independent. And the refinements live in the licensed S2013, not in the freely
+available 2008 model that underpins the open in-silico work and the FDA-accepted family. To
+our knowledge no version, before this work, has been benchmarked against a real-world
+distributional envelope. The claim that a refinement closes a gap is an empirical one, and
+where we could test it the reconstruction reached the real range on nothing and pushed three
+matched statistics out of it.
 
 The point is not that one model version is inadequate. It is that fidelity to real data is
-treated as settled when it is something that can be measured, statistic by statistic, for the
-quantities a safety decision actually depends on. The failures are not scattered at random.
-They fall on the disturbances the model does not represent, and those disturbances are the
-ones that define real-world safety.
-
-### 6.1 The one refinement that could close the hypo gap does not
-
-The glucagon counter-regulation model is the S2013 change with the clearest route to the
-hypoglycaemia signatures, because it governs how a low resolves. We implemented its
-functional effect on top of the sensitivity augmentation, raising endogenous glucose
-production during a low in proportion to how far below 80 mg/dL glucose has fallen and how
-fast it is falling, which are the drivers of glucagon secretion in the model, and measured
-again.
-
-Table 3. Adult personae across the two refinements, hypoglycaemia signatures.
-
-| Signature | Real range | 2008 | + sensitivity | + glucagon |
-|---|---|---|---|---|
-| Hypo recovery to 100 (min) | 50 to 59 | 113 | 116 | 106 |
-| Hypo rebound above 180 (%) | 23 to 28 | 0 | 0 | 0 |
-
-![Figure 3. Adult personae across the S2013 refinements. Counter-regulation, shown in green,
-narrows the hypo-recovery gap without closing it and does not restore the rebound. The
-variability panel confirms the sensitivity effect is preserved.](../scripts/2026-07-insilico/fidelity_suite/fig_s2013_glucagon.png)
-
-Counter-regulation does what physiology predicts and no more. It speeds recovery from a low,
-from about 116 to 106 minutes, which moves towards the real 50 to 59 minutes but leaves it
-close to twice too slow. It does not produce the overshoot that follows a real low, because
-endogenous glucose release tapers off where eating does not. The effect is larger in the
-personae that actually go low, but its direction and its shortfall are the same. The reason is
-the reason the whole hypoglycaemia signature fails: a real low is treated with carbohydrate,
-a faster and larger glucose input than any counter-regulatory term, and the simulator does
-not eat. There is one incidental artefact worth flagging. With counter-regulation the
-compression-low signature reads a small non-zero value, because a sharp counter-regulatory
-reversal has the same shape as a sensor compression low; the model has gained lows that
-resemble the artefact, not the artefact itself. So the S2013 change most likely to rescue the
-hypoglycaemia result narrows the gap and does not close it. That is the strongest form of the
-argument, because even the correct physiological addition cannot stand in for a disturbance,
-carbohydrate treatment, that the simulator does not model at all.
+treated as settled when it can be measured, statistic by statistic, for the quantities a
+safety decision depends on. The failures are not scattered at random. They fall on the
+disturbances the model does not represent, and those disturbances are the ones that define
+real-world safety.
 
 ## 7. A new approach
 
@@ -419,7 +405,7 @@ standard is part of what we are proposing rather than something we claim to have
 The UVA/Padova simulator has served the field well, and replacing animal trials with it was a
 genuine advance. But a tool with this much influence over which systems reach patients ought
 to be held to an explicit, measured standard of fidelity to the real world, and on the
-community-standard implementation that standard is not met for the statistics that matter most
+open 2008 implementation that standard is not met for the statistics that matter most
 to safety. The simulator is smoother than real life, its meals arrive announced, its lows go
 untreated, its sensor is unrealistically clean, and its physiology holds still while real
 sensitivity drifts. A controller can pass in silico by mastering the world the simulator
