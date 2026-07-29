@@ -137,4 +137,140 @@ def s6_exercise(real, sim):
                      "insulin-independent exercise drain has no input path in the model.")
 
 
-SIGNATURES = [s1_cv, s2_delta_tails, s3_acf, s4_outcome_sd, s5_drift, s6_exercise]
+# ---- S7: diurnal amplitude ---------------------------------------------------
+def _diurnal_amplitude(ts, bg):
+    """Peak-to-trough of the hour-of-day mean BG profile. Timezone-invariant (a TZ
+    shift only rotates the phase), so real and sim are comparable without local time."""
+    hod = (np.asarray(ts, float) / 3600.0) % 24
+    prof = np.array([bg[(hod >= h) & (hod < h + 1)].mean() if np.any((hod >= h) & (hod < h + 1))
+                     else np.nan for h in range(24)])
+    prof = prof[np.isfinite(prof)]
+    return float(prof.max() - prof.min()) if len(prof) else np.nan
+
+
+def s7_diurnal(real, sim):
+    r = [_diurnal_amplitude(ts, bg) for ts, bg in real.values()]
+    s = [_diurnal_amplitude(C.sim_ts_5min(c), C.sim_5min(c)) for c in sim.values()]
+    rp, rlo, rhi = C.boot_ci(r, np.median, seed=6)
+    sp, slo, shi = C.boot_ci(s, np.median, seed=7)
+    verdict = "PASS" if rlo <= sp <= rhi else "FAIL"
+    return dict(name="Diurnal amplitude (peak-trough of hourly mean)", category="distribution",
+                real=rp, real_ci=(rlo, rhi), sim=sp, sim_ci=(slo, shi),
+                metric=f"diurnal swing real {rp:.0f} vs sim {sp:.0f} mg/dL",
+                verdict=verdict,
+                note="Real days swing more across the clock (dawn plus routine meals at "
+                     "steady times); the sim's swing is meal-driven only, and jittered meal "
+                     "times smear it. The model has no circadian term.")
+
+
+# ---- S8: hypo-recovery shape -------------------------------------------------
+def _hypo_recovery(ts, bg, dt=300):
+    """For each crossing below 70, minutes to recover to >=100, and whether BG then
+    overshoots >180 within 2 h. Returns (median_recovery_min, rebound_fraction)."""
+    ts = np.asarray(ts, float); bg = np.asarray(bg, float)
+    below = bg < 70
+    onset = np.where(below[1:] & ~below[:-1])[0] + 1
+    rec_times, rebounds = [], []
+    for i in onset:
+        # recovery: first index >=100 after i, within 3 h
+        end = min(i + int(3 * 3600 / dt), len(bg) - 1)
+        seg_t, seg_b = ts[i:end + 1], bg[i:end + 1]
+        rec = np.where(seg_b >= 100)[0]
+        if not len(rec):
+            continue
+        j = rec[0]
+        rec_times.append((seg_t[j] - seg_t[0]) / 60.0)
+        # rebound: does BG exceed 180 within 2 h of recovery?
+        r2 = min(j + int(2 * 3600 / dt), len(seg_b) - 1)
+        rebounds.append(bool(np.any(seg_b[j:r2 + 1] > 180)))
+    if not rec_times:
+        return np.nan, np.nan
+    return float(np.median(rec_times)), float(np.mean(rebounds))
+
+
+def s8_hypo_recovery(real, sim):
+    rr = [_hypo_recovery(ts, bg) for ts, bg in real.values()]
+    ss = [_hypo_recovery(C.sim_ts_5min(c), C.sim_5min(c)) for c in sim.values()]
+    r_reb = [x[1] for x in rr if np.isfinite(x[1])]
+    s_reb = [x[1] for x in ss if np.isfinite(x[1])]
+    rp, rlo, rhi = C.boot_ci([x[0] for x in rr if np.isfinite(x[0])], np.median, seed=8)
+    sp, slo, shi = C.boot_ci([x[0] for x in ss if np.isfinite(x[0])], np.median, seed=9)
+    r_rebm = 100 * np.mean(r_reb) if r_reb else np.nan
+    s_rebm = 100 * np.mean(s_reb) if s_reb else np.nan
+    # FAIL if recovery time or rebound fraction diverge materially
+    verdict = "FAIL" if (abs(rp - sp) > 15 or abs((r_rebm or 0) - (s_rebm or 0)) > 15) else "PASS"
+    return dict(name="Hypo recovery (time to 100, rebound)", category="dynamics",
+                real=f"{rp:.0f} min, reb {r_rebm:.0f}%", real_ci=None,
+                sim=f"{sp:.0f} min, reb {s_rebm:.0f}%", sim_ci=None,
+                metric=f"recovery real {rp:.0f} vs sim {sp:.0f} min; "
+                       f"rebound>180 real {r_rebm:.0f}% vs sim {s_rebm:.0f}%",
+                verdict=verdict,
+                note="Real lows recover via rescue carbohydrate and then overshoot; the sim "
+                     "has no rescue carbs, so it recovers only by withdrawing insulin.")
+
+
+# ---- S9: compression lows (sensor artefact) ---------------------------------
+def _compression_lows(ts, bg, dt=300):
+    """Count sharp dips below 70 that recover to within 15 mg/dL of the pre-dip level
+    inside 30 min with a steep descent — the signature of a sensor compression low, not
+    a physiological hypo. Returns incidence per 30 days."""
+    ts = np.asarray(ts, float); bg = np.asarray(bg, float)
+    below = bg < 70
+    onset = np.where(below[1:] & ~below[:-1])[0] + 1
+    n = 0
+    for i in onset:
+        pre = bg[max(0, i - 4):i].mean() if i >= 1 else bg[i]
+        w = min(i + int(30 * 60 / dt), len(bg) - 1)
+        seg = bg[i:w + 1]
+        nadir = seg.min()
+        # steep descent (> 1.5 mg/dL/min into the dip) and fast full recovery
+        drop_rate = (pre - nadir) / max((int(30 * 60 / dt)) * dt / 60.0, 1)
+        recovered = seg[-1] >= pre - 15 and pre >= 85
+        if recovered and (pre - nadir) > 25 and drop_rate > 1.0:
+            n += 1
+    span_days = (ts[-1] - ts[0]) / 86400.0 if len(ts) > 1 else 1
+    return 30.0 * n / max(span_days, 1)
+
+
+def s9_compression(real, sim):
+    r = [_compression_lows(ts, bg) for ts, bg in real.values()]
+    s = [_compression_lows(C.sim_ts_5min(c), C.sim_5min(c)) for c in sim.values()]
+    rp, rlo, rhi = C.boot_ci(r, np.median, seed=10)
+    sp = float(np.median(s))
+    return dict(name="Compression lows (per 30 days)", category="sensor",
+                real=rp, real_ci=(rlo, rhi), sim=sp, sim_ci=None,
+                metric=f"compression-low rate real {rp:.1f} vs sim {sp:.1f} per 30 days",
+                verdict="STRUCTURAL" if sp < 0.5 else ("FAIL" if rp > 1.5 * max(sp, 1e-9) else "PASS"),
+                note="Sharp reversing dips from sensor compression. The Dexcom sensor model "
+                     "adds noise but has no compression mechanism, so the sim rate is ~0.")
+
+
+# ---- S10: sensor-noise texture ----------------------------------------------
+def s10_noise(real, sim):
+    """SD of the second difference of the 5-min series: a high-frequency jitter measure.
+    Tests whether the sim's sensor-noise texture matches real CGM. Gap-aware on the real
+    side: only triples of consecutive ~5-min-spaced samples contribute, so sensor
+    dropouts do not masquerade as noise."""
+    def jitter_gapped(ts, bg, lo=240, hi=360):
+        ts = np.asarray(ts, float); bg = np.asarray(bg, float)
+        d1 = np.diff(bg); gaps = np.diff(ts)
+        d2 = np.diff(d1)
+        ok = (gaps[:-1] >= lo) & (gaps[:-1] <= hi) & (gaps[1:] >= lo) & (gaps[1:] <= hi)
+        return float(np.std(d2[ok])) if np.any(ok) else np.nan
+    def jitter_grid(bg):
+        return float(np.std(np.diff(np.diff(bg))))
+    r = [jitter_gapped(ts, bg) for ts, bg in real.values()]
+    s = [jitter_grid(C.sim_5min(c)) for c in sim.values()]
+    rp, rlo, rhi = C.boot_ci(r, np.median, seed=11)
+    sp, slo, shi = C.boot_ci(s, np.median, seed=12)
+    verdict = "PASS" if rlo <= sp <= rhi else "FAIL"
+    return dict(name="Sensor-noise texture (2nd-diff SD)", category="sensor",
+                real=rp, real_ci=(rlo, rhi), sim=sp, sim_ci=(slo, shi),
+                metric=f"jitter real {rp:.1f} vs sim {sp:.1f} mg/dL",
+                verdict=verdict,
+                note="High-frequency measurement jitter. Tests whether the Dexcom noise "
+                     "model's texture matches real sensor noise.")
+
+
+SIGNATURES = [s1_cv, s2_delta_tails, s3_acf, s4_outcome_sd, s5_drift, s6_exercise,
+              s7_diurnal, s8_hypo_recovery, s9_compression, s10_noise]

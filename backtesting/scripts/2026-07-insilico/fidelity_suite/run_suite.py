@@ -57,6 +57,61 @@ def figure(real, sim, path):
     fig.tight_layout(); fig.savefig(path, dpi=130); plt.close(fig)
 
 
+def figure2(real, sim, path):
+    fig, ax = plt.subplots(2, 2, figsize=(11, 8))
+    # (a) diurnal hour-of-day mean profile
+    def prof(ts, bg):
+        hod = (np.asarray(ts, float) / 3600.0) % 24
+        return np.array([bg[(hod >= h) & (hod < h + 1)].mean() for h in range(24)])
+    rp = np.nanmean([prof(ts, bg) for ts, bg in real.values()], axis=0)
+    sp = np.nanmean([prof(C.sim_ts_5min(c), C.sim_5min(c)) for c in sim.values()], axis=0)
+    ax[0, 0].plot(range(24), rp, color=C.BLUE, lw=2, label="real")
+    ax[0, 0].plot(range(24), sp, color=C.ORANGE, lw=2, label="sim")
+    ax[0, 0].set_title("Diurnal profile (mean BG by hour, UTC)")
+    ax[0, 0].set_xlabel("hour of day"); ax[0, 0].set_ylabel("mg/dL"); ax[0, 0].legend()
+    # (b) hypo recovery time distribution
+    def rec_times(ts, bg, dt=300):
+        ts = np.asarray(ts, float); bg = np.asarray(bg, float)
+        below = bg < 70; onset = np.where(below[1:] & ~below[:-1])[0] + 1
+        out = []
+        for i in onset:
+            end = min(i + int(3 * 3600 / dt), len(bg) - 1)
+            seg_t, seg_b = ts[i:end + 1], bg[i:end + 1]
+            r = np.where(seg_b >= 100)[0]
+            if len(r):
+                out.append((seg_t[r[0]] - seg_t[0]) / 60.0)
+        return out
+    rr = np.concatenate([rec_times(ts, bg) for ts, bg in real.values()]) if real else np.array([])
+    ssv = np.concatenate([rec_times(C.sim_ts_5min(c), C.sim_5min(c)) for c in sim.values()])
+    bb = np.arange(0, 185, 10)
+    ax[0, 1].hist(rr, bins=bb, density=True, histtype="step", color=C.BLUE, lw=2, label="real")
+    ax[0, 1].hist(ssv, bins=bb, density=True, histtype="step", color=C.ORANGE, lw=2, label="sim")
+    ax[0, 1].set_title("Hypo recovery time (<70 to >=100)")
+    ax[0, 1].set_xlabel("minutes"); ax[0, 1].legend()
+    # (c) compression lows per 30 days, per user vs sim
+    rc = [S._compression_lows(ts, bg) for ts, bg in real.values()]
+    sc = [S._compression_lows(C.sim_ts_5min(c), C.sim_5min(c)) for c in sim.values()]
+    ax[1, 0].bar([0], [np.median(rc)], width=0.6, color=C.BLUE, label="real")
+    ax[1, 0].bar([1], [np.median(sc)], width=0.6, color=C.ORANGE, label="sim")
+    ax[1, 0].set_xticks([0, 1]); ax[1, 0].set_xticklabels(["real", "sim"])
+    ax[1, 0].set_title("Compression lows (median per 30 days)"); ax[1, 0].set_ylabel("events")
+    # (d) sensor-noise jitter per user
+    def jit(ts, bg, lo=240, hi=360):
+        ts = np.asarray(ts, float); bg = np.asarray(bg, float)
+        d2 = np.diff(np.diff(bg)); g = np.diff(ts)
+        ok = (g[:-1] >= lo) & (g[:-1] <= hi) & (g[1:] >= lo) & (g[1:] <= hi)
+        return np.std(d2[ok]) if np.any(ok) else np.nan
+    rj = [jit(ts, bg) for ts, bg in real.values()]
+    sj = [np.std(np.diff(np.diff(C.sim_5min(c)))) for c in sim.values()]
+    ax[1, 1].hist(rj, bins=np.arange(0, 12, 1), color=C.BLUE, alpha=0.75, label="real")
+    ax[1, 1].hist(sj, bins=np.arange(0, 12, 1), color=C.ORANGE, alpha=0.75, label="sim")
+    ax[1, 1].set_title("Sensor-noise jitter (2nd-diff SD)")
+    ax[1, 1].set_xlabel("mg/dL"); ax[1, 1].legend()
+    for a in ax.flat:
+        a.spines[["top", "right"]].set_visible(False)
+    fig.tight_layout(); fig.savefig(path, dpi=130); plt.close(fig)
+
+
 def main():
     print("loading real cohort ...", flush=True)
     real = load_real()
@@ -70,8 +125,8 @@ def main():
         results.append(r)
         print(f"  [{r['verdict']:10}] {r['name']}: {r['metric']}", flush=True)
 
-    figpath = os.path.join(HERE, "fig_fidelity.png")
-    figure(real, sim, figpath)
+    figure(real, sim, os.path.join(HERE, "fig_fidelity.png"))
+    figure2(real, sim, os.path.join(HERE, "fig_fidelity2.png"))
 
     # verdict table
     n_fail = sum(r["verdict"] == "FAIL" for r in results)
@@ -110,12 +165,13 @@ def write_report(results, real, sim, n_pass, n_fail, n_struct):
                                   if r.get("sim_ci") else "")
         lines.append(f"| {r['name']} | {r['category']} | {real_s} | {sim_s} | **{r['verdict']}** |")
     lines.append("\n![fidelity](fig_fidelity.png)\n")
+    lines.append("![fidelity 2](fig_fidelity2.png)\n")
     lines.append("## What this means\n")
     lines.append(
-        "The simulator does not fail everywhere. Its short-horizon autocorrelation matches, "
-        "so for smooth, benign, announced-meal stretches it is a fair stand-in and remains "
-        "usable for dosing-logic regression and sanity checks. It fails in a consistent "
-        "direction on everything that makes our problem hard:\n")
+        "The simulator does not fail everywhere. It reproduces short-horizon autocorrelation "
+        "and the gross diurnal swing, so for smooth, benign, announced-meal stretches it is a "
+        "fair stand-in and remains usable for dosing-logic regression and sanity checks. It "
+        "fails in a consistent direction on everything that makes our problem hard:\n")
     lines.append(
         "- **It runs too smooth.** Lower CV, thin delta tails, slower decorrelation. The fat "
         "positive delta tails it misses are exactly the unannounced-meal onsets that dominate "
@@ -126,13 +182,20 @@ def write_report(results, real, sim, n_pass, n_fail, n_struct):
         "deterministic to 0.00 across identical repeats). The efficacy blind spot is not in "
         "the model.\n"
         "- **It never changes.** Real insulin sensitivity drifts ~22% week to week; the "
-        "virtual patient's parameters are fixed. And it has no exercise input at all.\n")
+        "virtual patient's parameters are fixed. And it has no exercise input at all.\n"
+        "- **Its lows behave differently.** Real hypos recover about twice as fast and "
+        "overshoot far more often, because people eat to treat them; the sim has no rescue "
+        "carbohydrate and recovers only by withdrawing insulin.\n"
+        "- **Its sensor is too clean.** Real CGM carries roughly twice the high-frequency "
+        "jitter of the Dexcom noise model, and produces reversing compression lows the model "
+        "has no mechanism for at all.\n")
     lines.append(
         "So a controller A/B on this simulator would score both controllers safe in precisely "
-        "the regimes where real controllers crash (exercise), over-correct (efficacy), or get "
-        "caught out by an unannounced meal or a sensitivity shift. The 'no counterfactual' "
-        "caveat stays, now measured signature by signature rather than asserted. The suite is "
-        "extensible: each new signature is one function in `signatures.py`.\n")
+        "the regimes where real controllers crash (exercise), over-correct (efficacy), get "
+        "caught out by an unannounced meal or a sensitivity shift, or react to a sensor "
+        "artefact. The 'no counterfactual' caveat stays, now measured signature by signature "
+        "rather than asserted. The suite is extensible: each new signature is one function in "
+        "`signatures.py`.\n")
     lines.append("## Per-signature notes\n")
     for r in results:
         lines.append(f"- **{r['name']}** — {r['metric']}. {r['note']}")

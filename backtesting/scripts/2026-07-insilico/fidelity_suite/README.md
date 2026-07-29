@@ -37,22 +37,33 @@ not a clockwork scenario.
 | `run_suite.py` | run every signature, emit `REPORT.md` + `fig_fidelity.png` |
 | `REPORT.md` | generated: the verdict table + figure + notes |
 
-## Signatures (v1)
+## Signatures
 
-1. **Glucose variability (CV%)** — distribution of per-person CV, real vs sim.
+Current results: 2 PASS, 5 FAIL, 3 STRUCTURAL of 10.
+
+1. **Glucose variability (CV%)** — distribution of per-person CV. FAIL (30 vs 22).
 2. **Short-horizon delta tails (5 min)** — fat positive tails are unannounced-meal
-   onsets; the sim only sees announced meals.
-3. **Autocorrelation (30/60 min)** — how fast the glucose curve decorrelates (smoothness).
-4. **Outcome unpredictability (BG 180-240, +30 min)** — the spread of where you end up
+   onsets; the sim only sees announced meals. FAIL.
+3. **Autocorrelation (30/60 min)** — how fast the glucose curve decorrelates. PASS.
+4. **Outcome unpredictability (BG 180-240, +30 min)** — spread of where you end up
    30 min after a stuck-high band. Real is wide (efficacy and absorption vary); the sim
-   is narrow (deterministic dynamics + sensor noise). The efficacy blind spot, measured.
+   is narrow. The efficacy blind spot, measured. FAIL (x1.5).
 5. **Insulin-sensitivity drift (weekly)** — real sensitivity drifts week to week; the
-   virtual patient's parameters are fixed. STRUCTURAL.
+   virtual patient's parameters are fixed. STRUCTURAL (22% vs 0%).
 6. **Post-meal-exercise counterweight** — crash rate falls with insulin-on-board; the
    model has no exercise input. STRUCTURAL (see `../fidelity_test.py` Probe A).
+7. **Diurnal amplitude** — peak-to-trough of the hour-of-day mean (TZ-invariant). PASS.
+8. **Hypo recovery** — time from <70 back to >=100 and rebound rate. Real recovers
+   about twice as fast and overshoots more (rescue carbs); the sim has none. FAIL.
+9. **Compression lows** — sharp reversing dips from sensor compression per 30 days. The
+   sensor model has no compression mechanism. STRUCTURAL (2.9 vs 0).
+10. **Sensor-noise texture** — high-frequency jitter (gap-aware 2nd-diff SD). Real CGM
+    is about twice as noisy as the Dexcom model. FAIL.
 
 The scope is deliberately extensible: adding a signature is one function in
-`signatures.py`. Candidates for v2 are noted in the report.
+`signatures.py`. Candidate next signatures: dawn slope on local time, meal-response
+rise shape, exercise-window drop (once an exercise input is modelled), overnight
+stability.
 
 ## Reproduce
 
