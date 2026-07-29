@@ -5,3 +5,4 @@ __pycache__/
 *.pyc
 sim_cohort_s2013.npz
 s2013_result.json
+sim_cohort_s2013_full.npz

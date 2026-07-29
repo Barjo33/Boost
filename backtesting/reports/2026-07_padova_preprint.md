@@ -321,11 +321,13 @@ announced, hypoglycaemia is still not treated with carbohydrate, and the sensor 
 compression artefact. Real-world CGM lows are frequently sensor artefacts and real-world
 highs frequently begin with unannounced food; a simulator that omits both is omitting two of
 the most common triggers of a consequential automated decision. Third, the licensed S2013
-bundles further changes we did not implement, an improved hypoglycaemia and glucagon model
-among them, and it should be benchmarked directly; but those changes do not act on the
-scenario or the sensor either, and no version, to our knowledge, has been benchmarked against
-a real-world distributional envelope. The claim that a refinement closes a gap is an
-empirical claim, and where we could test it, it closed one gap of eight and opened another.
+bundles further changes we did not implement in the augmentation above. Most do not act on
+the scenario or the sensor, but one, the glucagon counter-regulation model, does act on how
+a low resolves and could in principle move the hypo-recovery and rebound results; we
+therefore measured it too, and report the result in Section 6.1. No version, to our
+knowledge, has been benchmarked against a real-world distributional envelope. The claim that
+a refinement closes a gap is an empirical claim, and where we could test it, it closed one
+gap of eight and opened another.
 
 That is the shift the pattern of results argues for. The problem is not that a particular
 model version is inadequate. It is that simulator fidelity to real-world data is treated
@@ -380,10 +382,12 @@ This is an observational, distributional comparison and it should be read as suc
 real cohorts are self-selected users of open-source AID systems and are not a
 representative sample of the type 1 population; their convergence is reassuring but does
 not establish population representativeness. We tested the open 2008 implementation, and in
-Section 6 we measured the central S2013 refinement by implementing it on the personae, but
-we did not run the licensed S2013 model itself, which bundles further changes (an improved
-hypoglycaemia and glucagon model) we did not reproduce; running it directly would settle
-what those additional changes do, though none of them acts on the scenario or the sensor.
+Section 6 we measured the two S2013 refinements that could plausibly affect our results, the
+time-varying insulin sensitivity and the glucagon counter-regulation, by implementing them on
+the personae; but we did not run the licensed S2013 model itself, and our reimplementations
+use clinically plausible magnitudes rather than the certified per-subject parameters, so they
+isolate the mechanisms rather than reproduce the whole version. The remaining S2013 changes
+do not act on the scenario or the sensor, which is where the structural gaps live.
 The magnitude of our sensitivity augmentation is a clinically plausible choice rather than a
 fitted value, and the closed-gap result scales with it, though the untouched structural gaps
 do not. The announced-meal scenario handicaps the simulator on the
