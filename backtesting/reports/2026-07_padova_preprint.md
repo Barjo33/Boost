@@ -29,9 +29,10 @@ real-world glucose variability only through its child personae. Five of eleven s
 were reproduced by no persona at any age: the fat tail of unannounced-meal glucose rises,
 the speed and overshoot of hypoglycaemia recovery, sensor compression artefacts,
 high-frequency sensor noise, and week-to-week insulin-sensitivity drift (zero in the
-model by construction). Implementing the central refinement of the later S2013 model,
-time-varying insulin sensitivity, on the personae closed only the variability gap,
-overshot the diurnal amplitude, and left every structural gap unchanged.
+model by construction). Implementing the two S2013 refinements that could plausibly help,
+time-varying insulin sensitivity and glucagon counter-regulation, closed only the
+variability gap, overshot the diurnal amplitude, narrowed the hypoglycaemia-recovery gap
+without closing it, and left the remaining structural gaps unchanged.
 
 **Conclusions.** In-silico testing on the community-standard platform exercises a smooth,
 announced-meal, stationary, clean-sensor regime and is close to blind to the unannounced
@@ -335,6 +336,42 @@ as established rather than as something to be quantified for the specific statis
 safety decision depends on. The failures we find are not random; they cluster on the
 disturbances the model does not represent, and they are exactly the disturbances that
 define real-world safety.
+
+### 6.1 The one refinement that could close the hypo gap does not
+
+Of the S2013 changes we did not test above, one, the glucagon counter-regulation model,
+acts directly on how a low resolves and could in principle move the hypo-recovery and
+rebound results. We therefore implemented its functional effect on top of the
+sensitivity augmentation, raising endogenous glucose production during hypoglycaemia in
+proportion to how far below 80 mg/dL glucose has fallen and how fast it is falling, the
+two drivers of glucagon secretion in the model, and measured again.
+
+**Table 3.** Adult personae across the two refinements, hypoglycaemia signatures.
+
+| Signature | Real range | 2008 | + sensitivity | + glucagon | 
+|---|---|---|---|---|
+| Hypo recovery to 100 (min) | 50 to 59 | 113 | 116 | 106 |
+| Hypo rebound above 180 (%) | 23 to 28 | 0 | 0 | 0 |
+
+![**Figure 3.** Adult personae across the S2013 refinements. Counter-regulation (green)
+narrows the hypo-recovery gap but does not close it, and does not restore the rebound; the
+variability panel confirms the sensitivity effect is preserved.](../scripts/2026-07-insilico/fidelity_suite/fig_s2013_glucagon.png)
+
+Counter-regulation does exactly what physiology predicts and no more. It speeds
+hypoglycaemia recovery, from about 116 to 106 minutes, moving it towards the real 50 to 59
+minutes but leaving it nearly twice too slow; and it does not produce the post-treatment
+rebound that a real low shows, because endogenous glucose release is self-limiting where
+eating is not. The effect is larger for the personae that actually go low, but the
+direction and the shortfall are the same. The reason is simple and it is the reason the
+whole hypoglycaemia signature fails: real lows are treated with carbohydrate, a faster and
+larger glucose input than any counter-regulatory model, and the simulator does not eat.
+(One incidental artefact: with counter-regulation the compression-low signature reads a
+small non-zero value, because sharp counter-regulatory reversals resemble the reversing
+shape of a sensor compression low; the model has gained hypos that look like the artefact,
+not the artefact itself.) So the S2013 refinement most likely to rescue the hypoglycaemia
+result narrows the gap and does not close it, which is the strongest form of the argument:
+even the right physiological addition cannot substitute for a disturbance, carbohydrate
+treatment, that the simulator does not model at all.
 
 ## 7. A new approach
 
