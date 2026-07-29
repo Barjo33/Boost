@@ -29,7 +29,9 @@ real-world glucose variability only through its child personae. Five of eleven s
 were reproduced by no persona at any age: the fat tail of unannounced-meal glucose rises,
 the speed and overshoot of hypoglycaemia recovery, sensor compression artefacts,
 high-frequency sensor noise, and week-to-week insulin-sensitivity drift (zero in the
-model by construction).
+model by construction). Implementing the central refinement of the later S2013 model,
+time-varying insulin sensitivity, on the personae closed only the variability gap,
+overshot the diurnal amplitude, and left every structural gap unchanged.
 
 **Conclusions.** In-silico testing on the community-standard platform exercises a smooth,
 announced-meal, stationary, clean-sensor regime and is close to blind to the unannounced
@@ -270,25 +272,60 @@ The obvious objection is that we tested the 2008 model, and that later versions 
 better. It is a fair objection and it deserves a precise answer, because part of it is
 correct.
 
-The S2013 version does address some of what we measure. Its intraday and interday
-insulin-sensitivity variability [2] would move the drift and, in part, the variability and
-stuck-high statistics towards real values, and its dawn-phenomenon model would sharpen the
-diurnal profile, which the 2008 model already reproduces adequately. Its improved
-hypoglycaemia kinetics and glucagon model make the physiology of a low more realistic.
-Separate physical-activity extensions to the model family can, in principle, produce
-exercise-driven excursions the base model cannot. None of this is in dispute.
+Rather than reason about what the refinements should do, we measured it. The central
+refinement of the S2013 version over the 2008 model is time-varying insulin sensitivity,
+intraday and interday, calibrated from clinical data [2], together with a dawn-phenomenon
+component. We implemented exactly that mechanism on the 2008 personae, scaling the
+insulin-dependent glucose uptake and the hepatic insulin action by a common time-varying
+sensitivity factor with a day-to-day coefficient of variation of 22% and a dawn amplitude
+of 20%, both clinically plausible magnitudes. Everything else, the meals, the announcement,
+the sensor and the controller, is identical to the 2008 baseline, so the only change is the
+sensitivity process. This is an S2013-style augmentation of the 2008 personae, not the
+licensed S2013 model, which is not freely available; it isolates the effect of the headline
+refinement rather than reproducing the whole version.
 
-Three things follow nonetheless. First, the refinements are not what the open AID
-community uses; the freely available, community-standard tool is the 2008 model, and the
-algorithms trained and screened on it inherit its gaps directly. Second, even the refined
-versions retain the features that drive most of our failures: meals are still announced,
-hypoglycaemia is still not treated with carbohydrate, and the sensor model still has no
-compression artefact. Real-world CGM lows are frequently sensor artefacts, and real-world
-highs frequently begin with unannounced food; a simulator that omits both is omitting two
-of the most common triggers of a consequential automated decision. Third, and most
-important, no version, refined or otherwise, has to our knowledge been benchmarked against
-the real-world distributional envelope we define here. The claim that a refinement closes
-a gap is itself an empirical claim, and it should be measured, not assumed.
+**Table 2.** Adult personae, 2008 versus the S2013-style time-varying-sensitivity
+augmentation, against the real-world envelope (per-persona median).
+
+| Signature | Real range | 2008 | S2013-style | Effect |
+|---|---|---|---|---|
+| Glucose variability (CV%) | 30 to 34 | 23 | 32 | into range |
+| Diurnal amplitude (mg/dL) | 35 to 56 | 47 | 65 | overshoots |
+| Outcome SD at a stuck high (mg/dL) | 27 to 34 | 21 | 20 | unchanged |
+| Rise tail (%) | 3.7 to 6.6 | 1.0 | 1.3 | unchanged |
+| Hypo recovery (min) | 50 to 59 | 113 | 116 | unchanged |
+| Hypo rebound (%) | 23 to 28 | 0 | 0 | unchanged |
+| Compression lows (/30d) | 1.9 to 5.3 | 0 | 0 | unchanged |
+| Sensor jitter (mg/dL) | 4.5 to 6.7 | 2.4 | 2.3 | unchanged |
+
+![**Figure 2.** Adult personae, 2008 (grey) versus the S2013-style time-varying-sensitivity
+augmentation (orange), against the real-world range (blue band). The refinement raises
+overall variability into range and overshoots the diurnal amplitude, and leaves every
+structural gap untouched.](../scripts/2026-07-insilico/fidelity_suite/fig_s2013.png)
+
+The result is precise. The refinement does one useful thing to fidelity: it raises overall
+glucose variability from below the real range into it. It overshoots the diurnal amplitude,
+pushing a statistic the 2008 model already matched out of range. It does not change the
+stuck-high outcome spread at all, because slow sensitivity variation is nearly constant over
+the half hour that statistic looks ahead, so the model's insulin still acts too predictably.
+And it leaves every structural gap where it was: the announced-meal rise tail, the
+untreated-hypo recovery and rebound, and the sensor compression rate and noise are unmoved
+to two significant figures, because none of them depends on insulin sensitivity. The same
+pattern holds for the adolescent and child personae.
+
+Three things follow. First, the refinements are not what the open AID community uses; the
+freely available, community-standard tool is the 2008 model, and the algorithms trained and
+screened on it inherit its gaps directly. Second, and now measured rather than asserted, the
+refinement leaves the features that drive most of our failures untouched: meals are still
+announced, hypoglycaemia is still not treated with carbohydrate, and the sensor still has no
+compression artefact. Real-world CGM lows are frequently sensor artefacts and real-world
+highs frequently begin with unannounced food; a simulator that omits both is omitting two of
+the most common triggers of a consequential automated decision. Third, the licensed S2013
+bundles further changes we did not implement, an improved hypoglycaemia and glucagon model
+among them, and it should be benchmarked directly; but those changes do not act on the
+scenario or the sensor either, and no version, to our knowledge, has been benchmarked against
+a real-world distributional envelope. The claim that a refinement closes a gap is an
+empirical claim, and where we could test it, it closed one gap of eight and opened another.
 
 That is the shift the pattern of results argues for. The problem is not that a particular
 model version is inadequate. It is that simulator fidelity to real-world data is treated
@@ -342,10 +379,14 @@ proxy for reality.
 This is an observational, distributional comparison and it should be read as such. The
 real cohorts are self-selected users of open-source AID systems and are not a
 representative sample of the type 1 population; their convergence is reassuring but does
-not establish population representativeness. We tested the open 2008 implementation, and
-while we argue in Section 6 that this is the right target and that refinements do not close
-the central gaps, we did not measure S2013 directly, and doing so would strengthen the
-argument in either direction. The announced-meal scenario handicaps the simulator on the
+not establish population representativeness. We tested the open 2008 implementation, and in
+Section 6 we measured the central S2013 refinement by implementing it on the personae, but
+we did not run the licensed S2013 model itself, which bundles further changes (an improved
+hypoglycaemia and glucagon model) we did not reproduce; running it directly would settle
+what those additional changes do, though none of them acts on the scenario or the sensor.
+The magnitude of our sensitivity augmentation is a clinically plausible choice rather than a
+fitted value, and the closed-gap result scales with it, though the untouched structural gaps
+do not. The announced-meal scenario handicaps the simulator on the
 rise-tail statistic specifically, which we note rather than hide. The drift statistic
 reads algorithm-reported sensitivity and so partly reflects whether an algorithm adapts,
 not only whether physiology changes. Finally, our signatures are a first draft; they are

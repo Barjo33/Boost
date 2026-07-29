@@ -3,3 +3,5 @@ sim_cohort_all.npz
 real_only_result.json
 __pycache__/
 *.pyc
+sim_cohort_s2013.npz
+s2013_result.json

@@ -63,15 +63,20 @@ sensitivity drift, is zero in the model by design.
 
 ## But isn't there a newer version?
 
-There is, and it is a fair objection. The 2013 update added some day-to-day variation in
-insulin sensitivity, a dawn-phenomenon model and better hypo physiology, and there are
-add-ons for exercise. Some of our gaps would narrow with it.
+There is, and it is a fair objection, so we tested it. The main thing the 2013 update added
+was day-to-day variation in insulin sensitivity. We built that exact change into the model
+and re-measured, and the result was clean: it fixed one of our numbers, overall variability,
+which rose into the real range, it overshot the daily glucose swing, and it left every one
+of the danger signals exactly where they were. The unannounced-meal spikes, the untreated
+lows, the sensor artefacts: none moved at all, because none of them depends on insulin
+sensitivity. Refining the physiology helps the physiology and does nothing for the
+disturbances the model still cannot see.
 
 Three things still hold. The newer versions are not what the open community uses; the free
-2008 model is, and the algorithms built on it inherit its blind spots. Even the newer
-versions still announce every meal, still never treat a low with carbohydrate, and still
-have no sensor-compression artefact, which are the very things driving most of our
-failures. And most importantly, no version has been checked against the real-world numbers
+2008 model is, and the algorithms built on it inherit its blind spots. Even with the newer
+sensitivity model, every meal is still announced, no low is ever treated with carbohydrate,
+and the sensor still has no compression artefact, which are the very things driving most of
+our failures. And most importantly, no version has been checked against the real-world numbers
 we measured here. "The new version fixes it" is itself a claim that should be measured, not
 assumed.
 
