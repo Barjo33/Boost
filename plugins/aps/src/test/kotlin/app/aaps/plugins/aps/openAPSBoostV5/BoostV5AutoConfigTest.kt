@@ -321,15 +321,28 @@ class BoostV5AutoConfigTest {
         assertThat(DoubleKey.ApsBoostV5PrimerCapU.defaultValue).isEqualTo(0.0)   // still off by default
     }
 
-    @Test fun `primer ceiling RAISE with elevated TBR is held as a suggestion (now raise-guarded)`() {
-        // 2026-07-30: PrimerCapU joined doseCapKeys. A raise must be withheld while TBR is breached.
-        val s = BoostV5AutoConfig.compute(profile(tbr70 = 4.3))!!
-        assertThat(s.primerCapU).isGreaterThan(DoubleKey.ApsBoostV5PrimerCapU.defaultValue)
+    @Test fun `hypo-prone user IS provisioned a primer ceiling - it must not be raise-guarded away`() {
+        // 2026-07-30: PrimerCapU is deliberately NOT in doseCapKeys. Guarding it meant a hypo-prone
+        // user at the 0.0 factory default got NO primer at all — including the retractable temp-basal
+        // route that is their safe path. The size must be provisioned; the delivery is what's locked.
+        val s = BoostV5AutoConfig.compute(profile(tbr70 = 8.0, sev54 = 2.0))!!
         val f = FakeStore()
-        val res = f.apply(s, tbr = 4.3)
-        val held = res.single { it.key == DoubleKey.ApsBoostV5PrimerCapU }
-        assertThat(held.outcome).isEqualTo(BoostV5AutoConfigApply.Outcome.SUGGESTED_NOT_APPLIED_TBR)
-        assertThat(f.store).doesNotContainKey(DoubleKey.ApsBoostV5PrimerCapU)
+        val res = f.apply(s, tbr = 8.0, sev54 = 2.0)
+        assertThat(s.primerCapU).isGreaterThan(0.0)
+        assertThat(res.appliedKeys()).contains(DoubleKey.ApsBoostV5PrimerCapU)
+        assertThat(f.store[DoubleKey.ApsBoostV5PrimerCapU]!!).isGreaterThan(0.0)
+        // ...and the raise-guard still holds the REAL dose caps for the same user.
+        assertThat(res.single { it.key == DoubleKey.ApsBoostV5CommittedCapU }.outcome)
+            .isEqualTo(BoostV5AutoConfigApply.Outcome.SUGGESTED_NOT_APPLIED_TBR)
+    }
+
+    @Test fun `hypo-prone user gets the primer TBR lock, well-controlled does not`() {
+        val hypoProne = BoostV5AutoConfig.compute(profile(tbr70 = 8.0, sev54 = 2.0))!!
+        assertThat(hypoProne.primerTbrLock).isTrue()
+        assertThat(hypoProne.primerTbrFallback).isTrue()
+        val wellControlled = BoostV5AutoConfig.compute(profile(tbr70 = 0.5, sev54 = 0.1))!!
+        assertThat(wellControlled.primerTbrLock).isFalse()
+        assertThat(wellControlled.primerTbrFallback).isFalse()
     }
 
     // ── TBR raise-guard on dose caps (2026-07-06 amendment #5, cohort user B) ──
