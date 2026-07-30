@@ -8,3 +8,4 @@ for s in 01_profile 02_variogram 03_forecast 04_events 05_reporting_delay; do
 done
 echo "=== 06_report ==="
 python3 06_report.py
+python3 07_style_check.py
