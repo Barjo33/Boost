@@ -109,9 +109,10 @@ internal object BoostV5AutoConfigApply {
         // ApsBoostV5PrimerCapU is deliberately NOT here. It was briefly added on 2026-07-30 and then
         // removed the same day: raise-guarding it meant a hypo-prone user at the 0.0 factory default had
         // the cap withheld AND marked resolved, so the primer was never provisioned for them at all —
-        // including the retractable temp-basal route that is precisely their SAFE path. The safety for
-        // these users is the DELIVERY MODE, now hard-locked via BooleanKey.ApsBoostV5PrimerTbrLock so
-        // the bolus override cannot defeat it. Size is provisioned; delivery is constrained.
+        // including the retractable temp-basal route that is precisely their SAFE path. Auto-config
+        // RECOMMENDS the temp-basal routing for these users (ApsBoostV5PrimerTbrFallback) and the
+        // recommendation is recorded, but the user override always wins: auto-config may set a default,
+        // it may never make a setting unreachable.
     )
 
     /** The double-valued V5 knobs auto-config manages (stable order). */
@@ -245,9 +246,9 @@ internal object BoostV5AutoConfigApply {
         resolve(DoubleKey.ApsBoostMaxIob, suggestion.maxIobU)
         resolve(DoubleKey.ApsBoostBolus, suggestion.bolusCapU)
         // 2026-07-20 V1-acceleration primer cap. NOT raise-guarded (see doseCapKeys): a hypo-prone user
-        // must still be PROVISIONED a non-zero size, because their safe delivery route — a retractable
-        // temp basal — needs one. Their protection is that ApsBoostV5PrimerTbrLock pins delivery to that
-        // temp basal and cannot be overridden to a bolus. Size provisioned, delivery constrained.
+        // must still be PROVISIONED a non-zero size, because their recommended delivery route — a
+        // retractable temp basal — needs one. The routing is a recommendation the user may override; an
+        // override is logged at the delivery seam (primerRoute) so it is visible in the data.
         resolve(DoubleKey.ApsBoostV5PrimerCapU, suggestion.primerCapU)
         return resolutions
     }
