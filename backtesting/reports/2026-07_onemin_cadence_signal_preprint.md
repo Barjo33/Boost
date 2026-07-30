@@ -25,7 +25,8 @@ a particular implementation. We characterised the power spectrum, estimated the 
 noise floor, tested whether the withheld minutes can be reconstructed from a five-minute
 subsequence, compared rate-of-change estimation and forward prediction at the two cadences,
 compared standard glycaemic metrics, and compared threshold-crossing detection latency at a
-matched false-alarm rate. Effect sizes carry day-level block-bootstrap confidence intervals
+matched false-alarm rate. The simulated five-minute feed is validated against a real
+five-minute sensor worn by the same subject before the switch. Effect sizes carry day-level block-bootstrap confidence intervals
 and an explicit verdict against the null.
 
 **Results.** The spectrum is consistent with the older literature and with modern
@@ -41,6 +42,9 @@ range are unchanged to two decimal places. The residual after removing a twenty-
 trend has a standard deviation of 3.40 mg/dL with autoregressive order-two structure,
 closely matching the published sensor error model, and its spectral shape accounts for all
 observed content below a twenty-minute period without invoking any glucose dynamics at all.
+The same subject's earlier real five-minute sensor reproduces the spectrum to within a few
+tenths of a percentage point across the shared band, and is 28 per cent quieter than the
+decimated stand-in, so the five-minute comparator used here is if anything handicapped.
 The one exception is event timing: at a matched false-alarm rate, and averaged over grid
 phase, a 20 mg/dL excursion is detected one to two minutes sooner at one minute, with no
 sensitivity difference. That is exactly the average wait imposed by a five-minute sampling
@@ -179,7 +183,8 @@ found none.
 
 The record comprises 83,550 consecutive glucose values collected over 66 days from a single
 adult with type 1 diabetes wearing a subcutaneous continuous glucose monitor reporting at a
-one-minute cadence. Values are reported as integers in mg/dL. Segmenting on gaps, the record
+one-minute cadence. The same subject wore a five-minute sensor for the preceding 83 days,
+and that era is used in section 4.11 to validate the simulated five-minute comparator. Values are reported as integers in mg/dL. Segmenting on gaps, the record
 contains 125 contiguous one-minute runs of at least 128 minutes and 177 of at least 61
 minutes.
 
@@ -514,6 +519,65 @@ and the detection gain fell from three-to-seven minutes to one-to-two.
 The results in sections 4.1, 4.2, 4.3, 4.6 and 4.7 are unaffected, because those decimate by
 index already and never used the defective construction.
 
+### 4.11 Validation against a real five-minute sensor
+
+Every comparison above simulates the five-minute feed by decimating the one-minute record.
+That assumes a real five-minute sensor is the same signal with samples removed. It need not
+be: manufacturers filter internally before reporting, so a real five-minute feed could be
+cleaner than a decimated one, in which case the decimation handicaps the five-minute
+comparator and all of the nulls above are conservative.
+
+This subject wore a five-minute sensor for 83 days before switching, which allows the
+assumption to be tested directly. We take matched 45-day windows either side of the switch —
+a real five-minute era, the real one-minute era, and the one-minute era decimated by index —
+and compare them.
+
+The two eras are not glycaemically matched. The later period is substantially more variable
+(coefficient of variation 31.3 against 24.7 per cent, time in range 85.4 against 94.0,
+time below 70 3.79 against 1.75). Cross-era comparisons of prediction or rate error are
+therefore uninformative and we do not draw any, and we normalise or restrict wherever a
+comparison is attempted.
+
+**The spectrum replicates on different hardware.** Over the band both cadences resolve:
+
+| Era | >60 min | 36–60 min | 20–36 min | 10–20 min |
+|---|---|---|---|---|
+| Real 5-min sensor | 95.2% | 2.1% | 1.6% | 1.1% |
+| Real 1-min sensor | 94.8% | 2.3% | 1.4% | 1.1% |
+| 1-min decimated to 5-min | 95.1% | 2.2% | 1.4% | 1.3% |
+
+Two different sensors, two different 45-day periods with materially different glycaemic
+variability, and the same spectral distribution to within a few tenths of a percentage point.
+The band-limit result of section 4.1 is not a property of one device.
+
+**The residual autocorrelation structure also matches**, which is what licenses the
+decimation. At five-minute spacing the real sensor gives lag-one, -two and -three residual
+autocorrelations of +0.106, −0.490 and −0.123; the decimated proxy gives +0.078, −0.363 and
+−0.093. The real one-minute series, by contrast, gives +0.844, +0.668 and +0.470 — the
+signature of oversampling a band-limited process, and consistent with the coloured-noise
+account in section 4.7.
+
+**But the real five-minute sensor is quieter than the proxy.** Estimating noise only on
+stretches where the centred 25-minute slope is below 1 mg/dL per five minutes, so that the
+second difference is close to pure noise:
+
+| Era | σ on flat stretches |
+|---|---|
+| Real 5-min sensor | **2.18 mg/dL** |
+| 1-min decimated to 5-min | **3.03 mg/dL** |
+
+The real five-minute feed carries 28 per cent less noise than the decimated stand-in used
+throughout this paper. We cannot separate internal filtering from a difference in sensor
+hardware, and with one subject we would not try. The direction is what matters: the
+five-minute comparator in sections 4.4, 4.5, 4.8 and 4.9 was handicapped relative to the real
+thing, so those nulls, and the finding that rate of change is estimated worse at one minute,
+are conservative rather than optimistic.
+
+The within-era comparison is unaffected by any of this and remains the load-bearing one:
+normalising rate error by each era's own slope variability, the decimated five-minute view
+scores 0.760 against 0.811 for the one-minute view on identical data. Five-minute sampling
+estimates rate of change better, and would do so by more against a real five-minute sensor.
+
 ## 5. Why the nulls occur
 
 A negative result is worth little unless the mechanism is identified, because otherwise it
@@ -620,11 +684,12 @@ results are properties of the sensing chain and we would expect them to generali
 they agree closely with published population estimates [2, 4, 5]; the effect sizes for
 prediction and detection should be treated as provisional until replicated across subjects.
 
-The sensor make and model are not recorded in the data available to us. Different
-manufacturers apply different internal smoothing before reporting, and a heavily smoothed
-one-minute feed would show less high-frequency content than a lightly smoothed one. This
-would change the noise figures but not the central argument, which rests on the physiological
-filter upstream of the electronics.
+The sensor make and model are not recorded in the data available to us. Section 4.11
+partly addresses the concern this raises: the same subject's earlier five-minute sensor, a
+different device over a different period, produces the same spectral distribution over the
+shared band, so the band-limit result does not depend on one manufacturer's filtering. It is
+also 28 per cent quieter than the decimated stand-in, which means the five-minute comparator
+used elsewhere in this paper is handicapped and the nulls are conservative.
 
 The white-noise floor of 0.54 mg/dL is a lower bound, since the second-difference estimator
 does not capture the coloured component. The correct comparator for the reconstruction
@@ -708,6 +773,8 @@ results in this paper are produced by:
   five-minute view and phase averaging
 - `18_actionability_corrected.py` — warning time, decision-change counts and control-cycle
   comparison on the corrected construction
+- `19_real_5min_era_comparator.py` — the subject's real five-minute era against their
+  one-minute era and against the decimated proxy
 
 Scripts `01`–`09` are the earlier implementation-specific study and are retained for the
 provenance checks and the earlier prediction results cited in section 4.5.
