@@ -55,6 +55,22 @@ object BoostHistorySync {
      */
     const val MAX_ATTEMPTS = 3
 
+    /**
+     * How long after the FIRST time this check runs a backfill may still be requested (2026-07-30).
+     *
+     * The backfill works by asking NSClient for a full-sync-flagged load, and that flag is what
+     * bypasses the NsClientAccept* preferences — all of which ship OFF. So each request opens a brief
+     * window in which records this phone did not create are accepted. That is the right trade for a
+     * genuinely new install and the wrong one later: a user who takes a long pump break, deletes
+     * history, or changes sensor would otherwise silently reopen that window months on, and if a second
+     * uploader were live on the same Nightscout its records would land during it.
+     *
+     * 48 h rather than a single shot because a first attempt can hit a dead network, an unconfigured
+     * Nightscout, or a phone that is not yet online — all of which leave the user in exactly the state
+     * this exists to fix. MAX_ATTEMPTS still bounds it inside the window.
+     */
+    const val NEW_INSTALL_WINDOW_MS = 48L * 60 * 60 * 1000
+
     /** What the local database currently holds over the last [BACKFILL_DAYS]. */
     data class History(
         val daysWithTdd: Int,
@@ -67,7 +83,14 @@ object BoostHistorySync {
         val attempts: Int,
         val lastAttemptMs: Long,
         val preBgReadings: Int,
-        val preTreatments: Int
+        val preTreatments: Int,
+        /**
+         * When this check first ran on this install (epoch ms; 0 = never). Anchors
+         * [NEW_INSTALL_WINDOW_MS]. Deliberately NOT the app install time or the first loop cycle —
+         * it is stamped the first time Boost V6 evaluates history, which is the moment from which
+         * "this install is new" is meaningful to Boost.
+         */
+        val firstSeenMs: Long = 0L
     )
 
     /**
@@ -102,10 +125,18 @@ object BoostHistorySync {
         isoNow: String,
         state: State
     ): Decision {
+        // Stamp the anchor on first sight. Done BEFORE the sufficiency check so a user who starts with
+        // adequate history still has a defined window if it later degrades — the window then simply
+        // expires unused, which is the intended outcome.
+        val firstSeen = if (state.firstSeenMs == 0L) now else state.firstSeenMs
+        val stamped = state.copy(firstSeenMs = firstSeen)
+        val windowOpen = now - firstSeen <= NEW_INSTALL_WINDOW_MS
+
         if (isSufficient(h)) {
             // Nothing was ever attempted -> stay silent. Users with normal history get no breadcrumb
             // and no preference writes at all.
-            if (state.attempts <= 0) return Decision(false, null, null)
+            if (state.attempts <= 0)
+                return Decision(false, null, if (state.firstSeenMs == 0L) stamped else null)
             // A backfill was attempted and history is now adequate: report what it recovered, ONCE.
             // Zeroing the counters is what closes the episode — the reported line then persists and
             // keeps being replayed, but this branch cannot fire again.
@@ -114,14 +145,31 @@ object BoostHistorySync {
             return Decision(
                 requestBackfill = false,
                 summary = "filled:${BACKFILL_DAYS}d,treatments=${signed(addedTr)},bg=${signed(addedBg)}@$isoNow",
-                newState = State(attempts = 0, lastAttemptMs = 0, preBgReadings = 0, preTreatments = 0)
+                newState = State(
+                    attempts = 0, lastAttemptMs = 0, preBgReadings = 0, preTreatments = 0,
+                    // Keep the anchor: the episode is closed, and the window must not restart.
+                    firstSeenMs = firstSeen
+                )
             )
         }
 
         // History is short. Anything below here is throttled by the same cooldown, so a phone with no
         // Nightscout does not rewrite the breadcrumb every five minutes either.
         if (state.lastAttemptMs != 0L && now - state.lastAttemptMs < RETRY_COOLDOWN_MS)
-            return Decision(false, null, null)
+            return Decision(false, null, if (state.firstSeenMs == 0L) stamped else null)
+
+        // Past the new-install window: never request again, whatever the history looks like. Report the
+        // closure ONCE (guarded by lastAttemptMs, which the cooldown above then suppresses) so a thin
+        // install is not silently abandoned, then stay quiet forever.
+        if (!windowOpen) {
+            if (state.lastAttemptMs == 0L && state.attempts == 0)
+                return Decision(
+                    requestBackfill = false,
+                    summary = "skipped:outside-new-install-window,${shortfall(h)}@$isoNow",
+                    newState = stamped.copy(lastAttemptMs = now)
+                )
+            return Decision(false, null, if (state.firstSeenMs == 0L) stamped else null)
+        }
 
         if (!nsAvailable)
             return Decision(
@@ -129,14 +177,14 @@ object BoostHistorySync {
                 summary = "skipped:ns-unavailable,${shortfall(h)}@$isoNow",
                 // Only the cooldown clock moves — this does not consume an attempt, because nothing
                 // was attempted. A user who configures Nightscout later still gets MAX_ATTEMPTS tries.
-                newState = state.copy(lastAttemptMs = now)
+                newState = stamped.copy(lastAttemptMs = now)
             )
 
         if (state.attempts >= MAX_ATTEMPTS)
             return Decision(
                 requestBackfill = false,
                 summary = "exhausted:${state.attempts},${shortfall(h)}@$isoNow",
-                newState = state.copy(lastAttemptMs = now)
+                newState = stamped.copy(lastAttemptMs = now)
             )
 
         return Decision(
@@ -147,7 +195,8 @@ object BoostHistorySync {
                 lastAttemptMs = now,
                 // Snapshot taken BEFORE the fetch, so the eventual "filled" line reports a real delta.
                 preBgReadings = h.bgReadings,
-                preTreatments = h.treatments
+                preTreatments = h.treatments,
+                firstSeenMs = firstSeen
             )
         )
     }

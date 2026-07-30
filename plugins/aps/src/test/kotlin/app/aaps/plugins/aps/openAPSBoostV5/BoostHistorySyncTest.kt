@@ -58,11 +58,20 @@ class BoostHistorySyncTest {
 
     // ── the happy path ────────────────────────────────────────────────────────────────────────────
 
-    @Test fun `adequate history writes nothing at all`() {
+    @Test fun `adequate history stays silent, and stamps the anchor exactly once`() {
+        // 2026-07-30: this test previously asserted NO preference write at all for healthy users.
+        // That property was deliberately traded for one Long write per install. The new-install
+        // window needs an anchor set BEFORE any gap appears — anchoring on first-gap-sighting would
+        // let a user who is healthy for months and then degrades (long pump break, deleted history)
+        // silently reopen a records-acceptance window, which is exactly what the window prevents.
+        // Still no breadcrumb, and still nothing on subsequent cycles.
         val d = BoostHistorySync.decide(healthy, nsAvailable = true, now = t0, isoNow = iso, state = fresh)
         assertThat(d.requestBackfill).isFalse()
-        assertThat(d.summary).isNull()      // no breadcrumb for the overwhelming majority of users
-        assertThat(d.newState).isNull()     // and no preference writes either
+        assertThat(d.summary).isNull()                          // no breadcrumb for healthy users
+        assertThat(d.newState!!.firstSeenMs).isEqualTo(t0)      // one write: the anchor
+        assertThat(d.newState!!.attempts).isEqualTo(0)
+        // Second cycle, anchor already set -> genuinely nothing.
+        assertThat(BoostHistorySync.decide(healthy, true, t0 + 300_000, iso, d.newState!!).newState).isNull()
     }
 
     @Test fun `a gap plus a configured Nightscout requests the bounded backfill`() {
@@ -83,10 +92,15 @@ class BoostHistorySyncTest {
         )
         assertThat(after.requestBackfill).isFalse()
         assertThat(after.summary).isEqualTo("filled:14d,treatments=+602,bg=+3470@$iso")
-        // Counters zeroed — that is what closes the episode.
-        assertThat(after.newState).isEqualTo(fresh)
+        // Counters zeroed — that is what closes the episode. The first-seen anchor is deliberately
+        // KEPT: zeroing it would let the new-install window restart if history later degraded.
+        assertThat(after.newState!!.attempts).isEqualTo(0)
+        assertThat(after.newState!!.preBgReadings).isEqualTo(0)
+        assertThat(after.newState!!.preTreatments).isEqualTo(0)
+        assertThat(after.newState!!.firstSeenMs).isEqualTo(t0 + 90 * 60_000)
         // ...and the very next cycle says nothing more, so the "filled" line simply persists.
-        val next = BoostHistorySync.decide(healthy, nsAvailable = true, now = t0 + 95 * 60_000, isoNow = iso, state = fresh)
+        // Carry the CLOSED state through (not `fresh`), or the anchor would be re-stamped.
+        val next = BoostHistorySync.decide(healthy, nsAvailable = true, now = t0 + 95 * 60_000, isoNow = iso, state = after.newState!!)
         assertThat(next.summary).isNull()
         assertThat(next.newState).isNull()
     }
@@ -109,7 +123,9 @@ class BoostHistorySyncTest {
         )
         assertThat(justAfter.requestBackfill).isFalse()
         assertThat(justAfter.summary).isNull()   // and does not churn the breadcrumb either
-        assertThat(justAfter.newState).isNull()
+        // Anchor stamped once (the fixture state carries firstSeenMs = 0); nothing else moves.
+        assertThat(justAfter.newState!!.attempts).isEqualTo(1)
+        assertThat(justAfter.newState!!.lastAttemptMs).isEqualTo(t0)
 
         val afterCooldown = BoostHistorySync.decide(
             migrated, nsAvailable = true, now = t0 + BoostHistorySync.RETRY_COOLDOWN_MS, isoNow = iso,
@@ -125,7 +141,11 @@ class BoostHistorySyncTest {
             state = fresh.copy(lastAttemptMs = t0)
         )
         assertThat(d.summary).isNull()
-        assertThat(d.newState).isNull()
+        // Only the first-seen anchor is written (fresh has firstSeenMs = 0); no breadcrumb, no attempt.
+        assertThat(d.newState!!.firstSeenMs).isEqualTo(t0 + 60_000)
+        assertThat(d.newState!!.attempts).isEqualTo(0)
+        // With the anchor already set, the same call writes nothing at all.
+        assertThat(BoostHistorySync.decide(migrated, false, t0 + 60_000, iso, d.newState!!).newState).isNull()
     }
 
     @Test fun `attempts are capped - a site with genuinely no history is left alone`() {

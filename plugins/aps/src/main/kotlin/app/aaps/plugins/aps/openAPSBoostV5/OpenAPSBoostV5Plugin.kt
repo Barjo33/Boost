@@ -404,7 +404,8 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             attempts = preferences.get(IntNonKey.ApsBoostHistorySyncAttempts),
             lastAttemptMs = preferences.get(LongNonKey.ApsBoostHistorySyncLastAttemptMs),
             preBgReadings = preferences.get(IntNonKey.ApsBoostHistorySyncPreBg),
-            preTreatments = preferences.get(IntNonKey.ApsBoostHistorySyncPreTreatments)
+            preTreatments = preferences.get(IntNonKey.ApsBoostHistorySyncPreTreatments),
+            firstSeenMs = preferences.get(LongNonKey.ApsBoostHistorySyncFirstSeenMs)
         )
         // "Available" = an NsClient plugin is enabled AND has a site configured. It deliberately says
         // nothing about connectivity — that is NSClient's problem, and a failed fetch simply leaves
@@ -428,7 +429,9 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
                 decision = BoostHistorySync.Decision(
                     requestBackfill = false,
                     summary = "skipped:ns-declined,${BoostHistorySync.shortfall(history)}@${dateUtil.toISOString(now)}",
-                    newState = state.copy(lastAttemptMs = now)
+                    // Carry the decision's state, not the pre-decision one: it holds the first-seen
+                    // anchor stamped this cycle. Losing it would restart the new-install window.
+                    newState = (decision.newState ?: state).copy(attempts = state.attempts, lastAttemptMs = now)
                 )
             }
         }
@@ -436,6 +439,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         decision.newState?.let {
             preferences.put(IntNonKey.ApsBoostHistorySyncAttempts, it.attempts)
             preferences.put(LongNonKey.ApsBoostHistorySyncLastAttemptMs, it.lastAttemptMs)
+            preferences.put(LongNonKey.ApsBoostHistorySyncFirstSeenMs, it.firstSeenMs)
             preferences.put(IntNonKey.ApsBoostHistorySyncPreBg, it.preBgReadings)
             preferences.put(IntNonKey.ApsBoostHistorySyncPreTreatments, it.preTreatments)
         }
