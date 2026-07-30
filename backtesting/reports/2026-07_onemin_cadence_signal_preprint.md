@@ -546,10 +546,33 @@ correlation.
 
 **For latency, refining the interval is genuinely useful, but only for events.** Removing up
 to five minutes of grid delay is worth three to seven minutes on the detection of a
-clinically meaningful fall, at matched false-alarm rate and with materially higher
-sensitivity. Anyone whose task is a threshold crossing — a hypoglycaemia alarm, a suspend
-decision, a safety interlock — should prefer the faster feed. Anyone whose task is an
-estimate should not expect a benefit and should check that they have not incurred a cost.
+clinically meaningful excursion in either direction, at matched false-alarm rate and with
+materially higher sensitivity. Anyone whose task is an estimate should not expect a benefit
+and should check that they have not incurred a cost.
+
+**The gain is only usable by a response channel faster than the gain itself.** On this record
+there are 12.5 qualifying falls and 12.5 qualifying rises per day, of which 13 per cent and
+35 per cent respectively go on to cross 70 or 180. On those that do, a five-minute feed
+already provides a median of 25 minutes of warning before hypoglycaemia and 17 before
+hyperglycaemia; the one-minute feed extends these to 31 and 22, that is by +4.0 [+3.8, +6.0]
+and +3.0 [+3.0, +4.0] minutes, or 16 to 18 per cent. Glucose moves a median of 5 to 6 mg/dL
+during the delay.
+
+Set against that, the time constants of the available responses are mostly longer than the
+gain: rapid-acting insulin has an onset near 15 minutes and peaks at 60 to 90; a basal
+suspend acts through insulin-on-board decay over 30 minutes or more; oral glucose acts in 10
+to 15; a person reading an alarm acts immediately. Four minutes is a large fraction of the
+last of these and a small fraction of the first two. A controller that begins an insulin
+action four minutes earlier shifts a curve peaking 75 minutes later by roughly five per cent
+of its time to peak, worth on the order of the 6 mg/dL that glucose moves in the interval.
+
+The practical division is therefore between alerting and actuation rather than between rising
+and falling. The benefit accrues to the alarm and to fast responses, and very little of it to
+insulin dosing, whose actuator is an order of magnitude slower than the latency recovered.
+The exception worth noting is the tail: on 8 per cent of hypoglycaemia-bound falls a
+five-minute feed supplies less than five minutes of warning, and 27 per cent less than
+fifteen, and in that regime the same four minutes roughly doubles the available response
+window. Whether acting on it improves outcomes is not established by anything here.
 
 **The benefit does not favour one direction.** Rises are detected earlier by the same margin
 as falls, to within a minute at every operating point. A system that uses a faster feed to
@@ -647,6 +670,8 @@ results in this paper are produced by:
   attenuation, AR(2) noise attribution
 - `13_rise_vs_fall_symmetry.py` — the matched-false-alarm detection design run on rises and
   falls side by side
+- `14_what_is_the_latency_worth.py` — episode rates, glucose moved during the delay, and
+  warning time before a clinical threshold at each cadence
 
 Scripts `01`–`09` are the earlier implementation-specific study and are retained for the
 provenance checks and the earlier prediction results cited in section 4.5.
