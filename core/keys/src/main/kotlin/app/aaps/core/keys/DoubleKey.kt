@@ -86,7 +86,12 @@ enum class DoubleKey(
     // net-extra insulin over a confirmed meal). 0.0 = primer OFF (default until auto-config/user
     // enables). Auto-config-managed + insulin-adding (strict-TBR raise-guarded). See
     // backtesting/scripts/2026-07-v1-acceleration/. U200 users get a scaled-down cap.
-    ApsBoostV5PrimerCapU("boost_v5_primer_cap_u", 0.0, 0.0, 1.0, defaultedBySM = true),
+    // 2026-07-30: max raised 1.0 -> 2.5 to match ApsBoostV5CommittedCapU. Since the sizing rework this
+    // value is the primer's hard CEILING (no multiplier above it), and the primer is an advance on the
+    // CONFIRMED commit-shot — so one commit-shot is the natural bound, and 1.0 was clipping high-need
+    // users: a well-controlled user with committedCap 2.5 derives 2.5 x 0.75 = 1.875. Default stays 0.0
+    // (primer off until auto-config or the user sets it).
+    ApsBoostV5PrimerCapU("boost_v5_primer_cap_u", 0.0, 0.0, 2.5, defaultedBySM = true),
     ApsBoostV5HypoCaution("boost_v5_hypo_caution", 1.0, 1.0, 2.0, defaultedBySM = true),
     ApsBoostV5Sensitivity("boost_v5_sensitivity", 1.0, 0.8, 1.2, defaultedBySM = true),
 

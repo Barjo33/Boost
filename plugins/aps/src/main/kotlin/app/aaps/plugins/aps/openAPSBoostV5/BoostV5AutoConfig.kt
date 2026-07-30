@@ -187,9 +187,14 @@ object BoostV5AutoConfig {
             wellControlled  -> 0.75
             else            -> 0.6
         }
-        // Ceiling raised 0.6 -> 0.9 for the same reason: it now bounds the PEAK, not a base that gets
-        // doubled. 0.9 is still below the old effective ceiling of 1.2 U.
-        val primerCapU = round2((committedCapU * primerFrac).coerceIn(0.0, 0.9))
+        // Clamp is now SELF-SCALING instead of a flat constant. The old flat 0.6 (and the 0.9 that
+        // briefly replaced it) clipped high-need users: a well-controlled user with committedCapU 2.5
+        // derives 2.5 x 0.75 = 1.875 and was being cut to 0.9. The principled bound is ONE COMMIT-SHOT —
+        // the primer is an advance on the CONFIRMED shot, so it should never exceed the shot it advances.
+        // primerFrac is <= 0.75, so this clamp is a belt-and-braces invariant rather than a cutoff, and
+        // it scales in the user's OWN units (committedCapU is derived from their own SMB distribution, so
+        // U200 users are already handled). Matches DoubleKey.ApsBoostV5PrimerCapU's max of 2.5.
+        val primerCapU = round2((committedCapU * primerFrac).coerceIn(0.0, committedCapU))
         // Route only CLEARLY well-controlled users to the bolus; everyone else gets the retractable
         // temp-basal (safe-by-unwinding). The bolus is thus inherently TBR-safe (well-controlled only),
         // so the primer cap is NOT raise-guarded — the delivery routing is the safety differentiator.

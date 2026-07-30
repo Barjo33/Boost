@@ -304,6 +304,34 @@ class BoostV5AutoConfigTest {
         assertThat(f.store[DoubleKey.ApsBoostCumulativeSmbCap60Min]).isNotEqualTo(s.cumulativeSmbCap60MinU)
     }
 
+    // ── 2026-07-30 primer ceiling: self-scaling clamp + raise-guard ──
+
+    @Test fun `primer ceiling is not clipped by a flat constant - scales with committedCap`() {
+        // A well-controlled user with a large commit-shot used to be cut to the old flat 0.9 clamp.
+        // The clamp is now committedCapU itself, so the derived value is frac x committedCapU intact.
+        val s = BoostV5AutoConfig.compute(profile())!!
+        assertThat(s.primerCapU).isGreaterThan(0.0)
+        assertThat(s.primerCapU).isAtMost(s.committedCapU)          // the invariant: <= one commit-shot
+        assertThat(s.primerCapU).isAtMost(DoubleKey.ApsBoostV5PrimerCapU.max)
+    }
+
+    @Test fun `primer ceiling max allows more than the old 1_0 limit`() {
+        // Declared range must not clip a high-need user; 2.5 matches the committed-cap max.
+        assertThat(DoubleKey.ApsBoostV5PrimerCapU.max).isEqualTo(2.5)
+        assertThat(DoubleKey.ApsBoostV5PrimerCapU.defaultValue).isEqualTo(0.0)   // still off by default
+    }
+
+    @Test fun `primer ceiling RAISE with elevated TBR is held as a suggestion (now raise-guarded)`() {
+        // 2026-07-30: PrimerCapU joined doseCapKeys. A raise must be withheld while TBR is breached.
+        val s = BoostV5AutoConfig.compute(profile(tbr70 = 4.3))!!
+        assertThat(s.primerCapU).isGreaterThan(DoubleKey.ApsBoostV5PrimerCapU.defaultValue)
+        val f = FakeStore()
+        val res = f.apply(s, tbr = 4.3)
+        val held = res.single { it.key == DoubleKey.ApsBoostV5PrimerCapU }
+        assertThat(held.outcome).isEqualTo(BoostV5AutoConfigApply.Outcome.SUGGESTED_NOT_APPLIED_TBR)
+        assertThat(f.store).doesNotContainKey(DoubleKey.ApsBoostV5PrimerCapU)
+    }
+
     // ── TBR raise-guard on dose caps (2026-07-06 amendment #5, cohort user B) ──
 
     @Test fun `dose-cap RAISE with elevated TBR is held as a suggestion, not applied`() {
