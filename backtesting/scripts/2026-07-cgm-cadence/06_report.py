@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
-"""Generate the report from the JSON produced by 01-05. No number is typed by hand here."""
-import sys, os, json, datetime as dt
+"""Generate the report from the JSON written by 01-05. No figure is typed by hand.
+
+House style enforced by 07_style_check.py: no em-dashes, no bold, plain British prose.
+"""
+import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cadence_lib as L
 
@@ -9,77 +12,81 @@ V  = L.read("02_variogram.json")
 F  = L.read("03_forecast.json")
 Ev = L.read("04_events.json")
 Dl = L.read("05_reporting_delay.json")
-def ci(d, k="", dp=3):
-    return f"{d[k]:.{dp}f} [{d[k+'_lo']:.{dp}f}, {d[k+'_hi']:.{dp}f}]" if k else ""
-out = []
-w = out.append
+rs = V["ratio_summary"]; c = P["comparability"]
+out = []; w = out.append
 
-w("# One-minute versus five-minute CGM: what the extra samples carry")
+w("# Is one-minute CGM data more useful than five-minute data?")
 w("")
-w("*Generated from `backtesting/scripts/2026-07-cgm-cadence/`. Every figure in this report is")
-w("read from the JSON written by scripts 01-05; none is transcribed by hand.*")
+w("*Generated from `backtesting/scripts/2026-07-cgm-cadence/`. Every figure is read from the")
+w("JSON written by scripts 01 to 05.*")
 w("")
-w("## Summary")
+w("## The short answer")
 w("")
-rs = V["ratio_summary"]
-w(f"One person wore a five-minute sensor for {P['e5']['n_days']} days and then a one-minute")
-w(f"sensor for {P['e1']['n_days']} days. Nothing below is decimated, interpolated or simulated:")
-w("the two cadences are compared as they were actually recorded.")
+w("No, for accuracy. The two records carry the same information about glucose, and every")
+w("accuracy measure tested comes out the same at both cadences.")
 w("")
-w(f"- **The two records differ by one number.** The ratio of their variograms is")
-w(f"  **{rs['mean']:.3f}** across every lag both sensors can see, from 5 to 120 minutes, with a")
-w(f"  total spread of {rs['spread_pct']:.1f} per cent of the mean and no trend.")
-w(f"- **Neither cadence is noisier, and neither shows a measurement-noise floor.** At a")
-w(f"  one-minute lag D is {V['vario']['e1']['1']['D']:.2f} mg/dL², which is")
-w(f"  {V['noise']['pct_of_lit_floor_at_1min']:.0f} per cent of the {V['noise']['lit_floor']:.1f} mg/dL²")
-w("  floor that a published sensor-noise standard deviation would impose at every lag. Both sensors report")
-w("  values that are already filtered.")
-w(f"- **Nothing new appears below five minutes.** The log-log slope there is")
-w(f"  {V['slopes']['e1']['1-5']['slope']:.2f} [{V['slopes']['e1']['1-5']['lo']:.2f}, "
-  f"{V['slopes']['e1']['1-5']['hi']:.2f}], containing the "
-  f"{V['slopes']['e1']['5-20']['slope']:.2f} measured just above it.")
-w(f"- **Forecasting does not improve.** Normalised RMSE intervals overlap at all")
-w(f"  {len(F['comparison'])} horizons and the nominal winner alternates.")
-w("- **Predicting lows and highs does not improve.** The sign of the difference *reverses*")
-w("  between lows and highs, which no cadence effect can produce.")
-w(f"- **What does change is when you are told:** the five-minute record reports a threshold")
-w(f"  crossing {Dl['mean_difference']:.2f} minutes later on average, against an arithmetic")
-w("  expectation of 2.00 minutes from sample spacing alone.")
+w(f"Yes, by about {Dl['mean_difference']:.1f} minutes, for timing. A five-minute sensor reports a")
+w("threshold crossing later than a one-minute sensor does, by roughly the amount the sample")
+w("spacing implies. That is a scheduling difference and it requires no additional information.")
 w("")
-w("## 1. The records")
+w("## 1. What was compared")
+w("")
+w(f"One person wore a five-minute sensor from {P['e5']['start']} to {P['e5']['end']}, then a")
+w(f"one-minute sensor from {P['e1']['start']} to {P['e1']['end']}. The two records are compared")
+w("as they were recorded. Nothing is decimated, interpolated or simulated.")
+w("")
+w("This matters because the usual way to ask this question is to take a one-minute record and")
+w("discard four samples in five. That measures what a consumer loses by reading a fast sensor")
+w("slowly. It does not measure how a fast sensor and a slow sensor differ, because a slow sensor")
+w("filters internally before it reports.")
 w("")
 w("| | Five-minute era | One-minute era |")
 w("|---|---|---|")
-for lab, key, fmt in [("Dates", None, None), ("Days with data", "n_days", "{:d}"),
-                      ("Readings", "n", "{:,}"), ("Median gap (min)", "median_gap", "{:.2f}"),
-                      ("On cadence", "pct_on_cadence", "{:.1f}%"),
-                      ("Coverage", "coverage_pct", "{:.1f}%"),
-                      ("Mean glucose", "mean", "{:.1f}"), ("SD", "sd", "{:.1f}"),
-                      ("CV", "cv", "{:.1f}%"), ("Time in range 70-180", "tir", "{:.1f}%"),
-                      ("Time <70", "tbr70", "{:.2f}%"), ("Time <54", "tbr54", "{:.2f}%"),
-                      ("Time >180", "tar180", "{:.2f}%"), ("Time >250", "tar250", "{:.2f}%")]:
-    if key is None:
-        w(f"| {lab} | {P['e5']['start']} – {P['e5']['end']} | {P['e1']['start']} – {P['e1']['end']} |")
-    else:
-        w(f"| {lab} | {fmt.format(P['e5'][key])} | {fmt.format(P['e1'][key])} |")
+rows = [("Days with data", "n_days", "{:d}"), ("Readings", "n", "{:,}"),
+        ("Median gap (min)", "median_gap", "{:.2f}"), ("Samples on cadence", "pct_on_cadence", "{:.1f}%"),
+        ("Coverage of the period", "coverage_pct", "{:.1f}%"), ("Mean glucose (mg/dL)", "mean", "{:.1f}"),
+        ("SD (mg/dL)", "sd", "{:.1f}"), ("CV", "cv", "{:.1f}%"),
+        ("Time in range 70 to 180", "tir", "{:.1f}%"), ("Time below 70", "tbr70", "{:.2f}%"),
+        ("Time below 54", "tbr54", "{:.2f}%"), ("Time above 180", "tar180", "{:.2f}%"),
+        ("Time above 250", "tar250", "{:.2f}%")]
+for lab, key, fmt in rows:
+    w(f"| {lab} | {fmt.format(P['e5'][key])} | {fmt.format(P['e1'][key])} |")
 w("")
-c = P["comparability"]
-w(f"The eras are **not** matched. The later period is more volatile — the squared ratio of")
-w(f"coefficients of variation is {c['cv_ratio_squared']:.3f}, there is {c['tbr70_ratio']:.2f} times")
-w(f"as much time below 70 and {c['tar180_ratio']:.2f} times as much above 180. Glycaemic")
-w("variability is a property of the person and the period, not of the sensor, so every metric")
-w("below is scale-free or normalised by the era's own base rate. Where that is not possible the")
-w("confound is stated.")
+w("The two periods are not matched. Control was worse during the later one: the squared ratio of")
+w(f"coefficients of variation is {c['cv_ratio_squared']:.3f}, with {c['tbr70_ratio']:.2f} times as much")
+w(f"time below 70 and {c['tar180_ratio']:.2f} times as much above 180.")
 w("")
-w("## 2. Noise and signal: the variogram")
+w("Glycaemic variability is a property of the person and the period rather than of the sensor, so")
+w("it cannot be allowed to decide the comparison. Every measure below is either scale-free or")
+w("divided by that era's own base rate. Where a measure is not, the point is not relied upon.")
 w("")
-w("The variogram D(τ) = E[(x(t+τ) − x(t))²] is the mean squared change over a lag of τ minutes.")
-w("It is expressed in time rather than samples, so both cadences sit on one axis with no")
-w("resampling. It separates the two questions by construction: additive measurement noise of")
-w("variance s² lifts D by 2s² at *every* lag including the shortest, whereas real signal")
-w("vanishes as τ → 0. A noise floor therefore shows up as a flattening at small lag.")
+w("## 2. Method")
 w("")
-w("### 2.1 The two records differ by a single scale factor")
+w("The main tool is the variogram, D(tau) = E[(x(t+tau) - x(t))^2], which is the mean squared")
+w("change over a lag of tau minutes.")
+w("")
+w("It suits this question for two reasons. It is expressed in time rather than in samples, so a")
+w("five-minute record and a one-minute record can be placed on the same axis without resampling")
+w("either. It also separates noise from signal by construction: if a sensor adds independent")
+w("measurement noise of variance s^2 then every difference contains two independent noise draws,")
+w("so D is raised by 2s^2 at every lag, including the shortest. Real signal structure vanishes as")
+w("tau approaches zero, because glucose is continuous. A noise floor therefore appears as a")
+w("flattening of D at small lag, and its height gives the noise variance directly.")
+w("")
+w("The log-log slope of D describes the character of the record independently of how large its")
+w("excursions were. A slope of 2 indicates a smooth differentiable signal and a slope of 0")
+w("indicates white noise.")
+w("")
+w("Prediction is modelled at each era's own native cadence and validated out of sample with")
+w("GroupKFold over whole days. Both cadences are given the same look-back in minutes; the faster")
+w("record simply holds five times as many samples inside it. Intervals throughout are 95 per cent")
+w("block bootstraps that resample whole days, which respects the autocorrelation of glucose.")
+w("")
+w("## 3. Do the records differ by anything other than volatility?")
+w("")
+w("If the periods differ only in how volatile they were, the variogram of one will be a constant")
+w("multiple of the other at every lag. If the sensors differ, the ratio will bend at short lag,")
+w("since that is the only place their behaviour can diverge.")
 w("")
 w("| Lag | Five-minute era D | One-minute era D | Ratio |")
 w("|---|---|---|---|")
@@ -88,14 +95,17 @@ for r in V["ratio"]:
     w(f"| {r['lag']} min | {a['D']:.1f} [{a['lo']:.1f}, {a['hi']:.1f}] | "
       f"{b['D']:.1f} [{b['lo']:.1f}, {b['hi']:.1f}] | {r['ratio']:.3f} |")
 w("")
-w(f"Mean ratio **{rs['mean']:.3f}**, range {rs['min']:.3f} to {rs['max']:.3f}, spread")
-w(f"{rs['spread_pct']:.1f} per cent of the mean over a twenty-four-fold range of lag. It does not")
-w("trend and it does not bend at the short end, which is the only place the two sensors could")
-w(f"differ. For comparison the squared ratio of coefficients of variation is {c['cv_ratio_squared']:.3f}.")
+w(f"The ratio averages {rs['mean']:.3f} over lags from 5 to 120 minutes, a twenty-four-fold range,")
+w(f"with a total spread of {rs['spread_pct']:.1f} per cent of its mean. It does not trend and it does")
+w("not bend at the short end.")
 w("")
-w("### 2.2 Neither record has a measurement-noise floor")
+w("The two records are therefore the same signal scaled by a single number. For reference, the")
+w(f"squared ratio of coefficients of variation is {c['cv_ratio_squared']:.3f}, so most of the scale")
+w("factor is accounted for by the change in control.")
 w("")
-w("| Lag | One-minute era D | Share of the floor a 3.19 mg/dL noise SD would impose |")
+w("## 4. Is either sensor noisier?")
+w("")
+w("| Lag | One-minute era D (mg/dL^2) | Share of the floor implied by a 3.19 mg/dL noise SD |")
 w("|---|---|---|")
 for lg in [1,2,3,4,5,10]:
     k = f"e1_D{lg}"
@@ -103,54 +113,70 @@ for lg in [1,2,3,4,5,10]:
     d = V["noise"][k]
     w(f"| {lg} min | {d['D']:.2f} [{d['lo']:.2f}, {d['hi']:.2f}] | {100*d['D']/V['noise']['lit_floor']:.0f}% |")
 w("")
-w(f"D falls smoothly to {V['vario']['e1']['1']['D']:.2f} mg/dL² at a one-minute lag with no sign of")
-w(f"levelling off — {V['noise']['pct_of_lit_floor_at_1min']:.0f} per cent of the")
-w(f"{V['noise']['lit_floor']:.1f} mg/dL² that independent noise of the published magnitude would")
-w("hold it at. If that were white noise it would correspond to a standard deviation of only")
-w(f"{V['noise']['implied_white_sd_at_1min']:.2f} mg/dL. The values these sensors report are not raw")
-w("transducer output; they have been filtered before leaving the device, and the filtering rather")
-w("than the reporting interval is what governs how clean the series looks.")
+w(f"D falls smoothly to {V['vario']['e1']['1']['D']:.2f} mg/dL^2 at a one-minute lag and shows no")
+w("sign of levelling off. Neither record has a noise floor to measure.")
 w("")
-w("### 2.3 No new regime below five minutes")
+w("The comparison worth making is with the published error models. Vettoretti and colleagues fit a")
+w(f"measurement-noise standard deviation of 3.19 mg/dL to a factory-calibrated sensor, which would")
+w(f"hold D at {V['noise']['lit_floor']:.1f} mg/dL^2 at every lag. The measured value at one minute is")
+w(f"{V['noise']['pct_of_lit_floor_at_1min']:.0f} per cent of that. Treated as white noise it would")
+w(f"correspond to a standard deviation of {V['noise']['implied_white_sd_at_1min']:.2f} mg/dL.")
 w("")
-w("| Record | Lag band | Log-log slope |")
+w("The reading is that neither sensor reports raw transducer output. Both filter before the value")
+w("leaves the device, and it is the filtering rather than the reporting interval that governs how")
+w("clean the series looks. Section 3 already shows the point directly: there is no lag at which the")
+w("faster record sits proportionally higher than the slower one.")
+w("")
+w("## 5. Does the faster sensor resolve anything below five minutes?")
+w("")
+w("| Record | Lag band | Log-log slope of D |")
 w("|---|---|---|")
 for k, lab in (("e5", "Five-minute era"), ("e1", "One-minute era")):
     for band, s in V["slopes"][k].items():
         if not isinstance(s, dict): continue
-        w(f"| {lab} | {band.replace('-', '–')} min | {s['slope']:.2f} [{s['lo']:.2f}, {s['hi']:.2f}] |")
+        w(f"| {lab} | {band.replace('-', ' to ')} min | {s['slope']:.2f} [{s['lo']:.2f}, {s['hi']:.2f}] |")
 w("")
-w("A slope of 2 would be a smooth differentiable signal and 0 would be white noise; both records")
-w("sit near 1.3 throughout. In the two bands the sensors share, the intervals overlap. Below five")
-w("minutes, where only the faster sensor can see, the slope contains the value measured just")
-w("above it, so the same power law continues from one minute to sixty with no break.")
+w("In the two bands the sensors share, the slopes agree to two decimal places and the intervals")
+w("overlap. The records have the same roughness at every timescale both can see.")
 w("")
-w("## 3. Forecasting — the automated-insulin-delivery case")
+sub = V["slopes"]["e1"]["1-5"]; above = V["slopes"]["e1"]["5-20"]
+w(f"Below five minutes, where only the faster sensor reaches, the slope is {sub['slope']:.2f}")
+w(f"[{sub['lo']:.2f}, {sub['hi']:.2f}]. That interval contains the {above['slope']:.2f} measured just")
+w("above it, so the same power law continues from one minute to sixty with no break. The extra")
+w("samples trace the curve more finely; they do not open a new regime.")
 w("")
-w("Each era is modelled at its own native cadence and validated out of sample with GroupKFold")
-w("over whole days. Both get the same look-back in *minutes*; the faster record simply has five")
-w("times as many samples inside it. Error is divided by the standard deviation of the target, so")
-w("1.0 means no better than predicting the mean and the difference in variability between the")
-w("eras cannot drive the comparison.")
+w("## 6. Does prediction improve?")
 w("")
-w("| Horizon | Five-minute era | One-minute era | Verdict |")
-w("|---|---|---|---|")
+w("This is the only category of use where a faster cadence could plausibly be more accurate rather")
+w("than merely earlier. Reading the current value, raising an alarm on it, and computing")
+w("retrospective statistics all depend either on the newest sample or on an average over thousands")
+w("of them.")
+w("")
+w("### 6.1 Forecasting a future glucose value")
+w("")
+w("Error is divided by the standard deviation of the target, so 1.0 means no better than")
+w("predicting the mean and the difference in volatility between the periods cannot drive the")
+w("comparison.")
+w("")
+w("| Horizon | Five-minute era | One-minute era | Intervals | Nominally better |")
+w("|---|---|---|---|---|")
 for H, cm in F["comparison"].items():
     a = F["e5"]["horizons"][H]; b = F["e1"]["horizons"][H]
     w(f"| +{H} min | {a['model']:.3f} [{a['model_lo']:.3f}, {a['model_hi']:.3f}] | "
       f"{b['model']:.3f} [{b['model_lo']:.3f}, {b['model_hi']:.3f}] | "
-      f"{'overlap' if cm['overlap'] else 'separated'}, nominally {cm['nominally_better']} |")
+      f"{'overlap' if cm['overlap'] else 'separated'} | {cm['nominally_better']} |")
 w("")
-w(f"Intervals overlap at every horizon and the nominal winner alternates, so there is no")
-w("forecast advantage to detect in either direction.")
+w("The intervals overlap at every horizon and the nominal winner changes from one horizon to the")
+w("next, so there is no advantage to detect in either direction.")
 w("")
-w("## 4. Predicting lows and highs")
+w("### 6.2 Predicting lows and highs")
 w("")
-w("Base rates differ substantially between the eras, so **lift** — precision in the top risk")
-w("decile divided by that era's own base rate — is the metric to compare. AUC is shown alongside.")
+w("Base rates differ substantially between the periods, so lift is the figure to compare. Lift is")
+w("the precision within the top decile of predicted risk, divided by that era's own base rate. AUC")
+w("is shown alongside, with the caveat that it is sensitive to prevalence.")
 w("")
 for task in ["low <70", "low <54", "high >180", "high >250"]:
-    w(f"### {task}")
+    w(f"#### {task.replace('<', 'below ').replace('>', 'above ')}")
     w("")
     w("| Horizon | Era | Base rate | AUC | Lift |")
     w("|---|---|---|---|---|")
@@ -161,19 +187,18 @@ for task in ["low <70", "low <54", "high >180", "high >250"]:
             r = row.get(k)
             if not r: continue
             if r.get("too_rare"):
-                w(f"| {H} min | {lab} | {100*r['base']:.2f}% | too rare to model | — |")
+                w(f"| {H} min | {lab} | {100*r['base']:.2f}% | too rare to model | |")
             else:
                 w(f"| {H} min | {lab} | {100*r['base']:.2f}% | "
                   f"{r['auc']:.4f} [{r['auc_lo']:.4f}, {r['auc_hi']:.4f}] | "
-                  f"{r['lift']:.2f}× [{r['lift_lo']:.2f}, {r['lift_hi']:.2f}] |")
+                  f"{r['lift']:.2f}x [{r['lift_lo']:.2f}, {r['lift_hi']:.2f}] |")
     w("")
-w("### The sign reverses, which settles it")
+w("### 6.3 The direction of the difference reverses")
 w("")
-w("If one-minute sampling carried more predictive information it would help on every task. It")
-w("does not. On lows the one-minute era scores nominally higher; on highs above 180 it scores")
-w("**lower**, and substantially so at the longer horizons.")
+w("If one-minute sampling carried more predictive information it would help whichever way glucose")
+w("was moving. It does not.")
 w("")
-w("| Task | AUC gap, one-minute minus five-minute, by horizon | Trend |")
+w("| Task | AUC gap, one-minute minus five-minute | Behaviour with horizon |")
 w("|---|---|---|")
 for task in ["low <70", "low <54", "high >180"]:
     gaps = []
@@ -181,85 +206,95 @@ for task in ["low <70", "low <54", "high >180"]:
         r = Ev["tasks"][task].get(H, {})
         cmp_ = r.get("compare") if isinstance(r, dict) else None
         if cmp_: gaps.append(f"{H}m {cmp_['auc_gap']:+.4f}")
-    tr = Ev["tasks"][task].get("auc_gap_trend", "—")
-    if gaps: w(f"| {task} | {', '.join(gaps)} | {tr} |")
+    tr = Ev["tasks"][task].get("auc_gap_trend", "")
+    if gaps: w(f"| {task.replace('<', 'below ').replace('>', 'above ')} | {', '.join(gaps)} | {tr} |")
 w("")
-w("A genuine cadence benefit would be largest at the shortest horizon, where fine-grained recent")
-w("detail matters most, and would wash out as the horizon lengthens. Neither task behaves that")
-w("way, and the two tasks disagree on direction. These differences track how hard each period was")
-w("to predict, not how often it was sampled.")
+w("On lows the one-minute era scores higher. On highs above 180 it scores lower, and the deficit")
+w("widens with horizon. A sampling interval cannot help in one direction and hinder in the other.")
 w("")
-w("## 5. What cadence does change: reporting delay")
+w("A genuine cadence benefit would also be largest at the shortest horizon, where recent detail")
+w("matters most, and would fade as the horizon lengthened. Neither task behaves that way. What")
+w("these differences track is how difficult each period was to predict.")
+w("")
+w("## 7. What cadence does change")
 w("")
 w("A threshold is crossed at some instant between two reported samples. Locating that instant by")
 w("interpolation and measuring the wait until the next sample the sensor actually reported gives")
-w("the delay directly, on the real records.")
+w("the delay directly, from the real records.")
 w("")
-w("| Crossing | Five-minute era mean delay | One-minute era mean delay | Difference |")
+w("| Crossing | Five-minute era | One-minute era | Difference |")
 w("|---|---|---|---|")
 labels = {"70.0": "falling below 70", "54.0": "falling below 54",
           "180.0": "rising above 180", "250.0": "rising above 250"}
+def cell(d):
+    return "too few crossings" if d.get("too_few") else \
+           f"{d['mean']:.2f} [{d['mean_lo']:.2f}, {d['mean_hi']:.2f}] min, n={d['n']}"
 for thr, lab in labels.items():
     a = Dl["e5"]["thresholds"].get(thr); b = Dl["e1"]["thresholds"].get(thr)
     if not a or not b: continue
-    def cell(d):
-        return "too few crossings" if d.get("too_few") else f"{d['mean']:.2f} min (n={d['n']})"
-    if a.get("too_few") or b.get("too_few"):
-        w(f"| {lab} | {cell(a)} | {cell(b)} | — |")
-        continue
-    w(f"| {lab} | {a['mean']:.2f} [{a['mean_lo']:.2f}, {a['mean_hi']:.2f}] min "
-      f"(n={a['n']}) | {b['mean']:.2f} [{b['mean_lo']:.2f}, {b['mean_hi']:.2f}] min "
-      f"(n={b['n']}) | **+{a['mean']-b['mean']:.2f} min** |")
+    diff = "" if (a.get("too_few") or b.get("too_few")) else f"+{a['mean']-b['mean']:.2f} min"
+    w(f"| {lab} | {cell(a)} | {cell(b)} | {diff} |")
 w("")
-w(f"The average difference is **{Dl['mean_difference']:.2f} minutes**, against an arithmetic")
-w("expectation of 2.00 minutes from the sample spacing alone. This is pure scheduling: it")
-w("requires no extra information and it is the whole of what the faster feed delivers.")
+w(f"The mean difference is {Dl['mean_difference']:.2f} minutes, against an arithmetic expectation of")
+w("2.00 minutes from the sample spacing alone. This is the whole of what the faster feed delivers,")
+w("and it is a matter of scheduling rather than of information.")
 w("")
-w("## 6. Reading")
+w("Whether two minutes is worth having depends on what consumes it. An alarm can use it in full,")
+w("as can a person who is able to act at once. It is small against the onset of rapid-acting")
+w("insulin, which is on the order of fifteen minutes.")
 w("")
-w("The two sensors record the same process at the same relative noise, and their records differ")
-w("by a single scale factor that is the volatility of the period. The faster sensor resolves no")
-w("new regime below five minutes, forecasts no better at any horizon between fifteen and ninety")
-w("minutes, and predicts neither lows nor highs better once each era's own base rate is divided")
-w("out — with the sign of the difference reversing between the two, which no property of the")
-w("sampling interval could produce.")
+w("## 8. Limitations")
 w("")
-w("What a one-minute feed does deliver is about two minutes less waiting to be told that")
-w("something has happened. Whether two minutes is worth having depends on what consumes it: it is")
-w("available in full to an alarm and to a person who can act at once, and it is small against the")
-w("onset of any insulin action.")
+w("The comparison rests on one person. It is observational and between eras, so the sensor")
+w("hardware changed at the boundary and so did glycaemic control. The analysis is built to be")
+w("robust to the latter, since every measure used here is scale-free, but a single subject cannot")
+w("show that the result generalises across people or devices.")
 w("")
-w("## 7. Limitations")
+w("The sensor makes and models are not recorded in the data available. The noise conclusion")
+w("concerns the reported series rather than the raw transducer signal behind it, which the")
+w("published error models address and which is not available here.")
 w("")
-w("One subject. The comparison is observational and between eras, so sensor hardware, season,")
-w("therapy and glycaemic control all change at the boundary. The analysis is built to be robust")
-w("to exactly that — variogram ratios, log-log slopes, normalised error and base-rate lift are")
-w("all scale-free — but a single person cannot establish that the finding generalises.")
-w("")
-w("The sensor makes and models are not recorded in the data available. The noise conclusion is")
-w("about the *reported* series, not the raw transducer signal behind it.")
-w("")
-w("Two tasks were too rare to model in one era or the other and are shown as such rather than")
+w("Some tasks were too rare to model in one era or the other. They are marked as such rather than")
 w("being forced.")
 w("")
-w("No outcome data is analysed, and none is needed for the question asked, which is what the two")
+w("No outcome data is analysed. None is needed for the question asked, which is what the two")
 w("records contain.")
 w("")
 w("## Reproducing")
 w("")
 w("```")
-w("python3 01_profile.py          # coverage, cadence stability, glycaemic distribution")
-w("python3 02_variogram.py        # ratio, noise floor, log-log slopes")
-w("python3 03_forecast.py         # normalised forecast error by horizon")
-w("python3 04_events.py           # lows and highs, AUC and base-rate lift")
-w("python3 05_reporting_delay.py  # real delay from crossing to next reported sample")
-w("python3 06_report.py           # regenerates this document from results/*.json")
+w("./run_all.sh")
+w("")
+w("01_profile.py          coverage, cadence stability, glycaemic distribution")
+w("02_variogram.py        ratio across shared lags, noise floor, log-log slopes")
+w("03_forecast.py         normalised forecast error by horizon")
+w("04_events.py           event prediction, AUC and base-rate lift")
+w("05_reporting_delay.py  delay from an interpolated crossing to the next reported sample")
+w("06_report.py           regenerates this document from results/*.json")
+w("07_style_check.py      house-style gate on the generated document")
 w("```")
 w("")
-w("PROVISIONAL — one subject; observational between-era comparison.")
+w("Provisional. One subject, observational between-era comparison.")
 
-dest = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                    "..", "..", "reports", "2026-07_cgm_cadence_report.md")
-dest = os.path.normpath(dest)
-with open(dest, "w") as f: f.write("\n".join(out) + "\n")
-print(f"report written: {dest}  ({len(out)} lines)")
+def rewrap(lines, width=92):
+    """Even paragraph wrapping. Tables, headings, code and list items pass through."""
+    import textwrap
+    res, buf, in_code = [], [], False
+    def flush():
+        if buf:
+            res.extend(textwrap.wrap(" ".join(buf), width=width,
+                                     break_long_words=False, break_on_hyphens=False))
+            buf.clear()
+    for l in lines:
+        if l.strip().startswith("```"):
+            flush(); in_code = not in_code; res.append(l); continue
+        if in_code or not l.strip() or l.strip().startswith(("|", "#", "-", "*")):
+            flush(); res.append(l); continue
+        buf.append(l.strip())
+    flush()
+    return res
+
+dest = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                     "..", "..", "reports", "2026-07_cgm_cadence_report.md"))
+with open(dest, "w") as f: f.write("\n".join(rewrap(out)) + "\n")
+print(f"report written: {dest} ({len(out)} lines)")

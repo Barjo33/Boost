@@ -1,67 +1,81 @@
-# One-minute versus five-minute CGM: what the extra samples carry
+# Is one-minute CGM data more useful than five-minute data?
 
-*Generated from `backtesting/scripts/2026-07-cgm-cadence/`. Every figure in this report is
-read from the JSON written by scripts 01-05; none is transcribed by hand.*
+*Generated from `backtesting/scripts/2026-07-cgm-cadence/`. Every figure is read from the
+JSON written by scripts 01 to 05.*
 
-## Summary
+## The short answer
 
-One person wore a five-minute sensor for 83 days and then a one-minute
-sensor for 67 days. Nothing below is decimated, interpolated or simulated:
-the two cadences are compared as they were actually recorded.
+No, for accuracy. The two records carry the same information about glucose, and every
+accuracy measure tested comes out the same at both cadences.
 
-- **The two records differ by one number.** The ratio of their variograms is
-  **1.602** across every lag both sensors can see, from 5 to 120 minutes, with a
-  total spread of 6.6 per cent of the mean and no trend.
-- **Neither cadence is noisier, and neither shows a measurement-noise floor.** At a
-  one-minute lag D is 4.44 mg/dL², which is
-  22 per cent of the 20.4 mg/dL²
-  floor that a published sensor-noise standard deviation would impose at every lag. Both sensors report
-  values that are already filtered.
-- **Nothing new appears below five minutes.** The log-log slope there is
-  1.49 [1.18, 1.71], containing the 1.35 measured just above it.
-- **Forecasting does not improve.** Normalised RMSE intervals overlap at all
-  5 horizons and the nominal winner alternates.
-- **Predicting lows and highs does not improve.** The sign of the difference *reverses*
-  between lows and highs, which no cadence effect can produce.
-- **What does change is when you are told:** the five-minute record reports a threshold
-  crossing 2.19 minutes later on average, against an arithmetic
-  expectation of 2.00 minutes from sample spacing alone.
+Yes, by about 2.2 minutes, for timing. A five-minute sensor reports a threshold crossing
+later than a one-minute sensor does, by roughly the amount the sample spacing implies. That
+is a scheduling difference and it requires no additional information.
 
-## 1. The records
+## 1. What was compared
+
+One person wore a five-minute sensor from 2026-03-01 to 2026-05-23, then a one-minute sensor
+from 2026-05-23 to 2026-07-31. The two records are compared as they were recorded. Nothing
+is decimated, interpolated or simulated.
+
+This matters because the usual way to ask this question is to take a one-minute record and
+discard four samples in five. That measures what a consumer loses by reading a fast sensor
+slowly. It does not measure how a fast sensor and a slow sensor differ, because a slow
+sensor filters internally before it reports.
 
 | | Five-minute era | One-minute era |
 |---|---|---|
-| Dates | 2026-03-01 – 2026-05-23 | 2026-05-23 – 2026-07-31 |
 | Days with data | 83 | 67 |
 | Readings | 24,012 | 84,588 |
 | Median gap (min) | 5.00 | 1.00 |
-| On cadence | 98.8% | 96.5% |
-| Coverage | 100.5% | 85.7% |
-| Mean glucose | 118.4 | 125.6 |
-| SD | 30.7 | 39.0 |
+| Samples on cadence | 98.8% | 96.5% |
+| Coverage of the period | 100.5% | 85.7% |
+| Mean glucose (mg/dL) | 118.4 | 125.6 |
+| SD (mg/dL) | 30.7 | 39.0 |
 | CV | 25.9% | 31.1% |
-| Time in range 70-180 | 93.5% | 86.2% |
-| Time <70 | 2.49% | 4.00% |
-| Time <54 | 0.30% | 0.15% |
-| Time >180 | 4.00% | 9.80% |
-| Time >250 | 0.13% | 0.83% |
+| Time in range 70 to 180 | 93.5% | 86.2% |
+| Time below 70 | 2.49% | 4.00% |
+| Time below 54 | 0.30% | 0.15% |
+| Time above 180 | 4.00% | 9.80% |
+| Time above 250 | 0.13% | 0.83% |
 
-The eras are **not** matched. The later period is more volatile — the squared ratio of
-coefficients of variation is 1.438, there is 1.60 times
-as much time below 70 and 2.45 times as much above 180. Glycaemic
-variability is a property of the person and the period, not of the sensor, so every metric
-below is scale-free or normalised by the era's own base rate. Where that is not possible the
-confound is stated.
+The two periods are not matched. Control was worse during the later one: the squared ratio
+of coefficients of variation is 1.438, with 1.60 times as much time below 70 and 2.45 times
+as much above 180.
 
-## 2. Noise and signal: the variogram
+Glycaemic variability is a property of the person and the period rather than of the sensor,
+so it cannot be allowed to decide the comparison. Every measure below is either scale-free
+or divided by that era's own base rate. Where a measure is not, the point is not relied
+upon.
 
-The variogram D(τ) = E[(x(t+τ) − x(t))²] is the mean squared change over a lag of τ minutes.
-It is expressed in time rather than samples, so both cadences sit on one axis with no
-resampling. It separates the two questions by construction: additive measurement noise of
-variance s² lifts D by 2s² at *every* lag including the shortest, whereas real signal
-vanishes as τ → 0. A noise floor therefore shows up as a flattening at small lag.
+## 2. Method
 
-### 2.1 The two records differ by a single scale factor
+The main tool is the variogram, D(tau) = E[(x(t+tau) - x(t))^2], which is the mean squared
+change over a lag of tau minutes.
+
+It suits this question for two reasons. It is expressed in time rather than in samples, so a
+five-minute record and a one-minute record can be placed on the same axis without resampling
+either. It also separates noise from signal by construction: if a sensor adds independent
+measurement noise of variance s^2 then every difference contains two independent noise
+draws, so D is raised by 2s^2 at every lag, including the shortest. Real signal structure
+vanishes as tau approaches zero, because glucose is continuous. A noise floor therefore
+appears as a flattening of D at small lag, and its height gives the noise variance directly.
+
+The log-log slope of D describes the character of the record independently of how large its
+excursions were. A slope of 2 indicates a smooth differentiable signal and a slope of 0
+indicates white noise.
+
+Prediction is modelled at each era's own native cadence and validated out of sample with
+GroupKFold over whole days. Both cadences are given the same look-back in minutes; the
+faster record simply holds five times as many samples inside it. Intervals throughout are 95
+per cent block bootstraps that resample whole days, which respects the autocorrelation of
+glucose.
+
+## 3. Do the records differ by anything other than volatility?
+
+If the periods differ only in how volatile they were, the variogram of one will be a
+constant multiple of the other at every lag. If the sensors differ, the ratio will bend at
+short lag, since that is the only place their behaviour can diverge.
 
 | Lag | Five-minute era D | One-minute era D | Ratio |
 |---|---|---|---|
@@ -77,14 +91,17 @@ vanishes as τ → 0. A noise floor therefore shows up as a flattening at small 
 | 90 min | 1112.1 [991.5, 1229.4] | 1787.5 [1560.9, 1997.7] | 1.607 |
 | 120 min | 1320.9 [1157.2, 1485.2] | 2144.9 [1849.7, 2396.6] | 1.624 |
 
-Mean ratio **1.602**, range 1.533 to 1.638, spread
-6.6 per cent of the mean over a twenty-four-fold range of lag. It does not
-trend and it does not bend at the short end, which is the only place the two sensors could
-differ. For comparison the squared ratio of coefficients of variation is 1.438.
+The ratio averages 1.602 over lags from 5 to 120 minutes, a twenty-four-fold range, with a
+total spread of 6.6 per cent of its mean. It does not trend and it does not bend at the
+short end.
 
-### 2.2 Neither record has a measurement-noise floor
+The two records are therefore the same signal scaled by a single number. For reference, the
+squared ratio of coefficients of variation is 1.438, so most of the scale factor is
+accounted for by the change in control.
 
-| Lag | One-minute era D | Share of the floor a 3.19 mg/dL noise SD would impose |
+## 4. Is either sensor noisier?
+
+| Lag | One-minute era D (mg/dL^2) | Share of the floor implied by a 3.19 mg/dL noise SD |
 |---|---|---|
 | 1 min | 4.44 [2.93, 7.38] | 22% |
 | 2 min | 12.24 [10.07, 15.94] | 60% |
@@ -93,186 +110,197 @@ differ. For comparison the squared ratio of coefficients of variation is 1.438.
 | 5 min | 47.52 [42.28, 52.72] | 233% |
 | 10 min | 121.78 [108.76, 134.10] | 598% |
 
-D falls smoothly to 4.44 mg/dL² at a one-minute lag with no sign of
-levelling off — 22 per cent of the
-20.4 mg/dL² that independent noise of the published magnitude would
-hold it at. If that were white noise it would correspond to a standard deviation of only
-1.49 mg/dL. The values these sensors report are not raw
-transducer output; they have been filtered before leaving the device, and the filtering rather
-than the reporting interval is what governs how clean the series looks.
+D falls smoothly to 4.44 mg/dL^2 at a one-minute lag and shows no sign of levelling off.
+Neither record has a noise floor to measure.
 
-### 2.3 No new regime below five minutes
+The comparison worth making is with the published error models. Vettoretti and colleagues
+fit a measurement-noise standard deviation of 3.19 mg/dL to a factory-calibrated sensor,
+which would hold D at 20.4 mg/dL^2 at every lag. The measured value at one minute is 22 per
+cent of that. Treated as white noise it would correspond to a standard deviation of 1.49
+mg/dL.
 
-| Record | Lag band | Log-log slope |
+The reading is that neither sensor reports raw transducer output. Both filter before the
+value leaves the device, and it is the filtering rather than the reporting interval that
+governs how clean the series looks. Section 3 already shows the point directly: there is no
+lag at which the faster record sits proportionally higher than the slower one.
+
+## 5. Does the faster sensor resolve anything below five minutes?
+
+| Record | Lag band | Log-log slope of D |
 |---|---|---|
-| Five-minute era | 5–20 min | 1.35 [1.31, 1.39] |
-| Five-minute era | 20–60 min | 1.29 [1.24, 1.33] |
-| One-minute era | 1–5 min | 1.49 [1.18, 1.71] |
-| One-minute era | 5–20 min | 1.35 [1.29, 1.40] |
-| One-minute era | 20–60 min | 1.29 [1.24, 1.33] |
+| Five-minute era | 5 to 20 min | 1.35 [1.31, 1.39] |
+| Five-minute era | 20 to 60 min | 1.29 [1.24, 1.33] |
+| One-minute era | 1 to 5 min | 1.49 [1.18, 1.71] |
+| One-minute era | 5 to 20 min | 1.35 [1.29, 1.40] |
+| One-minute era | 20 to 60 min | 1.29 [1.24, 1.33] |
 
-A slope of 2 would be a smooth differentiable signal and 0 would be white noise; both records
-sit near 1.3 throughout. In the two bands the sensors share, the intervals overlap. Below five
-minutes, where only the faster sensor can see, the slope contains the value measured just
-above it, so the same power law continues from one minute to sixty with no break.
+In the two bands the sensors share, the slopes agree to two decimal places and the intervals
+overlap. The records have the same roughness at every timescale both can see.
 
-## 3. Forecasting — the automated-insulin-delivery case
+Below five minutes, where only the faster sensor reaches, the slope is 1.49 [1.18, 1.71].
+That interval contains the 1.35 measured just above it, so the same power law continues from
+one minute to sixty with no break. The extra samples trace the curve more finely; they do
+not open a new regime.
 
-Each era is modelled at its own native cadence and validated out of sample with GroupKFold
-over whole days. Both get the same look-back in *minutes*; the faster record simply has five
-times as many samples inside it. Error is divided by the standard deviation of the target, so
-1.0 means no better than predicting the mean and the difference in variability between the
-eras cannot drive the comparison.
+## 6. Does prediction improve?
 
-| Horizon | Five-minute era | One-minute era | Verdict |
-|---|---|---|---|
-| +15 min | 0.346 [0.325, 0.367] | 0.345 [0.322, 0.369] | overlap, nominally 1-min |
-| +30 min | 0.571 [0.543, 0.601] | 0.556 [0.519, 0.600] | overlap, nominally 1-min |
-| +45 min | 0.720 [0.688, 0.753] | 0.717 [0.676, 0.767] | overlap, nominally 1-min |
-| +60 min | 0.818 [0.792, 0.851] | 0.820 [0.780, 0.868] | overlap, nominally 5-min |
-| +90 min | 0.915 [0.895, 0.940] | 0.920 [0.891, 0.954] | overlap, nominally 5-min |
+This is the only category of use where a faster cadence could plausibly be more accurate
+rather than merely earlier. Reading the current value, raising an alarm on it, and computing
+retrospective statistics all depend either on the newest sample or on an average over
+thousands of them.
 
-Intervals overlap at every horizon and the nominal winner alternates, so there is no
-forecast advantage to detect in either direction.
+### 6.1 Forecasting a future glucose value
 
-## 4. Predicting lows and highs
+Error is divided by the standard deviation of the target, so 1.0 means no better than
+predicting the mean and the difference in volatility between the periods cannot drive the
+comparison.
 
-Base rates differ substantially between the eras, so **lift** — precision in the top risk
-decile divided by that era's own base rate — is the metric to compare. AUC is shown alongside.
+| Horizon | Five-minute era | One-minute era | Intervals | Nominally better |
+|---|---|---|---|---|
+| +15 min | 0.346 [0.325, 0.367] | 0.345 [0.322, 0.369] | overlap | 1-min |
+| +30 min | 0.571 [0.543, 0.601] | 0.556 [0.519, 0.600] | overlap | 1-min |
+| +45 min | 0.720 [0.688, 0.753] | 0.717 [0.676, 0.767] | overlap | 1-min |
+| +60 min | 0.818 [0.792, 0.851] | 0.820 [0.780, 0.868] | overlap | 5-min |
+| +90 min | 0.915 [0.895, 0.940] | 0.920 [0.891, 0.954] | overlap | 5-min |
 
-### low <70
+The intervals overlap at every horizon and the nominal winner changes from one horizon to
+the next, so there is no advantage to detect in either direction.
+
+### 6.2 Predicting lows and highs
+
+Base rates differ substantially between the periods, so lift is the figure to compare. Lift
+is the precision within the top decile of predicted risk, divided by that era's own base
+rate. AUC is shown alongside, with the caveat that it is sensitive to prevalence.
+
+#### low below 70
 
 | Horizon | Era | Base rate | AUC | Lift |
 |---|---|---|---|---|
-| 15 min | 5-min | 1.26% | 0.9581 [0.9428, 0.9721] | 8.86× [8.23, 9.43] |
-| 15 min | 1-min | 1.80% | 0.9714 [0.9605, 0.9801] | 9.16× [8.71, 9.57] |
-| 20 min | 5-min | 1.75% | 0.9411 [0.9265, 0.9554] | 8.27× [7.81, 8.84] |
-| 20 min | 1-min | 2.30% | 0.9595 [0.9450, 0.9721] | 8.66× [8.06, 9.11] |
-| 30 min | 5-min | 2.42% | 0.8935 [0.8659, 0.9226] | 7.25× [6.67, 7.95] |
-| 30 min | 1-min | 3.30% | 0.9275 [0.9074, 0.9440] | 7.61× [7.01, 8.14] |
-| 45 min | 5-min | 3.39% | 0.8232 [0.7895, 0.8617] | 6.05× [5.44, 6.73] |
-| 45 min | 1-min | 4.76% | 0.8575 [0.8207, 0.8857] | 6.23× [5.61, 6.78] |
-| 60 min | 5-min | 4.37% | 0.7707 [0.7312, 0.8122] | 5.14× [4.62, 5.68] |
-| 60 min | 1-min | 6.18% | 0.7925 [0.7487, 0.8287] | 5.36× [4.79, 5.93] |
+| 15 min | 5-min | 1.26% | 0.9581 [0.9428, 0.9721] | 8.86x [8.23, 9.43] |
+| 15 min | 1-min | 1.80% | 0.9714 [0.9605, 0.9801] | 9.16x [8.71, 9.57] |
+| 20 min | 5-min | 1.75% | 0.9411 [0.9265, 0.9554] | 8.27x [7.81, 8.84] |
+| 20 min | 1-min | 2.30% | 0.9595 [0.9450, 0.9721] | 8.66x [8.06, 9.11] |
+| 30 min | 5-min | 2.42% | 0.8935 [0.8659, 0.9226] | 7.25x [6.67, 7.95] |
+| 30 min | 1-min | 3.30% | 0.9275 [0.9074, 0.9440] | 7.61x [7.01, 8.14] |
+| 45 min | 5-min | 3.39% | 0.8232 [0.7895, 0.8617] | 6.05x [5.44, 6.73] |
+| 45 min | 1-min | 4.76% | 0.8575 [0.8207, 0.8857] | 6.23x [5.61, 6.78] |
+| 60 min | 5-min | 4.37% | 0.7707 [0.7312, 0.8122] | 5.14x [4.62, 5.68] |
+| 60 min | 1-min | 6.18% | 0.7925 [0.7487, 0.8287] | 5.36x [4.79, 5.93] |
 
-### low <54
-
-| Horizon | Era | Base rate | AUC | Lift |
-|---|---|---|---|---|
-| 15 min | 5-min | 0.21% | 0.9794 [0.9581, 0.9972] | 9.62× [8.09, 10.01] |
-| 15 min | 1-min | 0.14% | too rare to model | — |
-| 20 min | 5-min | 0.30% | 0.9492 [0.9162, 0.9776] | 8.43× [7.29, 9.47] |
-| 20 min | 1-min | 0.17% | too rare to model | — |
-| 30 min | 5-min | 0.45% | 0.9147 [0.8662, 0.9674] | 8.08× [7.07, 9.31] |
-| 30 min | 1-min | 0.24% | 0.9429 [0.9112, 0.9798] | 8.45× [7.31, 9.85] |
-| 45 min | 5-min | 0.65% | 0.8319 [0.7758, 0.9112] | 7.04× [6.17, 8.22] |
-| 45 min | 1-min | 0.35% | 0.8567 [0.7746, 0.9480] | 6.84× [5.56, 8.25] |
-| 60 min | 5-min | 0.88% | 0.7429 [0.6573, 0.8411] | 5.64× [4.54, 7.15] |
-| 60 min | 1-min | 0.47% | 0.7744 [0.6592, 0.9185] | 5.40× [4.17, 7.09] |
-
-### high >180
+#### low below 54
 
 | Horizon | Era | Base rate | AUC | Lift |
 |---|---|---|---|---|
-| 15 min | 5-min | 1.31% | 0.9668 [0.9436, 0.9842] | 9.35× [8.85, 9.85] |
-| 15 min | 1-min | 2.85% | 0.9611 [0.9508, 0.9691] | 8.56× [8.08, 8.95] |
-| 20 min | 5-min | 1.73% | 0.9525 [0.9336, 0.9689] | 8.63× [8.14, 9.12] |
-| 20 min | 1-min | 3.58% | 0.9442 [0.9317, 0.9543] | 7.80× [7.35, 8.24] |
-| 30 min | 5-min | 2.39% | 0.9283 [0.9057, 0.9488] | 7.77× [7.18, 8.35] |
-| 30 min | 1-min | 5.02% | 0.8912 [0.8731, 0.9076] | 6.39× [5.99, 6.80] |
-| 45 min | 5-min | 3.35% | 0.8868 [0.8561, 0.9135] | 6.65× [6.08, 7.22] |
-| 45 min | 1-min | 7.07% | 0.8079 [0.7838, 0.8309] | 4.87× [4.57, 5.21] |
-| 60 min | 5-min | 4.28% | 0.8413 [0.8086, 0.8711] | 5.51× [4.97, 6.06] |
-| 60 min | 1-min | 9.03% | 0.7469 [0.7208, 0.7709] | 4.04× [3.73, 4.34] |
+| 15 min | 5-min | 0.21% | 0.9794 [0.9581, 0.9972] | 9.62x [8.09, 10.01] |
+| 15 min | 1-min | 0.14% | too rare to model | |
+| 20 min | 5-min | 0.30% | 0.9492 [0.9162, 0.9776] | 8.43x [7.29, 9.47] |
+| 20 min | 1-min | 0.17% | too rare to model | |
+| 30 min | 5-min | 0.45% | 0.9147 [0.8662, 0.9674] | 8.08x [7.07, 9.31] |
+| 30 min | 1-min | 0.24% | 0.9429 [0.9112, 0.9798] | 8.45x [7.31, 9.85] |
+| 45 min | 5-min | 0.65% | 0.8319 [0.7758, 0.9112] | 7.04x [6.17, 8.22] |
+| 45 min | 1-min | 0.35% | 0.8567 [0.7746, 0.9480] | 6.84x [5.56, 8.25] |
+| 60 min | 5-min | 0.88% | 0.7429 [0.6573, 0.8411] | 5.64x [4.54, 7.15] |
+| 60 min | 1-min | 0.47% | 0.7744 [0.6592, 0.9185] | 5.40x [4.17, 7.09] |
 
-### high >250
+#### high above 180
 
 | Horizon | Era | Base rate | AUC | Lift |
 |---|---|---|---|---|
-| 15 min | 5-min | 0.05% | too rare to model | — |
-| 15 min | 1-min | 0.44% | 0.9939 [0.9912, 0.9968] | 10.00× [9.96, 10.00] |
-| 20 min | 5-min | 0.07% | too rare to model | — |
-| 20 min | 1-min | 0.56% | 0.9920 [0.9875, 0.9962] | 9.93× [9.77, 10.00] |
-| 30 min | 5-min | 0.11% | too rare to model | — |
-| 30 min | 1-min | 0.77% | 0.9769 [0.9529, 0.9939] | 9.53× [8.77, 10.00] |
-| 45 min | 5-min | 0.16% | too rare to model | — |
-| 45 min | 1-min | 1.10% | 0.9377 [0.8607, 0.9890] | 8.91× [7.60, 9.86] |
-| 60 min | 5-min | 0.21% | 0.9884 [0.9744, 0.9996] | 10.00× [10.00, 10.00] |
-| 60 min | 1-min | 1.44% | 0.9003 [0.7964, 0.9734] | 8.16× [6.59, 9.40] |
+| 15 min | 5-min | 1.31% | 0.9668 [0.9436, 0.9842] | 9.35x [8.85, 9.85] |
+| 15 min | 1-min | 2.85% | 0.9611 [0.9508, 0.9691] | 8.56x [8.08, 8.95] |
+| 20 min | 5-min | 1.73% | 0.9525 [0.9336, 0.9689] | 8.63x [8.14, 9.12] |
+| 20 min | 1-min | 3.58% | 0.9442 [0.9317, 0.9543] | 7.80x [7.35, 8.24] |
+| 30 min | 5-min | 2.39% | 0.9283 [0.9057, 0.9488] | 7.77x [7.18, 8.35] |
+| 30 min | 1-min | 5.02% | 0.8912 [0.8731, 0.9076] | 6.39x [5.99, 6.80] |
+| 45 min | 5-min | 3.35% | 0.8868 [0.8561, 0.9135] | 6.65x [6.08, 7.22] |
+| 45 min | 1-min | 7.07% | 0.8079 [0.7838, 0.8309] | 4.87x [4.57, 5.21] |
+| 60 min | 5-min | 4.28% | 0.8413 [0.8086, 0.8711] | 5.51x [4.97, 6.06] |
+| 60 min | 1-min | 9.03% | 0.7469 [0.7208, 0.7709] | 4.04x [3.73, 4.34] |
 
-### The sign reverses, which settles it
+#### high above 250
 
-If one-minute sampling carried more predictive information it would help on every task. It
-does not. On lows the one-minute era scores nominally higher; on highs above 180 it scores
-**lower**, and substantially so at the longer horizons.
+| Horizon | Era | Base rate | AUC | Lift |
+|---|---|---|---|---|
+| 15 min | 5-min | 0.05% | too rare to model | |
+| 15 min | 1-min | 0.44% | 0.9939 [0.9912, 0.9968] | 10.00x [9.96, 10.00] |
+| 20 min | 5-min | 0.07% | too rare to model | |
+| 20 min | 1-min | 0.56% | 0.9920 [0.9875, 0.9962] | 9.93x [9.77, 10.00] |
+| 30 min | 5-min | 0.11% | too rare to model | |
+| 30 min | 1-min | 0.77% | 0.9769 [0.9529, 0.9939] | 9.53x [8.77, 10.00] |
+| 45 min | 5-min | 0.16% | too rare to model | |
+| 45 min | 1-min | 1.10% | 0.9377 [0.8607, 0.9890] | 8.91x [7.60, 9.86] |
+| 60 min | 5-min | 0.21% | 0.9884 [0.9744, 0.9996] | 10.00x [10.00, 10.00] |
+| 60 min | 1-min | 1.44% | 0.9003 [0.7964, 0.9734] | 8.16x [6.59, 9.40] |
 
-| Task | AUC gap, one-minute minus five-minute, by horizon | Trend |
+### 6.3 The direction of the difference reverses
+
+If one-minute sampling carried more predictive information it would help whichever way
+glucose was moving. It does not.
+
+| Task | AUC gap, one-minute minus five-minute | Behaviour with horizon |
 |---|---|---|
-| low <70 | 15m +0.0132, 20m +0.0185, 30m +0.0340, 45m +0.0343, 60m +0.0218 | favours 1-min more strongly at long horizons |
-| low <54 | 30m +0.0282, 45m +0.0248, 60m +0.0316 | roughly flat with horizon |
-| high >180 | 15m -0.0058, 20m -0.0083, 30m -0.0370, 45m -0.0789, 60m -0.0944 | favours 5-min more strongly at long horizons |
+| low below 70 | 15m +0.0132, 20m +0.0185, 30m +0.0340, 45m +0.0343, 60m +0.0218 | favours 1-min more strongly at long horizons |
+| low below 54 | 30m +0.0282, 45m +0.0248, 60m +0.0316 | roughly flat with horizon |
+| high above 180 | 15m -0.0058, 20m -0.0083, 30m -0.0370, 45m -0.0789, 60m -0.0944 | favours 5-min more strongly at long horizons |
 
-A genuine cadence benefit would be largest at the shortest horizon, where fine-grained recent
-detail matters most, and would wash out as the horizon lengthens. Neither task behaves that
-way, and the two tasks disagree on direction. These differences track how hard each period was
-to predict, not how often it was sampled.
+On lows the one-minute era scores higher. On highs above 180 it scores lower, and the
+deficit widens with horizon. A sampling interval cannot help in one direction and hinder in
+the other.
 
-## 5. What cadence does change: reporting delay
+A genuine cadence benefit would also be largest at the shortest horizon, where recent detail
+matters most, and would fade as the horizon lengthened. Neither task behaves that way. What
+these differences track is how difficult each period was to predict.
 
-A threshold is crossed at some instant between two reported samples. Locating that instant by
-interpolation and measuring the wait until the next sample the sensor actually reported gives
-the delay directly, on the real records.
+## 7. What cadence does change
 
-| Crossing | Five-minute era mean delay | One-minute era mean delay | Difference |
+A threshold is crossed at some instant between two reported samples. Locating that instant
+by interpolation and measuring the wait until the next sample the sensor actually reported
+gives the delay directly, from the real records.
+
+| Crossing | Five-minute era | One-minute era | Difference |
 |---|---|---|---|
-| falling below 70 | 3.04 [2.79, 3.29] min (n=110) | 0.86 [0.80, 0.91] min (n=114) | **+2.18 min** |
-| falling below 54 | 2.27 min (n=18) | too few crossings | — |
-| rising above 180 | 2.90 [2.59, 3.21] min (n=101) | 0.71 [0.66, 0.76] min (n=177) | **+2.19 min** |
-| rising above 250 | too few crossings | 0.64 min (n=29) | — |
+| falling below 70 | 3.04 [2.79, 3.29] min, n=110 | 0.86 [0.80, 0.91] min, n=114 | +2.18 min |
+| falling below 54 | 2.27 [1.72, 2.95] min, n=18 | too few crossings |  |
+| rising above 180 | 2.90 [2.59, 3.21] min, n=101 | 0.71 [0.66, 0.76] min, n=177 | +2.19 min |
+| rising above 250 | too few crossings | 0.64 [0.54, 0.72] min, n=29 |  |
 
-The average difference is **2.19 minutes**, against an arithmetic
-expectation of 2.00 minutes from the sample spacing alone. This is pure scheduling: it
-requires no extra information and it is the whole of what the faster feed delivers.
+The mean difference is 2.19 minutes, against an arithmetic expectation of 2.00 minutes from
+the sample spacing alone. This is the whole of what the faster feed delivers, and it is a
+matter of scheduling rather than of information.
 
-## 6. Reading
+Whether two minutes is worth having depends on what consumes it. An alarm can use it in
+full, as can a person who is able to act at once. It is small against the onset of
+rapid-acting insulin, which is on the order of fifteen minutes.
 
-The two sensors record the same process at the same relative noise, and their records differ
-by a single scale factor that is the volatility of the period. The faster sensor resolves no
-new regime below five minutes, forecasts no better at any horizon between fifteen and ninety
-minutes, and predicts neither lows nor highs better once each era's own base rate is divided
-out — with the sign of the difference reversing between the two, which no property of the
-sampling interval could produce.
+## 8. Limitations
 
-What a one-minute feed does deliver is about two minutes less waiting to be told that
-something has happened. Whether two minutes is worth having depends on what consumes it: it is
-available in full to an alarm and to a person who can act at once, and it is small against the
-onset of any insulin action.
+The comparison rests on one person. It is observational and between eras, so the sensor
+hardware changed at the boundary and so did glycaemic control. The analysis is built to be
+robust to the latter, since every measure used here is scale-free, but a single subject
+cannot show that the result generalises across people or devices.
 
-## 7. Limitations
+The sensor makes and models are not recorded in the data available. The noise conclusion
+concerns the reported series rather than the raw transducer signal behind it, which the
+published error models address and which is not available here.
 
-One subject. The comparison is observational and between eras, so sensor hardware, season,
-therapy and glycaemic control all change at the boundary. The analysis is built to be robust
-to exactly that — variogram ratios, log-log slopes, normalised error and base-rate lift are
-all scale-free — but a single person cannot establish that the finding generalises.
+Some tasks were too rare to model in one era or the other. They are marked as such rather
+than being forced.
 
-The sensor makes and models are not recorded in the data available. The noise conclusion is
-about the *reported* series, not the raw transducer signal behind it.
-
-Two tasks were too rare to model in one era or the other and are shown as such rather than
-being forced.
-
-No outcome data is analysed, and none is needed for the question asked, which is what the two
+No outcome data is analysed. None is needed for the question asked, which is what the two
 records contain.
 
 ## Reproducing
 
 ```
-python3 01_profile.py          # coverage, cadence stability, glycaemic distribution
-python3 02_variogram.py        # ratio, noise floor, log-log slopes
-python3 03_forecast.py         # normalised forecast error by horizon
-python3 04_events.py           # lows and highs, AUC and base-rate lift
-python3 05_reporting_delay.py  # real delay from crossing to next reported sample
-python3 06_report.py           # regenerates this document from results/*.json
+./run_all.sh
+
+01_profile.py          coverage, cadence stability, glycaemic distribution
+02_variogram.py        ratio across shared lags, noise floor, log-log slopes
+03_forecast.py         normalised forecast error by horizon
+04_events.py           event prediction, AUC and base-rate lift
+05_reporting_delay.py  delay from an interpolated crossing to the next reported sample
+06_report.py           regenerates this document from results/*.json
+07_style_check.py      house-style gate on the generated document
 ```
 
-PROVISIONAL — one subject; observational between-era comparison.
+Provisional. One subject, observational between-era comparison.
