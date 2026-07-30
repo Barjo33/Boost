@@ -27,8 +27,27 @@ flag("bold markup", r"\*\*")
 flag("sensationalist intensifier",
      r"\b(dramatic\w*|striking\w*|remarkabl\w*|stunning\w*|huge|massive|decisive\w*|"
      r"settles it|beautiful\w*|crucial\w*|vastly|enormous\w*)\b", flags=re.I)
-flag("rhetorical triplet (X, Y and Z)",
-     r"\b\w+(?:\s+\w+){0,2}, \w+(?:\s+\w+){0,2},? and \w+")
+# Rhetorical triplets only. Numeric enumerations ("5, 10, 15, 30 and 45 minutes") and
+# parenthetical clauses ("at every lag, including the shortest, and its height...") are
+# legitimate and must not be flagged.
+CLAUSE_OPENERS = {"including", "such", "except", "with", "so", "and", "or", "which", "where",
+                  "whether", "since", "because", "though", "although", "if", "then", "as",
+                  "in", "on", "for", "to", "at", "by", "from", "of", "that", "this", "these"}
+def triplet_hits(lines):
+    hits = []
+    pat = re.compile(r"\b([A-Za-z]+(?:\s+[A-Za-z]+){0,2}), ([A-Za-z]+(?:\s+[A-Za-z]+){0,2}),?"
+                     r" and ([A-Za-z]+(?:\s+[A-Za-z]+){0,2})\b")
+    for i, l in enumerate(lines, 1):
+        for m in pat.finditer(l):
+            first_word = m.group(2).split()[0].lower()
+            if first_word in CLAUSE_OPENERS:      # parenthetical, not a list
+                continue
+            if any(ch.isdigit() for ch in m.group(0)):
+                continue
+            hits.append((i, m.group(0)[:100]))
+    return hits
+_t = triplet_hits(body)
+if _t: fails.append(("rhetorical triplet (X, Y and Z)", _t))
 flag("American spelling", r"\b(normalize\w*|analyze\w*|behavior\w*|favor\w*|color\w*)\b", flags=re.I)
 
 if fails:
