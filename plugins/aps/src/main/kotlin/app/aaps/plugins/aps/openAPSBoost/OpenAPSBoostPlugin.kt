@@ -1682,6 +1682,14 @@ open class OpenAPSBoostPlugin @Inject constructor(
                         aapsLogger.info(LTag.APS, "V6 primer (bolus): ${v5decision.primerBolusU}U folded into SMB")
                     }
                 }
+                // 2026-07-30 primer sizing telemetry. Emitted whenever the primer GATE opened — including
+                // when the state factors sized it to nothing and it rounded to 0U (primerBolusU == 0, so
+                // the block above is skipped). Without this the shadow cannot tell "gate never opened"
+                // from "gate opened, correctly sized to zero", which is the whole point of the rework.
+                if (v5decision.primerScaleDebug.isNotEmpty()) {
+                    it.reason.append("primerScale=${v5decision.primerScaleDebug}" +
+                        (if (v5decision.primerBolusU <= 0.0) ",ROUNDED_TO_ZERO" else "") + "; ")
+                }
             } else if (v5Active && v5decision != null && cumulativeCapReached) {
                 it.units = 0.0
                 it.reason.append("V6 suppressed (cumulative SMB cap ${Round.roundTo(recentSmbVolume60Min, 0.01)}U/${Round.roundTo(cumulativeSmbCap60Min, 0.01)}U reached); ")
