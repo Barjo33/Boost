@@ -95,6 +95,19 @@ data class MealHypothesisState(
     val maxScoreInObserving: Double = 0.0,
     val maxEventualBgOffsetInObserving: Double = 0.0,
     val committedInSession: Boolean = false,
+    /**
+     * 2026-07-30 wall-clock anchor for [ageCycles]: epoch-ms of the last age increment (0 = never).
+     *
+     * The ages are cycle COUNTS with thresholds tuned on a ~5-minute loop; at a 1-minute CGM cadence
+     * the loop runs 5x as often and the same counts elapse 5x sooner. Measured on live data, time
+     * from OBSERVING entry to age>=2 is 10.0 min (p10 9.7-10.0) for every 5-minute user and 2.0 min
+     * for the 1-minute user. This anchor lets the age advance on WALL CLOCK, so the thresholds mean
+     * the same thing at any cadence. See AGE_TICK_MS.
+     *
+     * LAST in the parameter list on purpose: every existing call site constructs this class
+     * POSITIONALLY, so inserting a field mid-list silently rebinds their arguments.
+     */
+    val lastAgeMs: Long = 0L,
 )
 
 // Calibrated transition thresholds (HARDCODED).
@@ -102,6 +115,20 @@ data class MealHypothesisState(
 internal const val ENTER_OBSERVING_SCORE = 0.44                 // calibrated: 0.40 → 0.44
 internal const val CONFIRM_SCORE = 0.55                         // 2026-05-15: 0.66 → 0.55 (was at p99 of observed scores; lowered with peak-score tracking)
 internal const val CONFIRM_EVENTUAL_BG_OFFSET_MGDL = 30.0       // 2026-05-22: 50.0 → 30.0 (Fix 5 — paired with peak-offset tracking)
+/**
+ * 2026-07-30 minimum wall-clock spacing between [MealHypothesisState.ageCycles] increments.
+ *
+ * 4 minutes, not 5, deliberately. Live 5-minute users increment about every 4.85-5.0 min (their
+ * age>=2 lands at a very tight 10.0 min, p10 9.7), so a 5-minute tick would intermittently SKIP an
+ * increment and slow every existing user to 15 min — a regression. 4 min clears their observed p10
+ * with ~0.85 min of margin while still blocking a 1-minute loop from advancing on every cycle.
+ *
+ * The cost is that a 1-minute user reaches age>=2 at ~8 min rather than the 10 min a 5-minute user
+ * sees. That is 80% of the target and a 4x improvement on the 2.0 min measured today; the alternative
+ * (a tighter tick) trades that small gap for a real risk of slowing the entire existing cohort.
+ */
+internal const val AGE_TICK_MS = 4L * 60 * 1000
+
 internal const val CONFIRM_MIN_OBSERVING_AGE = 2                // hysteresis: age enters OBSERVING at 0 and increments post-check, so confirm is first possible on the 4th OBSERVING cycle (age ≥ 2 checked on the 3rd increment)
 
 /**
@@ -298,7 +325,21 @@ fun step(
     // 2026-07-17: aggressive early-confirm opt-in (auto-config managed). Shaves the score-ready path
     // one more cycle (age −2). Defaults false = the audit-validated −1 timing for existing callers/tests.
     aggressiveEarlyConfirm: Boolean = false,
+    /**
+     * Wall clock (epoch ms) for the age tick; 0 = unknown, which ticks on every call and so
+     * preserves the pre-2026-07-30 behaviour exactly for legacy callers and tests.
+     * LAST in the list on purpose — existing call sites pass arguments POSITIONALLY.
+     */
+    nowMs: Long = 0L,
 ): MealHypothesisState {
+    // 2026-07-30 wall-clock age tick. Ages are cycle counts tuned on a ~5-min loop; gate them on
+    // elapsed time so a 1-min loop does not advance them 5x too fast. nowMs<=0 (tests, legacy
+    // callers) or a never-stamped state ticks immediately, preserving existing behaviour exactly.
+    val ageTick = nowMs <= 0L || current.lastAgeMs <= 0L || (nowMs - current.lastAgeMs) >= AGE_TICK_MS
+    val bumped = if (ageTick) 1 else 0
+    val tickMs = if (ageTick && nowMs > 0L) nowMs else current.lastAgeMs
+    // A state CHANGE always re-stamps the anchor: the new state's clock starts now.
+    val enterMs = if (nowMs > 0L) nowMs else current.lastAgeMs
     val state = current.state
     val age = current.ageCycles
     val maxScore = current.maxScoreInObserving
@@ -315,12 +356,12 @@ fun step(
         MealHypothesis.IDLE ->
             if (fastConfirm)
                 // Fast carb caught from IDLE — go straight to CONFIRMED (committedInSession=true).
-                MealHypothesisState(MealHypothesis.CONFIRMED, 0, 0.0, 0.0, true)
+                MealHypothesisState(MealHypothesis.CONFIRMED, 0, 0.0, 0.0, true, lastAgeMs = enterMs)
             else if (score >= ENTER_OBSERVING_SCORE)
                 // Fresh session: seed both peaks with entry-cycle values; committedInSession=false
                 // explicitly (new meal session begins here — Fix 6).
-                MealHypothesisState(MealHypothesis.OBSERVING, 0, score, currentOffset, false)
-            else MealHypothesisState(state, age + 1, 0.0, 0.0, false)
+                MealHypothesisState(MealHypothesis.OBSERVING, 0, score, currentOffset, false, lastAgeMs = enterMs)
+            else MealHypothesisState(state, age + bumped, 0.0, 0.0, false, lastAgeMs = tickMs)
 
         MealHypothesis.OBSERVING -> {
             // 2026-05-15 Fix 1: track running max-score in this OBSERVING run, use it for the
@@ -347,11 +388,11 @@ fun step(
             when {
                 // Fast-carb fast-path: confirm in a single OBSERVING cycle, bypassing the age +
                 // eventualBg-offset gates, but still honouring the Fix-6 single-confirm guard.
-                fastConfirm && !committedInSession -> MealHypothesisState(MealHypothesis.CONFIRMED, 0, 0.0, 0.0, true)
-                confirmEligible -> MealHypothesisState(MealHypothesis.CONFIRMED, 0, 0.0, 0.0, true)
+                fastConfirm && !committedInSession -> MealHypothesisState(MealHypothesis.CONFIRMED, 0, 0.0, 0.0, true, lastAgeMs = enterMs)
+                confirmEligible -> MealHypothesisState(MealHypothesis.CONFIRMED, 0, 0.0, 0.0, true, lastAgeMs = enterMs)
                 score < FALL_BACK_TO_IDLE_SCORE && age >= FALL_BACK_TO_IDLE_AGE ->
-                    MealHypothesisState(MealHypothesis.IDLE, 0, 0.0, 0.0, false)
-                else -> MealHypothesisState(state, age + 1, newMaxScore, newMaxOffset, committedInSession)
+                    MealHypothesisState(MealHypothesis.IDLE, 0, 0.0, 0.0, false, lastAgeMs = enterMs)
+                else -> MealHypothesisState(state, age + bumped, newMaxScore, newMaxOffset, committedInSession, lastAgeMs = tickMs)
             }
         }
 
@@ -359,15 +400,15 @@ fun step(
             if (age >= CONFIRMED_TO_COMMITTED_AGE)
                 // Preserve committedInSession through CONFIRMED → COMMITTED so the session lock
                 // survives in case a downstream invoke loops back through OBSERVING.
-                MealHypothesisState(MealHypothesis.COMMITTED, 0, 0.0, 0.0, true)
-            else MealHypothesisState(state, age + 1, 0.0, 0.0, true)
+                MealHypothesisState(MealHypothesis.COMMITTED, 0, 0.0, 0.0, true, lastAgeMs = enterMs)
+            else MealHypothesisState(state, age + bumped, 0.0, 0.0, true, lastAgeMs = tickMs)
 
         MealHypothesis.COMMITTED -> {
             // BOTH conditions required to back off — prevents flicker on transient deceleration
             // mid-rise (e.g. CGM noise). V4's tier ladder had this flicker problem.
             val backOff = deltaAccl < RECOVERING_DECEL_THRESHOLD && deltaDeclining
-            if (backOff) MealHypothesisState(MealHypothesis.RECOVERING, 0, 0.0, 0.0, true)
-            else MealHypothesisState(state, age + 1, 0.0, 0.0, true)
+            if (backOff) MealHypothesisState(MealHypothesis.RECOVERING, 0, 0.0, 0.0, true, lastAgeMs = enterMs)
+            else MealHypothesisState(state, age + bumped, 0.0, 0.0, true, lastAgeMs = tickMs)
         }
 
         MealHypothesis.RECOVERING -> {
@@ -380,13 +421,13 @@ fun step(
                 delta > RECOVERING_REENGAGE_DELTA &&
                 currentOffset > RECOVERING_REENGAGE_OFFSET_MGDL
             when {
-                reEngage -> MealHypothesisState(MealHypothesis.COMMITTED, 0, 0.0, 0.0, true)
+                reEngage -> MealHypothesisState(MealHypothesis.COMMITTED, 0, 0.0, 0.0, true, lastAgeMs = enterMs)
                 // EITHER condition exits to IDLE (more permissive than entry — easier to leave RECOVERING).
                 // On exit to IDLE the session is complete — reset committedInSession=false so the next
                 // meal can CONFIRM normally.
                 delta < 0 || score < RECOVERING_TO_IDLE_SCORE ->
-                    MealHypothesisState(MealHypothesis.IDLE, 0, 0.0, 0.0, false)
-                else -> MealHypothesisState(state, age + 1, 0.0, 0.0, true)
+                    MealHypothesisState(MealHypothesis.IDLE, 0, 0.0, 0.0, false, lastAgeMs = enterMs)
+                else -> MealHypothesisState(state, age + bumped, 0.0, 0.0, true, lastAgeMs = tickMs)
             }
         }
     }
@@ -413,7 +454,9 @@ fun resetIfNeeded(
     timeJumpMinutes: Double = 0.0,
 ): Pair<MealHypothesisState, Boolean> {
     if (profileSwitched || pumpDisconnected || loopSuspended || timeJumpMinutes > TIME_JUMP_RESET_MINUTES) {
-        return Pair(MealHypothesisState(MealHypothesis.IDLE, 0, 0.0, 0.0, false), true)
+        // Hard reset: zero the wall-clock anchor as well, so the next step() ticks immediately
+        // (a reset is a fresh start, not a continuation of the old meal's clock).
+        return Pair(MealHypothesisState(MealHypothesis.IDLE, 0, 0.0, 0.0, false, lastAgeMs = 0L), true)
     }
     return Pair(current, false)
 }

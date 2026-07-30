@@ -304,6 +304,7 @@ class DetermineBasalBoostV5 @Inject constructor() {
         // Phase 1.b — state machine step
         val newHypothesisState = step(
             current = resetState,
+            nowMs = inputs.nowMs,
             score = scoreResult.score,
             eventualBg = inputs.eventualBg,
             targetBg = inputs.targetBg,
