@@ -128,6 +128,15 @@ enum class BooleanKey(
     // (ApsBoostV5PrimerTbrFallback). Default OFF = respect the auto-config routing. Floors + net-off
     // are unaffected by the override; it only changes bolus-vs-temp-basal delivery.
     ApsBoostV5PrimerBolusMode("boost_v5_primer_bolus_mode", false, defaultedBySM = true),
+    // 2026-07-30 V1-acceleration primer — TBR LOCK (AUTO-CONFIG MANAGED). Set when auto-config
+    // classifies the user HYPO-PRONE. While ON, the primer is delivered as a retractable temp basal
+    // and ApsBoostV5PrimerBolusMode CANNOT override it back to a bolus. Rationale: the temp-basal
+    // routing is what makes the primer safe for a hypo-prone user (safe-by-unwinding), and it was
+    // being defeated in practice — both live primer users had switched themselves to bolus mode, and
+    // one then took a 1.35U primer on a flat trace down to a nadir of 68 mg/dL. The cap itself is
+    // still provisioned for these users (they need a non-zero size for the temp basal); only the
+    // DELIVERY is locked. OFF = routing follows ApsBoostV5PrimerTbrFallback + the user override.
+    ApsBoostV5PrimerTbrLock("boost_v5_primer_tbr_lock", false, defaultedBySM = true),
     // LEGACY (2026-06-26..2026-07): global auto-config one-shot flag. Superseded by per-knob
     // BooleanComposedKey.BoostV5AutoConfigResolved; kept only so existing installs migrate
     // (OpenAPSBoostV5Plugin reads it raw once, marks tuned knobs resolved, then clears it).
