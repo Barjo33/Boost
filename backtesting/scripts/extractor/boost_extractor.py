@@ -156,6 +156,28 @@ def parse_trio_tag(reason: str) -> Optional[dict]:
     }
 
 
+AIMI_MARKERS = (
+    "MPC predictive model", "PI physiological model", "Autodrive",
+    "PKPD: DIA=", "UAM model:", "Final SMB",
+)
+
+
+def looks_like_aimi(sug: dict, reason: str) -> bool:
+    """True when this decision came from the AIMI fork rather than Boost/oref.
+
+    AIMI sets suggested.algorithm == "AIMI" on most records, but not all (it flips
+    to null on a subset), so fall back to its distinctive reason-string markers and
+    its trajectory* field family. Detection must be POSITIVE-only: a Boost record
+    must never match, or the whole cohort gets re-tagged.
+    """
+    if (sug.get("algorithm") or "").upper() == "AIMI":
+        return True
+    if any(k.startswith("trajectory") for k in sug):
+        return True
+    r = reason or ""
+    return sum(1 for m in AIMI_MARKERS if m in r) >= 2
+
+
 def detect_variant(console_error: str, reason: str = "") -> str:
     """Identify which Boost variant produced this decision.
 
@@ -388,7 +410,8 @@ def build_row(rec: dict, user_id: str) -> Optional[dict]:
         ce = "\n".join(ce)
     reason = sug.get("reason", "") or ""
 
-    variant = detect_variant(ce, reason)
+    is_aimi = looks_like_aimi(sug, reason)
+    variant = "aimi" if is_aimi else detect_variant(ce, reason)
 
     ts_str = rec.get("created_at") or sug.get("timestamp") or sug.get("deliverAt")
     if not ts_str:
@@ -400,6 +423,18 @@ def build_row(rec: dict, user_id: str) -> Optional[dict]:
 
     bg_raw = sug.get("bg")
     bg_mgdl = to_mgdl(bg_raw)
+    if bg_mgdl is None and is_aimi:
+        # AIMI emits NO suggested.bg — the reason carries "BG=110" (and "BG=110 D2,4"),
+        # and predBGs.* arrays start at the current value. Try the reason first (it is the
+        # value AIMI actually reasoned from), then the first IOB prediction point.
+        m = re.search(r"\bBG=(\d+(?:[.,]\d+)?)", reason)
+        if m:
+            bg_mgdl = to_mgdl(float(m.group(1).replace(",", ".")))
+        else:
+            pred = sug.get("predBGs") or {}
+            arr = pred.get("IOB") or pred.get("ZT") or pred.get("UAM") or []
+            if isinstance(arr, list) and arr:
+                bg_mgdl = to_mgdl(arr[0])
     if bg_mgdl is None:
         return None
 
@@ -418,7 +453,9 @@ def build_row(rec: dict, user_id: str) -> Optional[dict]:
         "sug_rate": sug.get("rate"),
         "sug_duration": sug.get("duration"),
         "sug_COB": sug.get("COB"),
-        "sug_IOB": sug.get("IOB"),
+        # AIMI's suggested.IOB disagrees with its own iob block (observed -0.008 vs 2.313),
+        # so for AIMI take the iob block, which is the value its dosing used.
+        "sug_IOB": (iob.get("iob") if is_aimi and iob.get("iob") is not None else sug.get("IOB")),
         # Boost top-level
         "tdd": sug.get("tdd"),
         "tdd_ratio": sug.get("tddRatio"),
