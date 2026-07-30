@@ -129,7 +129,24 @@ class UnscentedKalmanFilterPlugin @Inject constructor(
     private val compressionBgCeiling = 75.0      // only ever act on readings below this
     private val compressionIobMaxU = 2.0         // ...and only when IOB is under this
     private val compressionDropMgdl = 30.0       // ...and only if fallen >this from the recent baseline
-    private val compressionWindow = 5            // baseline = max raw over the last ~5 readings (~25 min)
+    private val compressionWindow = 5            // baseline depth in READINGS (retained as a cap)
+    /**
+     * 2026-07-30: the compression baseline is a TIME window, not a reading count.
+     *
+     * [compressionWindow] is a count, and its own comment said "~25 min" — true only at a 5-minute
+     * cadence. On a 1-minute feed the same 5 readings span 5 minutes, so the "fallen more than
+     * [compressionDropMgdl] from the recent baseline" test is asked against a 5-minute baseline that
+     * glucose almost never satisfies. Measured on 83,550 readings / 66 days of real 1-min data with
+     * the shipped thresholds: 10 fires against 636 for the same glucose with a 25-minute window, i.e.
+     * the damper was ~98% suppressed for that user. It is a SAFETY feature — it stops the loop
+     * chasing a sensor artefact down into a real low — and 1-min feeds are exactly where fast falls
+     * are seen soonest, so the cadence that benefits most was the one it was switched off for.
+     *
+     * The reading count is kept as an upper bound so a very high cadence cannot grow the buffer
+     * without limit; the TIME bound is what decides membership.
+     */
+    private val compressionWindowMinutes = 25.0
+    private val compressionWindowMaxReadings = 30
     private val compressionR = 900.0             // effective measurement variance for a suspect
     private val maxConsecutiveCompression = 3    // ≤15 min: after this, follow even if still matching
 
@@ -726,7 +743,10 @@ class UnscentedKalmanFilterPlugin @Inject constructor(
         var consecutiveCompression = 0
         // Recent RAW values (newest first) — baseline for the compression drop test. Uses raw,
         // not the filter level, so the filter's own rate-tracking can't hide a gradual drop.
-        val recentRaw = ArrayDeque<Double>(compressionWindow + 1)
+        val recentRaw = ArrayDeque<Double>(compressionWindowMaxReadings + 1)
+        // Timestamps parallel to [recentRaw], so the baseline window is bounded in MINUTES rather
+        // than in samples (see compressionWindowMinutes).
+        val recentRawTs = ArrayDeque<Long>(compressionWindowMaxReadings + 1)
 
         // === FORWARD PASS (within segment only) ===
         for (i in (endIdx - 1) downTo startIdx) {
@@ -834,7 +854,16 @@ class UnscentedKalmanFilterPlugin @Inject constructor(
             }
             // else: pattern still present but cap reached → keep the counter latched (no damp, no reset).
             recentRaw.addFirst(z)
-            if (recentRaw.size > compressionWindow) recentRaw.removeLast()
+            recentRawTs.addFirst(data[i].timestamp)
+            // Drop anything older than the time window, then apply the sample cap as a backstop.
+            while (recentRawTs.isNotEmpty() &&
+                (data[i].timestamp - recentRawTs.last()) / millisPerMinute > compressionWindowMinutes
+            ) {
+                recentRawTs.removeLast(); recentRaw.removeLast()
+            }
+            while (recentRaw.size > compressionWindowMaxReadings) {
+                recentRaw.removeLast(); recentRawTs.removeLast()
+            }
 
             // --- Measurement noise inflation (R_eff) ---
             // Huber-like per-sample R inflation with soft caps; a compression suspect is
