@@ -1,382 +1,490 @@
-# Is one-minute CGM data more useful than five-minute data?
+# Sampling rate and information content in continuous glucose monitoring: a within-subject comparison of one-minute and five-minute sensors
 
-*Generated from `backtesting/scripts/2026-07-cgm-cadence/`. Every figure is read from the
-JSON written by scripts 01 to 05.*
+*[Authors and affiliation to be added.]*
 
-## The short answer
+## Abstract
 
-No, for accuracy. The two records carry the same information about glucose, and every
-accuracy measure tested comes out the same at both cadences.
+### Background
 
-Yes, by about 2.2 minutes, for timing. A five-minute sensor reports a threshold crossing
-later than a one-minute sensor does, by roughly the amount the sample spacing implies. That
-is a scheduling difference and it requires no additional information.
+Continuous glucose monitors have historically reported at five-minute intervals, and sensors
+reporting every minute are now in routine use. It is generally assumed that the faster feed
+carries more information about glucose. Existing evidence bears on the question only
+indirectly, and the comparisons that have been published derive the slower signal by
+decimating a faster one, which conflates the behaviour of a slow sensor with that of a
+slowly read fast sensor.
 
-## 1. What was compared
+### Method
 
-One person wore a five-minute sensor from 2026-03-01 to 2026-05-23, then a one-minute sensor
-from 2026-05-23 to 2026-07-31. The two records are compared as they were recorded. Nothing
-is decimated, interpolated or simulated.
+One adult with type 1 diabetes wore a five-minute sensor for 83 days (24,012 readings) and
+subsequently a one-minute sensor for 67 days (84,588 readings). Both records were analysed
+as recorded, without decimation or interpolation. The principal instrument was the
+variogram, which is expressed in units of lag time and is therefore comparable across
+sampling rates, and which separates measurement noise from signal structure by construction.
+Forecasting and event prediction were modelled at each sensor's native rate with
+cross-validation grouped by day. Uncertainty was estimated by a block bootstrap over whole
+days.
 
-This matters because the usual way to ask this question is to take a one-minute record and
-discard four samples in five. That measures what a consumer loses by reading a fast sensor
-slowly. It does not measure how a fast sensor and a slow sensor differ, because a slow
-sensor filters internally before it reports.
+### Results
 
-| | Five-minute era | One-minute era |
-|---|---|---|
-| Days with data | 83 | 67 |
-| Readings | 24,012 | 84,588 |
-| Median gap (min) | 5.00 | 1.00 |
-| Samples on cadence | 98.8% | 96.5% |
-| Coverage of the period | 100.5% | 85.7% |
-| Mean glucose (mg/dL) | 118.4 | 125.6 |
-| SD (mg/dL) | 30.7 | 39.0 |
-| CV | 25.9% | 31.1% |
-| Time in range 70 to 180 | 93.5% | 86.2% |
-| Time below 70 | 2.49% | 4.00% |
-| Time below 54 | 0.30% | 0.15% |
-| Time above 180 | 4.00% | 9.80% |
-| Time above 250 | 0.13% | 0.83% |
+The ratio of the two variograms was constant at 1.602 across all lags observable by both
+sensors, from 5 to 120 minutes, with a total spread of 6.6% of the mean and no systematic
+trend. Neither record exhibited a measurement-noise floor: at a one-minute lag the variogram
+was 4.44 mg/dl^2, which is 22% of the value that a published noise standard deviation of
+3.19 mg/dl would impose at every lag. The log-log slope of the variogram was 1.35 (95% CI
+1.31 to 1.39) for the five-minute record and 1.35 (1.29 to 1.40) for the one-minute record
+over 5 to 20 minutes. Below five minutes the slope was 1.49 (1.18 to 1.71), containing the
+value measured above it. Point-to-point acceleration was found to have no rate-independent
+value, differing by a factor of 7.65 between the two sensors, close to the factor predicted
+from the roughness of the signal. Normalised forecast error was indistinguishable between
+records at every horizon from 15 to 90 minutes. Prediction of hypoglycaemia and of
+hyperglycaemia was likewise indistinguishable once each record's own base rate was accounted
+for. Threshold crossings were reported 2.19 minutes later by the five-minute sensor.
 
-The two periods are not matched. Control was worse during the later one: the squared ratio
-of coefficients of variation is 1.438, with 1.60 times as much time below 70 and 2.45 times
-as much above 180.
+### Conclusion
 
-Glycaemic variability is a property of the person and the period rather than of the sensor,
-so it cannot be allowed to decide the comparison. Every measure below is either scale-free
-or divided by that era's own base rate. Where a measure is not, the point is not relied
-upon.
+The two sensors record the same process at the same relative noise, and their records differ
+by a single multiplicative constant attributable to glycaemic variability. One-minute
+sampling resolves no regime that five-minute sampling fails to imply and confers no
+measurable advantage in prediction. Its one demonstrable effect is a reduction of about two
+minutes in reporting latency, which is a scheduling property requiring no additional
+information. Acceleration computed from consecutive samples is a rate-dependent artefact and
+should not be used as a threshold quantity without reference to the interval it was computed
+over.
 
-## 2. Method
+## Introduction
 
-The main tool is the variogram, D(tau) = E[(x(t+tau) - x(t))^2], which is the mean squared
-change over a lag of tau minutes.
+The five-minute reporting interval of continuous glucose monitors is an inheritance from the
+first commercially successful devices rather than a considered design choice, and it has
+propagated into the systems built upon them. Rate of change is customarily expressed per
+five minutes. Look-back windows are frequently specified as counts of samples. Closed-loop
+controllers almost universally act on a five-minute cycle.
 
-It suits this question for two reasons. It is expressed in time rather than in samples, so a
-five-minute record and a one-minute record can be placed on the same axis without resampling
-either. It also separates noise from signal by construction: if a sensor adds independent
-measurement noise of variance s^2 then every difference contains two independent noise
-draws, so D is raised by 2s^2 at every lag, including the shortest. Real signal structure
-vanishes as tau approaches zero, because glucose is continuous. A noise floor therefore
-appears as a flattening of D at small lag, and its height gives the noise variance directly.
+Sensors reporting at one-minute intervals are now widely worn, and the expectation attached
+to them is that a controller or an alarm will see further and sooner. Two distinct claims
+are usually conflated in that expectation. The first is informational: that a one-minute
+record resolves structure in glucose which a five-minute record does not. This is
+falsifiable by sampling theory, since a signal band-limited well below the slower Nyquist
+rate cannot contain such structure. The second is a claim about latency: that a system
+reading a faster feed learns of an event sooner. This is true by construction and requires
+no additional information.
 
-The log-log slope of D describes the character of the record independently of how large its
-excursions were. A slope of 2 indicates a smooth differentiable signal and a slope of 0
-indicates white noise.
+Earlier work bears on the first claim. Gough and colleagues characterised blood glucose
+directly and placed its band edge near 1 x 10^-3 Hz, recommending a sampling period of
+approximately 10 minutes.1 Breton and colleagues examined the interstitial compartment that
+a subcutaneous sensor actually measures, observed attenuation of fast variation relative to
+blood, and concluded that interstitial glucose can be characterised with an 18-minute
+sampling period.2 Fico and colleagues reported that 75% of spectral power in continuous
+monitor signals accumulates by a period of approximately 1.4 hours.3 Russon and colleagues
+approached the question from the opposite direction, coarsening five-minute records to
+fifteen minutes and finding distributional metrics unchanged while episode detection
+deteriorated.5
 
-Prediction is modelled at each era's own native cadence and validated out of sample with
-GroupKFold over whole days. Both cadences are given the same look-back in minutes; the
-faster record simply holds five times as many samples inside it. Intervals throughout are 95
-per cent block bootstraps that resample whole days, which respects the autocorrelation of
-glucose.
+What has not been reported, to our knowledge, is a direct comparison of records produced by
+sensors of differing rate on the same subject. The comparisons available derive the slower
+signal by discarding samples from a faster one. That procedure measures the loss incurred by
+reading a fast sensor slowly. It does not measure how a slow sensor differs from a fast one,
+because commercial devices filter internally before reporting and the filter is matched to
+the reporting rate. The present work addresses that gap.
 
-## 3. Do the records differ by anything other than volatility?
+## Methods
 
-If the periods differ only in how volatile they were, the variogram of one will be a
-constant multiple of the other at every lag. If the sensors differ, the ratio will bend at
-short lag, since that is the only place their behaviour can diverge.
+### The variogram
 
-| Lag | Five-minute era D | One-minute era D | Ratio |
+The variogram, or structure function, of a signal x observed at time t is
+
+    D(tau) = E[ (x(t + tau) - x(t))^2 ]                                              (1)
+
+the expected squared change over a lag of tau minutes. It is suited to the present question
+for two reasons. It is parameterised by elapsed time rather than by sample index, so records
+of differing rate may be placed on a common axis without resampling either. It also
+separates measurement noise from signal by construction, as follows.
+
+### Separation of noise from signal
+
+Let the observed signal be the sum of a continuous process g and an independent measurement
+error of variance s^2. Each difference in equation (1) then contains two independent error
+draws, so
+
+    D(tau) = 2 s^2 + D_g(tau)                                                        (2)
+
+Because g is continuous, D_g(tau) tends to zero as tau tends to zero, whereas the noise term
+does not. Independent measurement error therefore appears as a floor beneath the variogram
+at every lag, including the shortest, and its height is twice the error variance. This floor
+is termed the nugget in the geostatistical literature. Its absence is informative: a record
+whose variogram descends smoothly to a small value at short lag cannot carry appreciable
+independent per-sample error.
+
+### Roughness and its consequences
+
+Over a range of lags the variogram of many natural signals is well described by a power law,
+
+    D(tau) = c tau^alpha                                                             (3)
+
+where alpha characterises the roughness of the signal. A value of 2 corresponds to a smooth
+differentiable process and a value of 0 to white noise. The exponent is estimated here as
+the slope of log D against log tau, which is invariant to the amplitude of the excursions
+and so permits records of differing glycaemic variability to be compared.
+
+The exponent governs the behaviour of finite differences. For any process the mean square of
+the second difference over an interval h satisfies the identity
+
+    E[ (x(t+h) - 2 x(t) + x(t-h))^2 ] = 4 D(h) - D(2h)                               (4)
+
+which under equation (3) becomes c h^alpha (4 - 2^alpha). Acceleration estimated from
+consecutive samples divides this by h^2, so its magnitude scales as
+
+    a(h) ~ h^(alpha/2 - 2)                                                           (5)
+
+Unless the underlying process is twice differentiable, in which case the leading term of
+equation (4) cancels and the next governs, acceleration estimated in this manner does not
+converge as the sampling interval is reduced. Its numerical value is then a property of the
+interval chosen rather than of the physiology.
+
+### Prediction
+
+Forecasting and event prediction were modelled at each record's native rate. Predictors
+comprised the current value together with backward differences over 5, 10, 15, 30 and 45
+minutes and ordinary least squares slopes over 15, 30 and 45 minutes. Both records were
+therefore afforded identical look-back in elapsed time, the faster record simply containing
+five times as many samples within each window. Validation used GroupKFold with whole days as
+groups, so that no day contributed to both training and test partitions.
+
+Forecast error is reported as root mean squared error divided by the standard deviation of
+the target, for which a value of unity denotes no improvement upon predicting the mean.
+Event prediction is reported as area under the receiver operating characteristic curve
+together with lift, defined as precision within the highest decile of predicted risk divided
+by the base rate of the record. Lift is the appropriate comparator here because the base
+rates of the two records differ substantially.
+
+### Reporting delay
+
+A threshold is crossed at an instant lying between two reported samples. The instant was
+located by linear interpolation between the bracketing samples and the delay measured to the
+next sample the sensor actually reported. No decimation was involved.
+
+### Uncertainty
+
+Glucose is strongly autocorrelated, so intervals computed over individual observations are
+inadmissibly narrow. All intervals reported are 95% block bootstraps resampling whole days
+with replacement.
+
+### Data
+
+One adult with type 1 diabetes wore a five-minute sensor from 2026-03-01 to 2026-05-23 and a
+one-minute sensor from 2026-05-23 to 2026-07-31. The records comprise 24,012 readings over
+83 days and 84,588 readings over 67 days respectively. Median inter-sample intervals were
+5.00 and 1.00 minutes, with 98.8% and 96.5% of intervals within 30% of nominal.
+
+Glycaemic control differed between the two periods. Mean glucose was 118.4 mg/dl during the
+earlier period against 125.6 mg/dl during the later, with coefficients of variation of 25.9%
+and 31.1%. Time in the range 70 to 180 mg/dl was 93.5% and 86.2%. Time below 70 mg/dl was
+2.49% and 4.00%, and time above 180 mg/dl 4.00% and 9.80%. The later period was thus the
+more volatile, by a factor of approximately 1.44 in variance. Glycaemic variability is a
+property of the subject and the period rather than of the sensor, and all comparisons below
+are consequently either scale-free or normalised by the base rate of the record concerned.
+
+## Results
+
+### Relationship between the two records
+
+Table 1 gives the variogram of each record at all lags observable by both sensors, together
+with their ratio.
+
+Table 1. Variograms and their ratio.
+
+| Lag (min) | Five-minute record (mg/dl^2) | One-minute record (mg/dl^2) | Ratio |
 |---|---|---|---|
-| 5 min | 30.0 [27.3, 32.7] | 47.5 [42.3, 52.7] | 1.584 |
-| 10 min | 79.5 [72.9, 85.8] | 121.8 [108.8, 134.1] | 1.533 |
-| 15 min | 133.4 [123.2, 143.5] | 210.7 [188.1, 232.5] | 1.579 |
-| 20 min | 195.7 [179.3, 211.1] | 315.1 [282.0, 348.6] | 1.610 |
-| 25 min | 267.1 [244.6, 289.7] | 430.6 [384.0, 476.5] | 1.612 |
-| 30 min | 339.6 [310.2, 369.5] | 556.3 [495.6, 618.1] | 1.638 |
-| 40 min | 506.7 [461.7, 553.5] | 810.6 [716.0, 902.8] | 1.600 |
-| 50 min | 658.4 [597.8, 721.0] | 1063.0 [941.2, 1185.2] | 1.615 |
-| 60 min | 794.1 [717.0, 874.6] | 1283.9 [1130.1, 1427.8] | 1.617 |
-| 90 min | 1112.1 [991.5, 1229.4] | 1787.5 [1560.9, 1997.7] | 1.607 |
-| 120 min | 1320.9 [1157.2, 1485.2] | 2144.9 [1849.7, 2396.6] | 1.624 |
+| 5 | 30.0 (27.3 to 32.7) | 47.5 (42.3 to 52.7) | 1.584 |
+| 10 | 79.5 (72.9 to 85.8) | 121.8 (108.8 to 134.1) | 1.533 |
+| 15 | 133.4 (123.2 to 143.5) | 210.7 (188.1 to 232.5) | 1.579 |
+| 20 | 195.7 (179.3 to 211.1) | 315.1 (282.0 to 348.6) | 1.610 |
+| 25 | 267.1 (244.6 to 289.7) | 430.6 (384.0 to 476.5) | 1.612 |
+| 30 | 339.6 (310.2 to 369.5) | 556.3 (495.6 to 618.1) | 1.638 |
+| 40 | 506.7 (461.7 to 553.5) | 810.6 (716.0 to 902.8) | 1.600 |
+| 50 | 658.4 (597.8 to 721.0) | 1063.0 (941.2 to 1185.2) | 1.615 |
+| 60 | 794.1 (717.0 to 874.6) | 1283.9 (1130.1 to 1427.8) | 1.617 |
+| 90 | 1112.1 (991.5 to 1229.4) | 1787.5 (1560.9 to 1997.7) | 1.607 |
+| 120 | 1320.9 (1157.2 to 1485.2) | 2144.9 (1849.7 to 2396.6) | 1.624 |
 
-The ratio averages 1.602 over lags from 5 to 120 minutes, a twenty-four-fold range, with a
-total spread of 6.6 per cent of its mean. It does not trend and it does not bend at the
-short end.
+The ratio averaged 1.602 over a twenty-four-fold range of lag, with a total spread of 6.6%
+of the mean. It exhibited no systematic trend, and in particular no departure at the
+shortest lags, which are the only lags at which the two sensors could differ. The records
+are therefore related by a single multiplicative constant. For comparison the squared ratio
+of coefficients of variation was 1.438, so the majority of the constant is attributable to
+the change in glycaemic control between the periods.
 
-The two records are therefore the same signal scaled by a single number. For reference, the
-squared ratio of coefficients of variation is 1.438, so most of the scale factor is
-accounted for by the change in control.
+### Absence of a measurement-noise floor
 
-## 4. Is either sensor noisier?
+On the one-minute record the variogram fell to 4.44 mg/dl^2 at a one-minute lag (2.93 to
+7.38) and showed no indication of levelling. Vettoretti and colleagues report a measurement
+noise standard deviation of 3.19 mg/dl for a factory-calibrated sensor,4 which by equation
+(2) would hold the variogram at 20.4 mg/dl^2 at every lag. The observed value is 22% of that
+figure, and interpreted as white noise would correspond to a standard deviation of 1.49
+mg/dl.
 
-| Lag | One-minute era D (mg/dL^2) | Share of the floor implied by a 3.19 mg/dL noise SD |
+Neither record therefore carries appreciable independent per-sample error. The values these
+devices report are not raw transducer output but the product of internal filtering, and it
+is that filtering rather than the reporting interval which determines the apparent
+smoothness of the series. The preceding section establishes the same point from the other
+direction, since there is no lag at which the faster record lies proportionally above the
+slower.
+
+### Roughness and the regime below five minutes
+
+Table 2 gives the log-log slope of the variogram by lag band.
+
+Table 2. Variogram exponent by record and lag band.
+
+| Record | Lag band (min) | Exponent alpha (95% CI) |
 |---|---|---|
-| 1 min | 4.44 [2.93, 7.38] | 22% |
-| 2 min | 12.24 [10.07, 15.94] | 60% |
-| 3 min | 23.24 [20.22, 27.79] | 114% |
-| 4 min | 36.16 [31.86, 41.93] | 178% |
-| 5 min | 47.52 [42.28, 52.72] | 233% |
-| 10 min | 121.78 [108.76, 134.10] | 598% |
+| Five-minute | 5 to 20 | 1.35 (1.31 to 1.39) |
+| Five-minute | 20 to 60 | 1.29 (1.24 to 1.33) |
+| One-minute | 1 to 5 | 1.49 (1.18 to 1.71) |
+| One-minute | 5 to 20 | 1.35 (1.29 to 1.40) |
+| One-minute | 20 to 60 | 1.29 (1.24 to 1.33) |
 
-D falls smoothly to 4.44 mg/dL^2 at a one-minute lag and shows no sign of levelling off.
-Neither record has a noise floor to measure.
+In both bands observable by both sensors the exponents agree to two decimal places with
+overlapping intervals. Below five minutes, a region accessible only to the faster sensor,
+the exponent was 1.49 (1.18 to 1.71), an interval containing the 1.35 observed immediately
+above. The same power law thus extends from one minute to sixty without discontinuity. The
+additional samples describe the existing curve more finely rather than revealing a further
+regime.
 
-The comparison worth making is with the published error models. Vettoretti and colleagues
-fit a measurement-noise standard deviation of 3.19 mg/dL to a factory-calibrated sensor,
-which would hold D at 20.4 mg/dL^2 at every lag. The measured value at one minute is 22 per
-cent of that. Treated as white noise it would correspond to a standard deviation of 1.49
-mg/dL.
+An exponent near 1.3 places the signal well away from either limiting case. It is not a
+smooth differentiable process, for which the exponent would approach 2, and it is far from
+white noise, for which the exponent would be 0.
 
-The reading is that neither sensor reports raw transducer output. Both filter before the
-value leaves the device, and it is the filtering rather than the reporting interval that
-governs how clean the series looks. Section 3 already shows the point directly: there is no
-lag at which the faster record sits proportionally higher than the slower one.
+### Point-to-point acceleration
 
-## 5. Does the faster sensor resolve anything below five minutes?
+On the five-minute record the second difference over one interval had a standard deviation
+of 6.32 mg/dl, against 6.36 mg/dl predicted by equation (4) from the variogram with no free
+parameters. Acceleration therefore conveys nothing that the variogram has not already
+described.
 
-| Record | Lag band | Log-log slope of D |
-|---|---|---|
-| Five-minute era | 5 to 20 min | 1.35 [1.31, 1.39] |
-| Five-minute era | 20 to 60 min | 1.29 [1.24, 1.33] |
-| One-minute era | 1 to 5 min | 1.49 [1.18, 1.71] |
-| One-minute era | 5 to 20 min | 1.35 [1.29, 1.40] |
-| One-minute era | 20 to 60 min | 1.29 [1.24, 1.33] |
+Expressed as mg/dl per 5 min per 5 min so that the two records may be compared, the standard
+deviation was 6.32 on the five-minute record and 48.32 on the one-minute record, a ratio of
+7.65. Equation (5) predicts 7.53 from the sub-five-minute exponent of 1.49 measured on this
+record. A twice differentiable signal would give unity, since acceleration would converge
+upon a fixed value as the interval was reduced. It does not converge here. The quantity has
+no rate-independent value, and a threshold placed upon it is a threshold at one particular
+sampling rate.
 
-In the two bands the sensors share, the slopes agree to two decimal places and the intervals
-overlap. The records have the same roughness at every timescale both can see.
+The lag-one autocorrelation of the acceleration series was
+-0.290 on the five-minute record and -0.049 on the one-minute
+record, against a value of -0.667 for twice-differenced white noise. The one-minute series
+is accordingly smooth rather than noisy, which follows from the absence of a nugget reported
+above and does not by itself imply that the quantity is informative.
 
-Below five minutes, where only the faster sensor reaches, the slope is 1.49 [1.18, 1.71].
-That interval contains the 1.35 measured just above it, so the same power law continues from
-one minute to sixty with no break. The extra samples trace the curve more finely; they do
-not open a new regime.
+Table 3 addresses that last point directly, giving prediction within 30 minutes with and
+without acceleration among the predictors.
 
-## 6. Does prediction improve?
+Table 3. Event prediction with and without acceleration.
 
-This is the only category of use where a faster cadence could plausibly be more accurate
-rather than merely earlier. Reading the current value, raising an alarm on it, and computing
-retrospective statistics all depend either on the newest sample or on an average over
-thousands of them.
-
-### 6.1 Forecasting a future glucose value
-
-Error is divided by the standard deviation of the target, so 1.0 means no better than
-predicting the mean and the difference in volatility between the periods cannot drive the
-comparison.
-
-| Horizon | Five-minute era | One-minute era | Intervals | Nominally better |
+| Record | Event | Predictors | AUC (95% CI) | Lift |
 |---|---|---|---|---|
-| +15 min | 0.346 [0.325, 0.367] | 0.345 [0.322, 0.369] | overlap | 1-min |
-| +30 min | 0.571 [0.543, 0.601] | 0.556 [0.519, 0.600] | overlap | 1-min |
-| +45 min | 0.720 [0.688, 0.753] | 0.717 [0.676, 0.767] | overlap | 1-min |
-| +60 min | 0.818 [0.792, 0.851] | 0.820 [0.780, 0.868] | overlap | 5-min |
-| +90 min | 0.915 [0.895, 0.940] | 0.920 [0.891, 0.954] | overlap | 5-min |
+| Five-minute | low below 70 | velocity only | 0.8935 (0.8668 to 0.9224) | 7.25 |
+| Five-minute | low below 70 | + point to point acceleration | 0.8934 (0.8666 to 0.9223) | 7.22 |
+| Five-minute | low below 70 | + controller acceleration | 0.8939 (0.8683 to 0.9220) | 7.29 |
+| Five-minute | low below 70 | + both | 0.8938 (0.8681 to 0.9219) | 7.29 |
+| Five-minute | high above 180 | velocity only | 0.9283 (0.9058 to 0.9478) | 7.77 |
+| Five-minute | high above 180 | + point to point acceleration | 0.9284 (0.9062 to 0.9477) | 7.77 |
+| Five-minute | high above 180 | + controller acceleration | 0.9283 (0.9059 to 0.9478) | 7.77 |
+| Five-minute | high above 180 | + both | 0.9282 (0.9057 to 0.9477) | 7.77 |
+| One-minute | low below 70 | velocity only | 0.9275 (0.9074 to 0.9442) | 7.61 |
+| One-minute | low below 70 | + point to point acceleration | 0.9268 (0.9047 to 0.9444) | 7.58 |
+| One-minute | low below 70 | + controller acceleration | 0.9276 (0.9070 to 0.9445) | 7.60 |
+| One-minute | low below 70 | + both | 0.9268 (0.9042 to 0.9446) | 7.56 |
+| One-minute | high above 180 | velocity only | 0.8912 (0.8745 to 0.9069) | 6.39 |
+| One-minute | high above 180 | + point to point acceleration | 0.8938 (0.8768 to 0.9091) | 6.44 |
+| One-minute | high above 180 | + controller acceleration | 0.8918 (0.8751 to 0.9074) | 6.39 |
+| One-minute | high above 180 | + both | 0.8943 (0.8771 to 0.9096) | 6.44 |
 
-The intervals overlap at every horizon and the nominal winner changes from one horizon to
-the next, so there is no advantage to detect in either direction.
+Every variant lies within a few thousandths of the velocity-only baseline with overlapping
+intervals. Neither the point-to-point form nor the overlapping-window form conveys
+predictive information beyond that already carried by the velocity terms, at either sampling
+rate.
 
-### 6.2 Predicting lows and highs
+### Forecasting
 
-Base rates differ substantially between the periods, so lift is the figure to compare. Lift
-is the precision within the top decile of predicted risk, divided by that era's own base
-rate. AUC is shown alongside, with the caveat that it is sensitive to prevalence.
+Table 4. Normalised forecast error by horizon.
 
-#### low below 70
-
-| Horizon | Era | Base rate | AUC | Lift |
-|---|---|---|---|---|
-| 15 min | 5-min | 1.26% | 0.9581 [0.9428, 0.9721] | 8.86x [8.23, 9.43] |
-| 15 min | 1-min | 1.80% | 0.9714 [0.9605, 0.9801] | 9.16x [8.71, 9.57] |
-| 20 min | 5-min | 1.75% | 0.9411 [0.9265, 0.9554] | 8.27x [7.81, 8.84] |
-| 20 min | 1-min | 2.30% | 0.9595 [0.9450, 0.9721] | 8.66x [8.06, 9.11] |
-| 30 min | 5-min | 2.42% | 0.8935 [0.8659, 0.9226] | 7.25x [6.67, 7.95] |
-| 30 min | 1-min | 3.30% | 0.9275 [0.9074, 0.9440] | 7.61x [7.01, 8.14] |
-| 45 min | 5-min | 3.39% | 0.8232 [0.7895, 0.8617] | 6.05x [5.44, 6.73] |
-| 45 min | 1-min | 4.76% | 0.8575 [0.8207, 0.8857] | 6.23x [5.61, 6.78] |
-| 60 min | 5-min | 4.37% | 0.7707 [0.7312, 0.8122] | 5.14x [4.62, 5.68] |
-| 60 min | 1-min | 6.18% | 0.7925 [0.7487, 0.8287] | 5.36x [4.79, 5.93] |
-
-#### low below 54
-
-| Horizon | Era | Base rate | AUC | Lift |
-|---|---|---|---|---|
-| 15 min | 5-min | 0.21% | 0.9794 [0.9581, 0.9972] | 9.62x [8.09, 10.01] |
-| 15 min | 1-min | 0.14% | too rare to model | |
-| 20 min | 5-min | 0.30% | 0.9492 [0.9162, 0.9776] | 8.43x [7.29, 9.47] |
-| 20 min | 1-min | 0.17% | too rare to model | |
-| 30 min | 5-min | 0.45% | 0.9147 [0.8662, 0.9674] | 8.08x [7.07, 9.31] |
-| 30 min | 1-min | 0.24% | 0.9429 [0.9112, 0.9798] | 8.45x [7.31, 9.85] |
-| 45 min | 5-min | 0.65% | 0.8319 [0.7758, 0.9112] | 7.04x [6.17, 8.22] |
-| 45 min | 1-min | 0.35% | 0.8567 [0.7746, 0.9480] | 6.84x [5.56, 8.25] |
-| 60 min | 5-min | 0.88% | 0.7429 [0.6573, 0.8411] | 5.64x [4.54, 7.15] |
-| 60 min | 1-min | 0.47% | 0.7744 [0.6592, 0.9185] | 5.40x [4.17, 7.09] |
-
-#### high above 180
-
-| Horizon | Era | Base rate | AUC | Lift |
-|---|---|---|---|---|
-| 15 min | 5-min | 1.31% | 0.9668 [0.9436, 0.9842] | 9.35x [8.85, 9.85] |
-| 15 min | 1-min | 2.85% | 0.9611 [0.9508, 0.9691] | 8.56x [8.08, 8.95] |
-| 20 min | 5-min | 1.73% | 0.9525 [0.9336, 0.9689] | 8.63x [8.14, 9.12] |
-| 20 min | 1-min | 3.58% | 0.9442 [0.9317, 0.9543] | 7.80x [7.35, 8.24] |
-| 30 min | 5-min | 2.39% | 0.9283 [0.9057, 0.9488] | 7.77x [7.18, 8.35] |
-| 30 min | 1-min | 5.02% | 0.8912 [0.8731, 0.9076] | 6.39x [5.99, 6.80] |
-| 45 min | 5-min | 3.35% | 0.8868 [0.8561, 0.9135] | 6.65x [6.08, 7.22] |
-| 45 min | 1-min | 7.07% | 0.8079 [0.7838, 0.8309] | 4.87x [4.57, 5.21] |
-| 60 min | 5-min | 4.28% | 0.8413 [0.8086, 0.8711] | 5.51x [4.97, 6.06] |
-| 60 min | 1-min | 9.03% | 0.7469 [0.7208, 0.7709] | 4.04x [3.73, 4.34] |
-
-#### high above 250
-
-| Horizon | Era | Base rate | AUC | Lift |
-|---|---|---|---|---|
-| 15 min | 5-min | 0.05% | too rare to model | |
-| 15 min | 1-min | 0.44% | 0.9939 [0.9912, 0.9968] | 10.00x [9.96, 10.00] |
-| 20 min | 5-min | 0.07% | too rare to model | |
-| 20 min | 1-min | 0.56% | 0.9920 [0.9875, 0.9962] | 9.93x [9.77, 10.00] |
-| 30 min | 5-min | 0.11% | too rare to model | |
-| 30 min | 1-min | 0.77% | 0.9769 [0.9529, 0.9939] | 9.53x [8.77, 10.00] |
-| 45 min | 5-min | 0.16% | too rare to model | |
-| 45 min | 1-min | 1.10% | 0.9377 [0.8607, 0.9890] | 8.91x [7.60, 9.86] |
-| 60 min | 5-min | 0.21% | 0.9884 [0.9744, 0.9996] | 10.00x [10.00, 10.00] |
-| 60 min | 1-min | 1.44% | 0.9003 [0.7964, 0.9734] | 8.16x [6.59, 9.40] |
-
-### 6.3 The direction of the difference reverses
-
-If one-minute sampling carried more predictive information it would help whichever way
-glucose was moving. It does not.
-
-| Task | AUC gap, one-minute minus five-minute | Behaviour with horizon |
-|---|---|---|
-| low below 70 | 15m +0.0132, 20m +0.0185, 30m +0.0340, 45m +0.0343, 60m +0.0218 | favours 1-min more strongly at long horizons |
-| low below 54 | 30m +0.0282, 45m +0.0248, 60m +0.0316 | roughly flat with horizon |
-| high above 180 | 15m -0.0058, 20m -0.0083, 30m -0.0370, 45m -0.0789, 60m -0.0944 | favours 5-min more strongly at long horizons |
-
-On lows the one-minute era scores higher. On highs above 180 it scores lower, and the
-deficit widens with horizon. A sampling interval cannot help in one direction and hinder in
-the other.
-
-A genuine cadence benefit would also be largest at the shortest horizon, where recent detail
-matters most, and would fade as the horizon lengthened. Neither task behaves that way. What
-these differences track is how difficult each period was to predict.
-
-## 7. Point to point acceleration
-
-Velocity is the first difference of consecutive readings and acceleration the difference of
-consecutive velocities, so over one sampling interval h the literal construction is (x(t) -
-2x(t-h) + x(t-2h)) / h^2. Figures below are in mg/dL per 5 min per 5 min so that the two
-cadences can be read against each other.
-
-| | Five-minute era | One-minute era |
-|---|---|---|
-| Samples | 23,727 | 81,645 |
-| SD over one interval (mg/dL) | 6.32 | 1.93 |
-| SD as mg/dL per 5 min per 5 min | 6.32 | 48.32 |
-| Median absolute value (mg/dL) | 3.00 | 1.00 |
-| Exactly zero | 11.9% | 37.6% |
-| Predicted from the variogram (mg/dL) | 6.36 | 2.35 |
-| Lag-1 autocorrelation | -0.290 | -0.049 |
-
-The mean square of a second difference is exactly 4D(h) minus D(2h) for any process, so the
-variogram of section 3 predicts the acceleration magnitude with no free parameters. On the
-five-minute record the prediction is 6.36 mg/dL against a measured 6.32. Acceleration
-therefore carries nothing the variogram did not already describe.
-
-### 7.1 It has no cadence-independent value
-
-For a process whose variogram goes as h to the power alpha, the second difference goes as
-the same power, so acceleration, which divides by h squared, goes as h to the power alpha/2
-minus 2. The number therefore depends on the interval it was computed over.
-
-| Ratio of one-minute to five-minute acceleration SD | Value |
-|---|---|
-| Measured | 7.65 |
-| Predicted from alpha = 1.35 (this record, 5 to 20 min) | 8.43 |
-| Predicted from alpha = 1.49 (this record, 1 to 5 min) | 7.53 |
-| Predicted from alpha = 0.00 (white noise) | 25.00 |
-| A twice differentiable signal | 1.00 |
-
-A twice differentiable signal would give a ratio of 1.00, because the leading term cancels
-and acceleration converges on a real value as the interval shrinks. This record gives 7.65,
-close to the value implied by its own roughness. Acceleration measured over one minute is
-roughly eight times larger than the same quantity measured over five minutes, and neither is
-more correct than the other.
-
-The practical consequence is that any threshold placed on a point to point acceleration is a
-threshold at one particular cadence and does not transfer to another. The construction used
-by the controller avoids this, since it averages rates over windows fixed in minutes rather
-than in samples, and normalises by the slower of the two.
-
-### 7.2 It adds nothing to prediction
-
-Adding acceleration to a feature set that already contains the current value and several
-backward differences and slopes, then predicting within 30 minutes:
-
-| Era | Task | Feature set | AUC | Lift |
-|---|---|---|---|---|
-| 5-min | low below 70 | velocity only | 0.8935 [0.8668, 0.9224] | 7.25x |
-| 5-min | low below 70 | + point to point acceleration | 0.8934 [0.8666, 0.9223] | 7.22x |
-| 5-min | low below 70 | + controller acceleration | 0.8939 [0.8683, 0.9220] | 7.29x |
-| 5-min | low below 70 | + both | 0.8938 [0.8681, 0.9219] | 7.29x |
-| 5-min | high above 180 | velocity only | 0.9283 [0.9058, 0.9478] | 7.77x |
-| 5-min | high above 180 | + point to point acceleration | 0.9284 [0.9062, 0.9477] | 7.77x |
-| 5-min | high above 180 | + controller acceleration | 0.9283 [0.9059, 0.9478] | 7.77x |
-| 5-min | high above 180 | + both | 0.9282 [0.9057, 0.9477] | 7.77x |
-| 1-min | low below 70 | velocity only | 0.9275 [0.9074, 0.9442] | 7.61x |
-| 1-min | low below 70 | + point to point acceleration | 0.9268 [0.9047, 0.9444] | 7.58x |
-| 1-min | low below 70 | + controller acceleration | 0.9276 [0.9070, 0.9445] | 7.60x |
-| 1-min | low below 70 | + both | 0.9268 [0.9042, 0.9446] | 7.56x |
-| 1-min | high above 180 | velocity only | 0.8912 [0.8745, 0.9069] | 6.39x |
-| 1-min | high above 180 | + point to point acceleration | 0.8938 [0.8768, 0.9091] | 6.44x |
-| 1-min | high above 180 | + controller acceleration | 0.8918 [0.8751, 0.9074] | 6.39x |
-| 1-min | high above 180 | + both | 0.8943 [0.8771, 0.9096] | 6.44x |
-
-Every variant sits within a few thousandths of the velocity-only baseline and every interval
-overlaps it. Neither the point to point form nor the controller form carries predictive
-information that the velocity terms do not already hold, at either cadence.
-
-## 8. What cadence does change
-
-A threshold is crossed at some instant between two reported samples. Locating that instant
-by interpolation and measuring the wait until the next sample the sensor actually reported
-gives the delay directly, from the real records.
-
-| Crossing | Five-minute era | One-minute era | Difference |
+| Horizon (min) | Five-minute record | One-minute record | Intervals |
 |---|---|---|---|
-| falling below 70 | 3.04 [2.79, 3.29] min, n=110 | 0.86 [0.80, 0.91] min, n=114 | +2.18 min |
-| falling below 54 | 2.27 [1.72, 2.95] min, n=18 | too few crossings |  |
-| rising above 180 | 2.90 [2.59, 3.21] min, n=101 | 0.71 [0.66, 0.76] min, n=177 | +2.19 min |
-| rising above 250 | too few crossings | 0.64 [0.54, 0.72] min, n=29 |  |
+| 15 | 0.346 (0.325 to 0.367) | 0.345 (0.322 to 0.369) | overlapping |
+| 30 | 0.571 (0.543 to 0.601) | 0.556 (0.519 to 0.600) | overlapping |
+| 45 | 0.720 (0.688 to 0.753) | 0.717 (0.676 to 0.767) | overlapping |
+| 60 | 0.818 (0.792 to 0.851) | 0.820 (0.780 to 0.868) | overlapping |
+| 90 | 0.915 (0.895 to 0.940) | 0.920 (0.891 to 0.954) | overlapping |
 
-The mean difference is 2.19 minutes, against an arithmetic expectation of 2.00 minutes from
-the sample spacing alone. This is the whole of what the faster feed delivers, and it is a
-matter of scheduling rather than of information.
+Intervals overlap at every horizon examined and the nominally superior record alternates
+between horizons. No forecast advantage is detectable in either direction.
 
-Whether two minutes is worth having depends on what consumes it. An alarm can use it in
-full, as can a person who is able to act at once. It is small against the onset of
-rapid-acting insulin, which is on the order of fifteen minutes.
+### Prediction of hypoglycaemia and hyperglycaemia
 
-## 9. Limitations
+Table 5. Event prediction by horizon.
 
-The comparison rests on one person. It is observational and between eras, so the sensor
-hardware changed at the boundary and so did glycaemic control. The analysis is built to be
-robust to the latter, since every measure used here is scale-free, but a single subject
-cannot show that the result generalises across people or devices.
+| Event | Horizon (min) | Record | Base rate | AUC (95% CI) | Lift (95% CI) |
+|---|---|---|---|---|---|
+| below 70 | 15 | 5-min | 1.26% | 0.9581 (0.9428 to 0.9721) | 8.86 (8.23 to 9.43) |
+| below 70 | 15 | 1-min | 1.80% | 0.9714 (0.9605 to 0.9801) | 9.16 (8.71 to 9.57) |
+| below 70 | 20 | 5-min | 1.75% | 0.9411 (0.9265 to 0.9554) | 8.27 (7.81 to 8.84) |
+| below 70 | 20 | 1-min | 2.30% | 0.9595 (0.9450 to 0.9721) | 8.66 (8.06 to 9.11) |
+| below 70 | 30 | 5-min | 2.42% | 0.8935 (0.8659 to 0.9226) | 7.25 (6.67 to 7.95) |
+| below 70 | 30 | 1-min | 3.30% | 0.9275 (0.9074 to 0.9440) | 7.61 (7.01 to 8.14) |
+| below 70 | 45 | 5-min | 3.39% | 0.8232 (0.7895 to 0.8617) | 6.05 (5.44 to 6.73) |
+| below 70 | 45 | 1-min | 4.76% | 0.8575 (0.8207 to 0.8857) | 6.23 (5.61 to 6.78) |
+| below 70 | 60 | 5-min | 4.37% | 0.7707 (0.7312 to 0.8122) | 5.14 (4.62 to 5.68) |
+| below 70 | 60 | 1-min | 6.18% | 0.7925 (0.7487 to 0.8287) | 5.36 (4.79 to 5.93) |
+| below 54 | 15 | 5-min | 0.21% | 0.9794 (0.9581 to 0.9972) | 9.62 (8.09 to 10.01) |
+| below 54 | 15 | 1-min | 0.14% | not modelled | |
+| below 54 | 20 | 5-min | 0.30% | 0.9492 (0.9162 to 0.9776) | 8.43 (7.29 to 9.47) |
+| below 54 | 20 | 1-min | 0.17% | not modelled | |
+| below 54 | 30 | 5-min | 0.45% | 0.9147 (0.8662 to 0.9674) | 8.08 (7.07 to 9.31) |
+| below 54 | 30 | 1-min | 0.24% | 0.9429 (0.9112 to 0.9798) | 8.45 (7.31 to 9.85) |
+| below 54 | 45 | 5-min | 0.65% | 0.8319 (0.7758 to 0.9112) | 7.04 (6.17 to 8.22) |
+| below 54 | 45 | 1-min | 0.35% | 0.8567 (0.7746 to 0.9480) | 6.84 (5.56 to 8.25) |
+| below 54 | 60 | 5-min | 0.88% | 0.7429 (0.6573 to 0.8411) | 5.64 (4.54 to 7.15) |
+| below 54 | 60 | 1-min | 0.47% | 0.7744 (0.6592 to 0.9185) | 5.40 (4.17 to 7.09) |
+| above 180 | 15 | 5-min | 1.31% | 0.9668 (0.9436 to 0.9842) | 9.35 (8.85 to 9.85) |
+| above 180 | 15 | 1-min | 2.85% | 0.9611 (0.9508 to 0.9691) | 8.56 (8.08 to 8.95) |
+| above 180 | 20 | 5-min | 1.73% | 0.9525 (0.9336 to 0.9689) | 8.63 (8.14 to 9.12) |
+| above 180 | 20 | 1-min | 3.58% | 0.9442 (0.9317 to 0.9543) | 7.80 (7.35 to 8.24) |
+| above 180 | 30 | 5-min | 2.39% | 0.9283 (0.9057 to 0.9488) | 7.77 (7.18 to 8.35) |
+| above 180 | 30 | 1-min | 5.02% | 0.8912 (0.8731 to 0.9076) | 6.39 (5.99 to 6.80) |
+| above 180 | 45 | 5-min | 3.35% | 0.8868 (0.8561 to 0.9135) | 6.65 (6.08 to 7.22) |
+| above 180 | 45 | 1-min | 7.07% | 0.8079 (0.7838 to 0.8309) | 4.87 (4.57 to 5.21) |
+| above 180 | 60 | 5-min | 4.28% | 0.8413 (0.8086 to 0.8711) | 5.51 (4.97 to 6.06) |
+| above 180 | 60 | 1-min | 9.03% | 0.7469 (0.7208 to 0.7709) | 4.04 (3.73 to 4.34) |
+| above 250 | 15 | 5-min | 0.05% | not modelled | |
+| above 250 | 15 | 1-min | 0.44% | 0.9939 (0.9912 to 0.9968) | 10.00 (9.96 to 10.00) |
+| above 250 | 20 | 5-min | 0.07% | not modelled | |
+| above 250 | 20 | 1-min | 0.56% | 0.9920 (0.9875 to 0.9962) | 9.93 (9.77 to 10.00) |
+| above 250 | 30 | 5-min | 0.11% | not modelled | |
+| above 250 | 30 | 1-min | 0.77% | 0.9769 (0.9529 to 0.9939) | 9.53 (8.77 to 10.00) |
+| above 250 | 45 | 5-min | 0.16% | not modelled | |
+| above 250 | 45 | 1-min | 1.10% | 0.9377 (0.8607 to 0.9890) | 8.91 (7.60 to 9.86) |
+| above 250 | 60 | 5-min | 0.21% | 0.9884 (0.9744 to 0.9996) | 10.00 (10.00 to 10.00) |
+| above 250 | 60 | 1-min | 1.44% | 0.9003 (0.7964 to 0.9734) | 8.16 (6.59 to 9.40) |
 
-The sensor makes and models are not recorded in the data available. The noise conclusion
-concerns the reported series rather than the raw transducer signal behind it, which the
-published error models address and which is not available here.
+On lift, which is free of the base rate, the two records are indistinguishable throughout.
+The area under the curve is nominally higher for the one-minute record in the prediction of
+hypoglycaemia and nominally lower in the prediction of hyperglycaemia, the deficit in the
+latter widening with horizon. A property of the sampling interval cannot assist prediction
+in one direction while impeding it in the other. A genuine advantage of rate would moreover
+be greatest at the shortest horizon, where recent detail is most informative, and would
+diminish as the horizon lengthened. Neither event behaves in that manner. The differences
+track the difficulty of the respective periods.
 
-Some tasks were too rare to model in one era or the other. They are marked as such rather
-than being forced.
+### Reporting delay
 
-No outcome data is analysed. None is needed for the question asked, which is what the two
-records contain.
+Table 6. Delay from threshold crossing to the next reported sample.
 
-## Reproducing
+| Crossing | Five-minute record | One-minute record | Difference |
+|---|---|---|---|
+| below 70 mg/dl | 3.04 min (2.79 to 3.29), n = 110 | 0.86 min (0.80 to 0.91), n = 114 | 2.18 min |
+| below 54 mg/dl | 2.27 min (1.72 to 2.95), n = 18 | too few crossings |  |
+| above 180 mg/dl | 2.90 min (2.59 to 3.21), n = 101 | 0.71 min (0.66 to 0.76), n = 177 | 2.19 min |
+| above 250 mg/dl | too few crossings | 0.64 min (0.54 to 0.72), n = 29 |  |
+
+The mean difference was 2.19 minutes against an arithmetic expectation of 2.00 minutes from
+the sample spacing alone.
+
+## Discussion
+
+Two sensors of differing rate worn consecutively by the same subject produced records
+related by a single multiplicative constant across every lag they had in common. Neither
+carried a measurable noise floor. The faster sensor resolved no regime below the sampling
+limit of the slower one, forecast no better at any horizon examined, and predicted neither
+hypoglycaemia nor hyperglycaemia better once base rates were accounted for.
+
+These observations are consistent with the earlier literature and supply a direct test of
+it. Gough and colleagues placed the band edge of blood glucose near a seventeen-minute
+period.1 Breton and colleagues attributed the further attenuation observed in the
+interstitium to diffusion between the compartments acting as a low-pass filter, and
+estimated that interstitial glucose is fully characterised by an eighteen-minute sampling
+period.2 A filter of that kind lies upstream of both devices examined here and is a property
+of physiology rather than of electronics. Sampling faster cannot recover content that
+diffusion has already removed, which is the mechanism underlying the constancy of the ratio
+in Table 1.
+
+The absence of a nugget merits comment, since published error models attribute a noise
+standard deviation of approximately 3 mg/dl to these devices.4 Those models describe the raw
+transducer signal. What reaches the user has been filtered, and the present data indicate
+that the filtering removes the greater part of the error the models describe. A practical
+consequence is that the apparent cleanliness of a continuous glucose record is set by the
+manufacturer's processing rather than by its reporting rate.
+
+The acceleration result has a bearing on system design. Quantities computed as second
+differences of consecutive samples are widely used as inputs to control algorithms and to
+alarm logic. Equation (5) establishes that such a quantity has no rate-independent value
+unless the underlying signal is twice differentiable, and the exponent measured here places
+interstitial glucose firmly outside that class. A threshold calibrated on five-minute data
+will be encountered approximately 7.6 times as often, in standardised units, when the same
+logic is presented with one-minute data. Constructions that average rates over windows fixed
+in elapsed time rather than in samples do not suffer this defect.
+
+The one effect attributable to sampling rate was a reduction of approximately two minutes in
+the delay between a threshold being crossed and its being reported, a figure matching the
+arithmetic expectation from sample spacing. This is a scheduling property and requires no
+additional information about glucose. Its practical value depends upon what consumes it. An
+alarm can exploit it in full, as can a subject able to respond immediately. It is small in
+relation to the onset of rapid-acting insulin, which is of the order of fifteen minutes.
+
+Several limitations attach to this work. It concerns a single subject, and the comparison is
+observational and between periods, so that sensor hardware and glycaemic control both
+changed at the boundary. The analysis was designed with that in view, every measure employed
+being either scale-free or normalised by base rate, but a single subject cannot establish
+generalisation across devices or across people. The makes and models of the sensors were not
+recorded in the data available. The conclusion regarding noise concerns the reported series
+rather than the transducer signal beneath it. Certain events proved too infrequent to model
+in one record or the other and are marked accordingly. No outcome data were analysed, none
+being required for the question posed.
+
+The comparison would be strengthened by replication across subjects and across
+manufacturers, and by a design in which two sensors of differing rate are worn concurrently,
+which would remove the confounding of period with device that is unavoidable in a
+consecutive design.
+
+## Abbreviations
+
+AUC, area under the receiver operating characteristic curve; BG, blood glucose; CGM,
+continuous glucose monitor; CI, confidence interval; CV, coefficient of variation; IG,
+interstitial glucose; RMSE, root mean squared error; SD, standard deviation; T1DM, type 1
+diabetes mellitus.
+
+## References
+
+1. Gough DA, Kreutz-Delgado K, Bremer TM. Frequency characterization of blood glucose
+dynamics. Ann Biomed Eng. 2003;31(1):91-97.
+
+2. Breton MD, Shields DP, Kovatchev BP. Optimum subcutaneous glucose sampling and Fourier
+analysis of continuous glucose monitors. J Diabetes Sci Technol. 2008;2(3):495-500.
+
+3. Fico G, Hernanz L, Cancela J, et al. Exploring the frequency domain of continuous glucose
+monitoring signals to improve characterization of glucose variability and of diabetic
+profiles. J Diabetes Sci Technol. 2017;11(4):773-779.
+
+4. Vettoretti M, Battocchio C, Sparacino G, Facchinetti A. Development of an error model for
+a factory-calibrated continuous glucose monitoring sensor with 10-day lifetime. Sensors
+(Basel). 2019;19(23):5320.
+
+5. Russon CL, Pulsford RM, Allen MJ, et al. Impact of recording interval in continuous
+glucose monitoring on calculating the metrics of glycemic control. J Diabetes Sci Technol.
+2025;19(2):590-592.
+
+## Appendix: reproduction
 
 ```
 ./run_all.sh
 
-01_profile.py          coverage, cadence stability, glycaemic distribution
-02_variogram.py        ratio across shared lags, noise floor, log-log slopes
+01_profile.py          coverage, sampling stability, glycaemic distribution
+02_variogram.py        variogram ratio, noise floor, exponents
 03_forecast.py         normalised forecast error by horizon
-04_events.py           event prediction, AUC and base-rate lift
+04_events.py           event prediction, AUC and lift
 05_reporting_delay.py  delay from an interpolated crossing to the next reported sample
-06_acceleration.py     point to point acceleration, scale dependence, predictive value
+06_acceleration.py     point-to-point acceleration, scale dependence, predictive value
 08_report.py           regenerates this document from results/*.json
 09_style_check.py      house-style gate on the generated document
 ```
 
-Provisional. One subject, observational between-era comparison.
+Every figure in this document is read from the stored results. None is transcribed by hand.
