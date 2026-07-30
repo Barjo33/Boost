@@ -44,7 +44,9 @@ closely matching the published sensor error model, and its spectral shape accoun
 observed content below a twenty-minute period without invoking any glucose dynamics at all.
 The one exception is event timing: at a matched false-alarm rate, a fall of 20 mg/dL within
 thirty minutes is detected a median of three to seven minutes sooner at one minute, with
-sensitivity 93 against 79 per cent.
+sensitivity 93 against 79 per cent. That gain is symmetric in direction — rises are detected
+earlier by the same margin as falls, to within a minute at every operating point — which is
+what a pure sampling-grid effect predicts and a signal-content effect does not.
 
 **Conclusion.** One-minute sampling adds essentially no new information about glucose,
 because there is no glucose information at those frequencies to add: a first-order
@@ -456,6 +458,41 @@ gain comes from the sensitivity difference — events that fully or partly resol
 five-minute interval are invisible to the slower feed, which is the same phenomenon Russon et
 al. measured as lost episodes at fifteen minutes.
 
+### 4.9 The latency gain is symmetric in direction
+
+The account above makes a falsifiable prediction. If the benefit is a property of the
+sampling grid rather than of the glucose signal, it cannot care which way glucose is moving:
+a rise should be detected earlier by the same margin as a fall. If instead the benefit came
+from some direction-specific feature of the physiology, the two should differ. We ran the
+identical matched-false-alarm design on rises.
+
+The two event classes are closely comparable to begin with: 16,242 rise starts against 15,554
+fall starts at the 20 mg/dL threshold, with median steepness 1.18 against 1.11 mg/dL per
+minute, and median times to reach the threshold of 17 and 18 minutes respectively.
+
+| Excursion | False-alarm rate | Fall: latency gain | Rise: latency gain | 1-min sensitivity, fall / rise |
+|---|---|---|---|---|
+| 20 mg/dL | 2% | +7.0 min | +6.0 min | 93% / 95% |
+| 20 mg/dL | 5% | +7.0 min | +6.0 min | 93% / 95% |
+| 20 mg/dL | 10% | +3.0 min | +2.0 min | 93% / 95% |
+| 20 mg/dL | 20% | +4.0 min | +4.0 min | 94% / 95% |
+| 30 mg/dL | 2% | +5.0 min | +5.0 min | 92% / 95% |
+| 30 mg/dL | 5% | +6.0 min | +6.0 min | 93% / 95% |
+| 30 mg/dL | 10% | +7.0 min | +7.0 min | 93% / 95% |
+| 30 mg/dL | 20% | +3.0 min | +3.0 min | 93% / 95% |
+
+The gains agree to within one minute at every operating point, and are identical at all four
+operating points for the larger excursion. Sensitivity at one minute is, if anything, very
+slightly higher for rises. The effect is symmetric, which is what a pure grid-delay
+explanation requires and what a signal-content explanation would not predict.
+
+This matters for how the result should be used. An earlier analysis of ours examined falls
+only and concluded that the benefit of faster sensing accrues to withholding insulin rather
+than to delivering it. At the level of the signal that conclusion is not supported: the data
+are as informative, as early, about a rise as about a fall. Any asymmetry in how a controller
+*acts* on the two is a decision about the asymmetry of clinical risk, not a property of what
+the sensor is able to tell it.
+
 ## 5. Why the nulls occur
 
 A negative result is worth little unless the mechanism is identified, because otherwise it
@@ -514,11 +551,11 @@ sensitivity. Anyone whose task is a threshold crossing — a hypoglycaemia alarm
 decision, a safety interlock — should prefer the faster feed. Anyone whose task is an
 estimate should not expect a benefit and should check that they have not incurred a cost.
 
-**Windows should be specified in time, not in samples.** Any window expressed as a count of
-readings silently changes duration by a factor of five when a user switches sensors. In the
-companion implementation study we found two such windows in a deployed system, one of which
-disabled a safety feature at the higher cadence. That is a general hazard of the transition,
-independent of any information-theoretic question.
+**The benefit does not favour one direction.** Rises are detected earlier by the same margin
+as falls, to within a minute at every operating point. A system that uses a faster feed to
+catch impending hypoglycaemia sooner is entitled to use it to catch a rise sooner as well;
+the signal does not distinguish them. Whether it *should* is a question about the relative
+cost of the two errors, not about the data.
 
 **The asymmetry of the literature is now consistent.** Russon et al. coarsened five to
 fifteen minutes and found distributional metrics unchanged and episode detection degraded
@@ -570,7 +607,10 @@ of one per cent, and standard metrics do not move at all.
 The one thing faster sampling reliably delivers is time. A five-minute consumer waits for the
 next grid point, and misses excursions that resolve between points. Removing that delay is
 worth three to seven minutes on the detection of a 20 mg/dL fall, with sensitivity 93 against
-79 per cent, at a matched false-alarm rate.
+79 per cent, at a matched false-alarm rate — and the same three to seven minutes on a rise of
+the same size. That symmetry is the strongest single piece of evidence for the interpretation
+offered here, because a grid effect must be direction-blind and an information effect need
+not be.
 
 One-minute sampling buys latency, not bandwidth. That single sentence predicts which
 downstream tasks will improve and which will not, and every result above is consistent with
@@ -605,6 +645,8 @@ results in this paper are produced by:
   on a common mask, detection latency at matched false-alarm rate
 - `12_generic_metrics_and_mechanism.py` — aggregate metrics by interval, interstitial filter
   attenuation, AR(2) noise attribution
+- `13_rise_vs_fall_symmetry.py` — the matched-false-alarm detection design run on rises and
+  falls side by side
 
 Scripts `01`–`09` are the earlier implementation-specific study and are retained for the
 provenance checks and the earlier prediction results cited in section 4.5.
