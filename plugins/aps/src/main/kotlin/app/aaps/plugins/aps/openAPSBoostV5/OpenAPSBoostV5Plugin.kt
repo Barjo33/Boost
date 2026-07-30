@@ -18,6 +18,7 @@ import app.aaps.core.interfaces.constraints.Constraint
 import app.aaps.core.interfaces.constraints.PluginConstraints
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
@@ -32,6 +33,7 @@ import app.aaps.core.keys.BooleanComposedKey
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntNonKey
+import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -98,6 +100,8 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
     private val constraintsChecker: ConstraintsChecker,
     private val dateUtil: DateUtil,
     private val uiInteraction: UiInteraction,
+    // Install-time history backfill (2026-07-30): resolves the enabled NsClient plugin, if any.
+    private val activePlugin: ActivePlugin,
     // @Singleton — same instance the V1 engine scored this cycle; its cached feature vector powers
     // the projected-IOB re-score for Phase-3 postActionRiskCheck. (2026-07-02)
     private val boostRiskModel: BoostRiskModel,
@@ -277,6 +281,13 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         val sev54 = if (n > 0) 100.0 * bgs.count { it.value >= 1.0 && it.value < 54.0 } / n else 0.0
         val meanBg = if (n > 0) bgs.sumOf { it.value } / n else 0.0
 
+        // Install-time history gap (2026-07-30). Reuses the three quantities just gathered — no extra
+        // DB work — and, if the local database is too thin to derive anything from, asks NSClient for
+        // a bounded 14-day re-download. Wrapped: a failure here must never stop auto-config, which in
+        // turn is already wrapped so it can never stop the dose path.
+        runCatching { maybeBackfillHistory(now, daysWithTdd = daysWithData, bgReadings = n, treatments = boluses.size) }
+            .onFailure { aapsLogger.error(LTag.APS, "BoostV5 history-gap check failed (non-fatal)", it) }
+
         val suggestion = BoostV5AutoConfig.compute(
             BoostV5AutoConfig.V1Profile(
                 daysWithData = daysWithData, bgReadingCount = n, tddMedianU = tddMedian,
@@ -368,6 +379,69 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
                 "Boost V6 set ${applied.size} setting(s) from your last 14 days (your other settings were kept):\n$pretty",
                 Notification.INFO
             )
+        }
+    }
+
+    /**
+     * Install-time history gap → bounded Nightscout backfill (2026-07-30). See [BoostHistorySync] for
+     * the rationale and the policy; this method is only the plumbing around it.
+     *
+     * Called from inside [maybeAutoConfigure] with the counts that path already gathered, so it costs
+     * no extra database work and inherits the same "resolved → never runs again" steady state.
+     *
+     * WHAT IT DOES NOT DO: it never fetches anything itself. AAPS already owns a complete, tested
+     * Nightscout ingest — NSClientV3's first-load worker chain, with per-record deduplication on
+     * nightscoutId / pumpId / timestamp in the SyncNs* transactions. All this does is ask that
+     * machinery, through [NsClient.requestHistoryBackfill], to rewind its DOWNLOAD cursor 14 days.
+     * The request is non-blocking: NSClient performs the fetch on its own handler/WorkManager threads.
+     *
+     * Nothing here touches dosing. On a phone with adequate history it does not even write a
+     * preference.
+     */
+    private fun maybeBackfillHistory(now: Long, daysWithTdd: Int, bgReadings: Int, treatments: Int) {
+        val history = BoostHistorySync.History(daysWithTdd = daysWithTdd, bgReadings = bgReadings, treatments = treatments)
+        val state = BoostHistorySync.State(
+            attempts = preferences.get(IntNonKey.ApsBoostHistorySyncAttempts),
+            lastAttemptMs = preferences.get(LongNonKey.ApsBoostHistorySyncLastAttemptMs),
+            preBgReadings = preferences.get(IntNonKey.ApsBoostHistorySyncPreBg),
+            preTreatments = preferences.get(IntNonKey.ApsBoostHistorySyncPreTreatments)
+        )
+        // "Available" = an NsClient plugin is enabled AND has a site configured. It deliberately says
+        // nothing about connectivity — that is NSClient's problem, and a failed fetch simply leaves
+        // the history short, which is the state we were already in.
+        val nsClient = activePlugin.activeNsClient
+        val nsAvailable = nsClient != null && nsClient.address.isNotBlank()
+
+        var decision = BoostHistorySync.decide(history, nsAvailable, now, dateUtil.toISOString(now), state)
+
+        if (decision.requestBackfill) {
+            val from = now - BoostHistorySync.BACKFILL_DAYS * 24L * 60 * 60 * 1000
+            val accepted = try {
+                nsClient?.requestHistoryBackfill(from) == true
+            } catch (t: Throwable) {
+                aapsLogger.error(LTag.APS, "BoostV5 history backfill request threw (non-fatal)", t)
+                false
+            }
+            if (!accepted) {
+                // Paused, not started, or an NSClient version that does not support it. Do not burn an
+                // attempt on a request that was never made — only move the cooldown clock on.
+                decision = BoostHistorySync.Decision(
+                    requestBackfill = false,
+                    summary = "skipped:ns-declined,${BoostHistorySync.shortfall(history)}@${dateUtil.toISOString(now)}",
+                    newState = state.copy(lastAttemptMs = now)
+                )
+            }
+        }
+
+        decision.newState?.let {
+            preferences.put(IntNonKey.ApsBoostHistorySyncAttempts, it.attempts)
+            preferences.put(LongNonKey.ApsBoostHistorySyncLastAttemptMs, it.lastAttemptMs)
+            preferences.put(IntNonKey.ApsBoostHistorySyncPreBg, it.preBgReadings)
+            preferences.put(IntNonKey.ApsBoostHistorySyncPreTreatments, it.preTreatments)
+        }
+        decision.summary?.let {
+            preferences.put(StringKey.ApsBoostHistorySyncSummary, it)
+            aapsLogger.info(LTag.APS, "BoostV5 history sync: $it")
         }
     }
 

@@ -121,4 +121,13 @@ enum class StringKey(
     // could see what the settings BECAME but never whether auto-config applied them, held them back
     // on the TBR guard, or declined for insufficient history. Display-only; never read for dosing.
     ApsBoostV5AutoConfigSummary("boost_v5_autoconfig_summary", "", defaultedBySM = true),
+
+    // 2026-07-30 install-time history-gap OUTCOME breadcrumb, same contract as the auto-config
+    // summary above: written by the V6 onboarding path, replayed into [reason] every cycle.
+    // WHY: the same fresh-database migration that broke dynamic ISF (see tddImplausibleForProfile)
+    // is invisible remotely — a phone with two days of local history looks exactly like a phone with
+    // two hundred. This records whether Boost noticed the gap, whether it asked NSClient for a
+    // bounded 14-day backfill, and what the backfill actually recovered.
+    // Display-only; never read for dosing.
+    ApsBoostHistorySyncSummary("boost_history_sync_summary", "", defaultedBySM = true),
 }

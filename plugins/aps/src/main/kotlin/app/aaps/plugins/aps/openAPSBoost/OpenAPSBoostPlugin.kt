@@ -2021,6 +2021,11 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 preferences.get(StringKey.ApsBoostV5AutoConfigSummary).let { acs ->
                     if (acs.isNotEmpty()) it.reason.append("autocfg=$acs; ")
                 }
+                // 2026-07-30 install-time history-gap breadcrumb, same contract (see BoostHistorySync).
+                // Empty = adequate local history, so nothing to say — the common case writes nothing.
+                preferences.get(StringKey.ApsBoostHistorySyncSummary).let { hss ->
+                    if (hss.isNotEmpty()) it.reason.append("histsync=$hss; ")
+                }
                 it.reason.append("sleep=${sleepResult.newState.state}")
                 if (agg.sleepStartMinAvg != null) {
                     it.reason.append(" learned=${formatClockMin(agg.sleepStartMinAvg!!)}→${formatClockMin(agg.wakeMinAvg ?: 0)}/${agg.sessionCount}d")
