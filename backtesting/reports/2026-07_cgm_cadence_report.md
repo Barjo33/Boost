@@ -375,9 +375,57 @@ be greatest at the shortest horizon, where recent detail is most informative, an
 diminish as the horizon lengthened. Neither event behaves in that manner. The differences
 track the difficulty of the respective periods.
 
+### Meal climbs
+
+Climbs were defined as a rise of at least 40 mg/dl from a local trough within 90 minutes.
+The five-minute record contained 318 such episodes (3.83 per day, median rise 44 mg/dl,
+median time to peak 90 minutes) and the one-minute record 318 (4.64 per day, 41 mg/dl, 90
+minutes).
+
+Two tasks were posed. The first asks, from a state in which glucose is not currently rising,
+whether a climb will begin within the next H minutes. This is anticipation proper, since the
+model must fire before the rise is visible. The second asks, once a climb is under way,
+whether it will peak within the next H minutes. Both models were trained only on this
+subject's own data and are therefore personalised in the fullest sense available.
+
+Table 6. Prediction of climb onset and of climb peak.
+
+| Task | Horizon (min) | Record | Base rate | AUC (95% CI) | Lift |
+|---|---|---|---|---|---|
+| onset | 10 | 5-min | 2.98% | 0.6741 (0.6415 to 0.7074) | 2.42 |
+| onset | 10 | 1-min | 4.28% | 0.6535 (0.6236 to 0.6817) | 2.32 |
+| onset | 15 | 5-min | 4.08% | 0.6662 (0.6329 to 0.6964) | 2.30 |
+| onset | 15 | 1-min | 6.01% | 0.6269 (0.5959 to 0.6571) | 2.04 |
+| onset | 20 | 5-min | 5.20% | 0.6587 (0.6283 to 0.6872) | 2.26 |
+| onset | 20 | 1-min | 7.53% | 0.6188 (0.5893 to 0.6456) | 1.84 |
+| onset | 30 | 5-min | 7.23% | 0.6334 (0.6064 to 0.6611) | 1.84 |
+| onset | 30 | 1-min | 10.61% | 0.6107 (0.5859 to 0.6382) | 1.76 |
+| peak | 10 | 5-min | 9.37% | 0.8982 (0.8837 to 0.9121) | 5.09 |
+| peak | 10 | 1-min | 12.20% | 0.8821 (0.8688 to 0.8975) | 4.21 |
+| peak | 15 | 5-min | 15.40% | 0.8981 (0.8822 to 0.9135) | 4.29 |
+| peak | 15 | 1-min | 18.46% | 0.8750 (0.8609 to 0.8920) | 3.64 |
+| peak | 20 | 5-min | 21.61% | 0.8922 (0.8715 to 0.9094) | 3.59 |
+| peak | 20 | 1-min | 24.66% | 0.8703 (0.8551 to 0.8875) | 3.19 |
+| peak | 30 | 5-min | 33.75% | 0.8827 (0.8621 to 0.8979) | 2.64 |
+| peak | 30 | 1-min | 37.00% | 0.8594 (0.8457 to 0.8772) | 2.43 |
+
+Onset carries a modest but genuine signal at both rates, with areas under the curve between
+0.61 and 0.67 against 0.5 for chance. It is not a strong signal. At the ten-minute horizon
+on the five-minute record the highest decile of predicted risk contains 2.42 times the base
+rate of 2.98%, which is a precision of approximately 7%.
+
+The approach of the peak is considerably more predictable, with areas under the curve near
+0.88 to 0.90 at the ten-minute horizon. This is unsurprising, since the flattening that
+precedes a peak is directly observable in the rate of change.
+
+For neither task did the faster record perform better. The difference in area under the
+curve favoured the five-minute record at every horizon of both tasks, by between 0.016 and
+0.040, with overlapping intervals throughout. Sampling rate is not the constraint on
+anticipation.
+
 ### Reporting delay
 
-Table 6. Delay from threshold crossing to the next reported sample.
+Table 7. Delay from threshold crossing to the next reported sample.
 
 | Crossing | Five-minute record | One-minute record | Difference |
 |---|---|---|---|
@@ -483,6 +531,7 @@ glucose monitoring on calculating the metrics of glycemic control. J Diabetes Sc
 04_events.py           event prediction, AUC and lift
 05_reporting_delay.py  delay from an interpolated crossing to the next reported sample
 06_acceleration.py     point-to-point acceleration, scale dependence, predictive value
+07_meal_climbs.py      prediction of climb onset and of climb peak
 08_report.py           regenerates this document from results/*.json
 09_style_check.py      house-style gate on the generated document
 ```
