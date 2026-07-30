@@ -105,7 +105,14 @@ internal object BoostV5AutoConfigApply {
     val doseCapKeys: Set<DoubleKey> = setOf(
         DoubleKey.ApsBoostV5ConfirmedCapU,
         DoubleKey.ApsBoostV5CommittedCapU,
-        DoubleKey.ApsBoostCumulativeSmbCap60Min
+        DoubleKey.ApsBoostCumulativeSmbCap60Min,
+        // 2026-07-30 ADDED. Previously excluded on the argument that delivery routing was the safety
+        // differentiator (hypo-prone users route to a retractable temp basal). That argument no longer
+        // holds on its own: both live primer users had overridden to bolus mode. And the clamp is now
+        // self-scaling to committedCapU, so a derived value can reach ~1.9U where it was cut at 0.9 —
+        // roughly double. The raise-guard only ever blocks an INCREASE while the 14d TBR floors are
+        // breached; it never blocks a reduction, so adding it is strictly safe-signed.
+        DoubleKey.ApsBoostV5PrimerCapU
     )
 
     /** The double-valued V5 knobs auto-config manages (stable order). */
@@ -117,7 +124,7 @@ internal object BoostV5AutoConfigApply {
         DoubleKey.ApsBoostCumulativeSmbCap60Min,
         DoubleKey.ApsBoostMaxIob,
         DoubleKey.ApsBoostBolus,
-        DoubleKey.ApsBoostV5PrimerCapU   // 2026-07-20 — NOT in doseCapKeys (routing is the safety, see BoostV5AutoConfig)
+        DoubleKey.ApsBoostV5PrimerCapU   // 2026-07-30 — now IN doseCapKeys (TBR raise-guarded); see above
     )
 
     /** [managedDoubleKeys] paired with their suggested values (same stable order). */
@@ -238,9 +245,15 @@ internal object BoostV5AutoConfigApply {
         )
         resolve(DoubleKey.ApsBoostMaxIob, suggestion.maxIobU)
         resolve(DoubleKey.ApsBoostBolus, suggestion.bolusCapU)
-        // 2026-07-20 V1-acceleration primer cap. NOT in doseCapKeys, so the raise-guard does not block
-        // it — the bolus-vs-temp-basal routing is the safety differentiator, and a tbr-routed
-        // (non-well-controlled) user still needs a non-zero cap to size the retractable temp-basal.
+        // 2026-07-20 V1-acceleration primer cap. 2026-07-30: NOW IN doseCapKeys, so the raise-guard
+        // DOES gate it (see the doseCapKeys comment for why the routing argument no longer stands alone).
+        // KNOWN CONSEQUENCE: for a user whose stored value is still at the 0.0 factory default AND whose
+        // 14-day TBR is breached, derived > current is a RAISE, so the cap is withheld and marked
+        // resolved — i.e. the primer is never provisioned for them, including the retractable temp-basal
+        // route that the original design intended as their SAFE path. That is consistent with the
+        // convention that insulin-adding knobs are for well-controlled users only, and consistent with
+        // how every other dose cap behaves, but it does mean a hypo-prone user gets no primer at all
+        // rather than a small retractable one. Revisit if that trade is not wanted.
         resolve(DoubleKey.ApsBoostV5PrimerCapU, suggestion.primerCapU)
         return resolutions
     }
