@@ -32,6 +32,7 @@ import app.aaps.core.keys.BooleanComposedKey
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntNonKey
+import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.aps.getBoostDosing
@@ -288,6 +289,14 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         if (suggestion == null) {
             // Nothing resolves here: every open knob stays eligible and genuinely retries next cycle.
             aapsLogger.info(LTag.APS, "BoostV5 auto-config: insufficient V1 history (days=$daysWithData, bg=$n) — will retry")
+            // Record it: this is the case a fresh install / cross-fork migration lands in, and it was
+            // previously invisible outside the device log. A user on factory caps was indistinguishable
+            // from a user whose factory caps had been deliberately derived.
+            preferences.put(
+                StringKey.ApsBoostV5AutoConfigSummary,
+                "declined:insufficient-history(days=$daysWithData/${BoostV5AutoConfig.MIN_DAYS}," +
+                    "bg=$n/${BoostV5AutoConfig.MIN_BG_READINGS})@${dateUtil.toISOString(now)}"
+            )
             return
         }
 
@@ -341,6 +350,17 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
                 "${shortName(it.key)}: suggested ${it.suggestedValue} U from your history — not auto-applied because " +
                     "$why; set manually in Advanced if desired"
             }
+        // Compact outcome breadcrumb for the reason string (and hence Nightscout + the DB). Counts
+        // plus the held-back keys, which are the actionable part: a held raise is a suggestion the
+        // user never sees again once the notification is dismissed.
+        val keptCount = resolutions.count { it.outcome == BoostV5AutoConfigApply.Outcome.KEPT_USER_TUNED }
+        val heldDetail = resolutions.filter { it.outcome == BoostV5AutoConfigApply.Outcome.SUGGESTED_NOT_APPLIED_TBR }
+            .joinToString("|") { "${shortName(it.key)}:${it.suggestedValue}" }
+        preferences.put(
+            StringKey.ApsBoostV5AutoConfigSummary,
+            "applied=${applied.size},heldTBR=${heldSuggestions.size},keptUser=$keptCount" +
+                "@${dateUtil.toISOString(now)}" + if (heldDetail.isNotEmpty()) ",held=$heldDetail" else ""
+        )
         if (applied.isNotEmpty() || heldSuggestions.isNotEmpty()) {
             val pretty = (applied + heldSuggestions).joinToString("\n") { "• $it" }
             uiInteraction.addNotification(

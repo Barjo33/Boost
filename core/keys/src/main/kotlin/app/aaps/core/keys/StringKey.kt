@@ -113,4 +113,12 @@ enum class StringKey(
     // the phone-local rollover — the 07-06 5.6x undercount). Persisted so a mid-evening app
     // restart keeps the day's peak. Empty/corrupt -> fresh bank (one day's history at risk, safe).
     ApsBoostIntradayStepBank("boost_intraday_step_bank", "", defaultedBySM = true),
+    // 2026-07-30 auto-config OUTCOME breadcrumb. A compact one-line record of what
+    // BoostV5AutoConfig last did — applied/held/kept counts, or why it declined — written at each
+    // exit of the onboarding path and replayed into [reason] every cycle so it reaches Nightscout.
+    // WHY: auto-config's decisions previously existed ONLY in the transient in-app notification and
+    // the device log. Verified 0 of 732,556 boost_decisions rows carried any trace, so remotely you
+    // could see what the settings BECAME but never whether auto-config applied them, held them back
+    // on the TBR guard, or declined for insufficient history. Display-only; never read for dosing.
+    ApsBoostV5AutoConfigSummary("boost_v5_autoconfig_summary", "", defaultedBySM = true),
 }

@@ -98,6 +98,31 @@ import kotlin.math.min
 import app.aaps.plugins.aps.openAPSBoostV5.MealHypothesis
 
 @Singleton
+/**
+ * 2026-07-30 implausible-TDD guard for dynamic ISF. Minimum blended TDD, as a fraction of the TDD the
+ * user's own profile ISF implies via the 1800 rule (profileISF ~= 1800/TDD). Below this the insulin
+ * history is treated as incomplete and dynamic ISF is NOT derived — the profile ISF is used instead.
+ *
+ * 0.35 is deliberately liberal. The fallback direction is safe (profileSens is the user's configured
+ * value), so a false positive costs one cycle of dynamic responsiveness and nothing else, whereas a
+ * false NEGATIVE paralyses dosing: the field case that motivated this had TDD at 0.22 of implied and
+ * ran ~88x profile ISF, delivering nothing for 3.5 h. Every activation is logged (LTag.APS) and lands
+ * in consoleError, so the true false-positive rate is auditable across the cohort before tightening.
+ */
+private const val DYNISF_MIN_TDD_FRACTION = 0.35
+
+/**
+ * True when [tdd] is too low to be believed given what [profileSens] implies, so dynamic ISF must NOT
+ * be derived from it. Extracted as a pure function so the guard is unit-testable independently of the
+ * plugin's DI graph. Returns false when [profileSens] is non-positive (no reference to judge against —
+ * fail OPEN there, because the existing `tdd > 0` check still applies downstream).
+ */
+internal fun tddImplausibleForProfile(tdd: Double, profileSens: Double): Boolean {
+    if (profileSens <= 0.0) return false
+    val impliedTdd = 1800.0 / profileSens
+    return tdd < impliedTdd * DYNISF_MIN_TDD_FRACTION
+}
+
 open class OpenAPSBoostPlugin @Inject constructor(
     aapsLogger: AAPSLogger,
     private val aapsSchedulers: AapsSchedulers,
@@ -485,7 +510,38 @@ open class OpenAPSBoostPlugin @Inject constructor(
 
                 // Safety: TDD must be positive and produce a sane ISF
                 val logTerm = ln((bgNormalTarget / insulinDivisor) + 1.0)
-                if (tdd > 0 && logTerm > 0) {
+                // 2026-07-30 IMPLAUSIBLE-TDD GUARD. The old condition was `tdd > 0` only, and the
+                // comment above claimed it ensured "a sane ISF" — it did not. A TDD of 0.1 U/day
+                // passes, and 1800/(tdd × logTerm) then explodes. Observed in the field on a
+                // cross-fork migration: a fresh AAPS database reported TDD 3.1–4.1 U/day against a
+                // true ~20, dynamic ISF reached 5550–8944 mg/dL/U against a profile ISF of 100
+                // (~88×), insulinReq computed at or below zero, and the loop delivered NOTHING for
+                // 3.5 h while BG climbed to 276 — 19 consecutive zero temp basals, no lows, no alarm.
+                //
+                // The floor is anchored on the profile's OWN implied TDD via the 1800 rule
+                // (profileISF ≈ 1800/TDD), so it is self-scaling per user and needs no magic ISF
+                // multiplier: a U200 user, a child and a high-TDD adult are all handled by their own
+                // profile. Falling back is SAFE-SIGNED — profileSens is the value the user/clinician
+                // configured, so a false positive costs dynamic responsiveness for that cycle and
+                // nothing else, which is why the fraction is set liberally rather than tightly.
+                val impliedTdd = if (profileSens > 0) 1800.0 / profileSens else 0.0
+                val tddImplausible = tddImplausibleForProfile(tdd, profileSens)
+                if (tddImplausible) {
+                    // Leave sensNormalTarget at profileSens (its initial value) — do NOT derive.
+                    debug.append(
+                        "\n⚠ dynISF=PROFILE-FALLBACK: TDD ${Round.roundTo(tdd, 0.1)} U/day is below " +
+                            "${Round.roundTo(impliedTdd * DYNISF_MIN_TDD_FRACTION, 0.1)} " +
+                            "(${(DYNISF_MIN_TDD_FRACTION * 100).toInt()}% of the ${Round.roundTo(impliedTdd, 0.1)} " +
+                            "implied by profile ISF ${Round.roundTo(profileSens, 0.1)}) — insulin history looks " +
+                            "incomplete; using profile ISF instead of a derived one this cycle"
+                    )
+                    aapsLogger.info(
+                        LTag.APS,
+                        "Boost dynISF profile-fallback: tdd=${Round.roundTo(tdd, 0.1)} < " +
+                            "${Round.roundTo(impliedTdd * DYNISF_MIN_TDD_FRACTION, 0.1)} implied-floor; using profileSens=$profileSens"
+                    )
+                }
+                if (tdd > 0 && logTerm > 0 && !tddImplausible) {
                     sensNormalTarget = 1800.0 / (tdd * logTerm)
                     sensNormalTarget *= globalScale
                     debug.append("\nTDD ISF at target: ${Round.roundTo(sensNormalTarget, 0.1)} mg/dl/U (profile was ${Round.roundTo(profileSens, 0.1)})")
@@ -1958,6 +2014,13 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     )
                 }
 
+                // 2026-07-30 auto-config breadcrumb, replayed EVERY cycle so it reaches Nightscout and
+                // boost_decisions.reason_text. Written by the V5 onboarding path (see
+                // StringKey.ApsBoostV5AutoConfigSummary); read-only here. Empty = the onboarding path has
+                // not reached a decision yet on this install. Display-only, never consulted for dosing.
+                preferences.get(StringKey.ApsBoostV5AutoConfigSummary).let { acs ->
+                    if (acs.isNotEmpty()) it.reason.append("autocfg=$acs; ")
+                }
                 it.reason.append("sleep=${sleepResult.newState.state}")
                 if (agg.sleepStartMinAvg != null) {
                     it.reason.append(" learned=${formatClockMin(agg.sleepStartMinAvg!!)}→${formatClockMin(agg.wakeMinAvg ?: 0)}/${agg.sessionCount}d")
