@@ -34,28 +34,29 @@ sensors: 97.3 per cent of spectral power sits at periods longer than thirty-six 
 five minutes. Withheld minutes are recoverable from the five-minute subsequence to a
 root-mean-square error of 1.56 mg/dL, an order of magnitude below sensor accuracy. Rate of
 change is estimated *worse* from one-minute data than from the five-minute subsequence of
-the same record (root-mean-square error 3.717 against 3.465 mg/dL per five minutes,
-difference +0.252 [+0.220, +0.285]). Forward prediction improves by 0.065 mg/dL of
-root-mean-square error at thirty minutes on a baseline of 21.95, statistically
-distinguishable and practically nil. Mean glucose, coefficient of variation and time in
+the same record (root-mean-square error 3.973 against 3.619 mg/dL per five minutes,
+difference +0.353 [+0.278, +0.402]). Forward prediction shows no detectable difference at
+15, 30 or 60 minutes, every interval spanning zero. Mean glucose, coefficient of variation and time in
 range are unchanged to two decimal places. The residual after removing a twenty-one-minute
 trend has a standard deviation of 3.40 mg/dL with autoregressive order-two structure,
 closely matching the published sensor error model, and its spectral shape accounts for all
 observed content below a twenty-minute period without invoking any glucose dynamics at all.
-The one exception is event timing: at a matched false-alarm rate, a fall of 20 mg/dL within
-thirty minutes is detected a median of three to seven minutes sooner at one minute, with
-sensitivity 93 against 79 per cent. That gain is symmetric in direction — rises are detected
-earlier by the same margin as falls, to within a minute at every operating point — which is
-what a pure sampling-grid effect predicts and a signal-content effect does not.
+The one exception is event timing: at a matched false-alarm rate, and averaged over grid
+phase, a 20 mg/dL excursion is detected one to two minutes sooner at one minute, with no
+sensitivity difference. That is exactly the average wait imposed by a five-minute sampling
+grid and nothing beyond it, and it is symmetric in direction — rises are detected earlier by
+the same margin as falls — which is what a pure scheduling effect predicts and a
+signal-content effect does not.
 
 **Conclusion.** One-minute sampling adds essentially no new information about glucose,
 because there is no glucose information at those frequencies to add: a first-order
 blood-to-interstitial lag with a time constant near 3.8 minutes removes about 80 per cent of
 the amplitude of any five-minute-period oscillation before the sensor transduces it, and
-what remains is below the noise floor. What one-minute sampling does remove is up to five
-minutes of *reporting* delay. The benefit is latency, not bandwidth. That distinction
-predicts exactly which tasks improve — threshold crossings and event alarms — and which do
-not — rate estimation, forward prediction, and any summary statistic.
+what remains is below the noise floor. What one-minute sampling does remove is a median of two
+minutes of *reporting* delay. The benefit is latency, not bandwidth. Two minutes is usable by
+an alarm and by a person who can act on it at once; it is below the resolution of every
+automated actuator that might otherwise consume it, and smaller than one control cycle on 95
+per cent of occasions.
 
 ## 1. Introduction
 
@@ -85,7 +86,7 @@ The second is a claim about **latency**: that a system acting on a one-minute fe
 a given event sooner than one acting on a five-minute feed. This is true almost by
 definition and requires no new information at all. If a threshold is crossed at 12:03 and the
 next five-minute sample lands at 12:05, the five-minute consumer waits two minutes for news
-it could have had immediately. Averaged over arrival times the penalty is 2.5 minutes, and it
+it could have had immediately. Averaged over grid phase the penalty is two minutes, and it
 is a pure scheduling effect.
 
 These are separable questions with, as it turns out, opposite answers. The purpose of this
@@ -307,14 +308,14 @@ theoretical optimality gains. We report it for completeness and draw no inferenc
 
 Rate of change is the quantity most downstream consumers actually use. We estimated it
 causally at each cadence and scored both against a centred twenty-one-minute reference slope,
-on a common mask of 11,440 points where all estimators are defined. Note that the reference
+on a common mask of 80,046 points where all estimators are defined. Note that the reference
 is itself computed from the full one-minute record, which if anything favours the one-minute
 estimator.
 
 | Causal window | 1-min RMSE | 5-min RMSE | 1-min minus 5-min | Verdict |
 |---|---|---|---|---|
-| 15 min | 3.717 [3.507, 3.939] | 3.465 [3.273, 3.669] | **+0.252 [+0.220, +0.285]** | distinguishable |
-| 30 min | 4.270 [3.991, 4.558] | 3.908 [3.676, 4.152] | **+0.362 [+0.300, +0.433]** | distinguishable |
+| 15 min | 3.973 [3.771, 4.176] | 3.619 [3.424, 3.825] | **+0.353 [+0.278, +0.402]** | distinguishable |
+| 30 min | 4.505 [4.230, 4.782] | 4.262 [4.004, 4.522] | **+0.243 [+0.221, +0.264]** | distinguishable |
 
 Using five times as many samples over the same window produces a *worse* slope estimate, and
 the confidence intervals are nowhere near zero.
@@ -338,18 +339,20 @@ answer noisier, not sharper.
 We predicted glucose at three horizons from the current value and three causal slopes,
 computed at each cadence, with cross-validation grouped by day.
 
-| Horizon | 5-min features RMSE | 1-min features RMSE | Difference | Verdict |
+| Horizon | 5-min features RMSE | 1-min features RMSE | 1-min minus 5-min | Verdict |
 |---|---|---|---|---|
-| +15 min | 13.71 [12.75, 14.77] | 13.65 [12.68, 14.71] | −0.065 [−0.099, −0.032] | distinguishable |
-| +30 min | 21.95 [20.38, 23.60] | 21.88 [20.31, 23.53] | −0.068 [−0.112, −0.026] | distinguishable |
-| +60 min | 32.11 [29.97, 34.36] | 32.09 [29.95, 34.35] | −0.020 [−0.045, +0.004] | unproven |
+| +15 min | 13.73 | 13.76 | +0.031 [−0.073, +0.089] | unproven |
+| +30 min | 22.05 | 22.07 | +0.020 [−0.119, +0.097] | unproven |
+| +60 min | 32.19 | 32.20 | +0.009 [−0.048, +0.044] | unproven |
 
-The one-minute features win, and at fifteen and thirty minutes the win is statistically
-distinguishable from zero. It is also 0.3 per cent of the error. An improvement of 0.068
-mg/dL on a prediction that is wrong by 21.95 mg/dL is not a difference any consumer of the
-prediction can act on. This is a good illustration of why a confidence interval excluding
-zero is necessary but not sufficient: with 83,550 samples, tiny effects become detectable,
-and detectability is not importance.
+There is no detectable difference at any horizon. The point estimates marginally favour the
+five-minute features, but every interval spans zero and the magnitudes are hundredths of a
+milligram per decilitre against errors of 14 to 32. Faster sampling does not improve the
+forecast.
+
+We had previously reported a small but statistically distinguishable advantage to the
+one-minute features here. That result did not survive the correction described in section
+4.10 and should be disregarded.
 
 We had previously found the same shape on two more specific tasks: predicting the end of a
 carbohydrate rise gave an area under the curve of 0.482 [0.465, 0.500] at one minute against
@@ -435,28 +438,25 @@ Events are defined as a fall of at least 20 mg/dL completing within thirty minut
 event starts); quiet periods are starts whose maximum fall over the same horizon is below 40
 per cent of that (45,498 starts).
 
+Results are averaged over all five possible phases of the five-minute grid relative to the
+event, so that the slower consumer is neither helped nor penalised by where its samples
+happen to fall.
+
 | False-alarm rate | 1-min: threshold / lag / sensitivity | 5-min: threshold / lag / sensitivity | Latency gain |
 |---|---|---|---|
-| 2% | 7 mg/dL / 8.0 min / 93% | 7 mg/dL / 15.0 min / 79% | **+7.0 min** |
-| 5% | 7 / 8.0 / 93% | 6 / 15.0 / 80% | **+7.0 min** |
-| 10% | 6 / 7.0 / 93% | 4 / 10.0 / 81% | **+3.0 min** |
-| 20% | 4 / 6.0 / 94% | 2 / 10.0 / 82% | **+4.0 min** |
+| 2% | 8 mg/dL / 7.0 min / 100% | 7 mg/dL / 9.0 min / 100% | **+2.0 min** |
+| 5% | 7 / 6.0 / 100% | 6 / 8.0 / 100% | **+2.0 min** |
+| 10% | 6 / 5.0 / 100% | 5 / 7.0 / 100% | **+2.0 min** |
+| 20% | 5 / 5.0 / 100% | 4 / 6.0 / 100% | **+1.0 min** |
 
-For a 30 mg/dL fall the gains are +5.0, +6.0, +7.0 and +3.0 minutes at the same false-alarm
-rates. Sensitivity is consistently 12 to 14 percentage points higher at one minute, because a
-crossing that occurs and partially reverses between two five-minute samples is never seen at
-all.
+The gain is one to two minutes. There is no sensitivity difference: at these operating points
+both cadences eventually detect every event within the horizon.
 
-Separately, and using a fixed rather than a matched threshold, a 5 mg/dL fall is seen a
-median of 3.0 minutes sooner on 89 per cent of 5,961 sharp falls.
-
-This is a real and reasonably large effect, and it is the only one in the paper. It is worth
-being clear about its source. Nothing here contradicts sections 4.1 to 4.7: no new frequency
-content has appeared. The gain is that a five-minute consumer must wait for the next grid
-point, and the grid costs on average 2.5 minutes and up to 5. The remainder of the observed
-gain comes from the sensitivity difference — events that fully or partly resolve inside a
-five-minute interval are invisible to the slower feed, which is the same phenomenon Russon et
-al. measured as lost episodes at fifteen minutes.
+Two minutes is precisely what a pure scheduling effect predicts. A consumer whose samples
+arrive every five minutes waits, on average over grid phases, two minutes for news that a
+one-minute consumer has immediately. The measured gain is that number and nothing beyond it.
+Nothing here contradicts sections 4.1 to 4.7, and nothing here requires any new frequency
+content — the entire effect is the calendar, not the signal.
 
 ### 4.9 The latency gain is symmetric in direction
 
@@ -470,21 +470,16 @@ The two event classes are closely comparable to begin with: 16,242 rise starts a
 fall starts at the 20 mg/dL threshold, with median steepness 1.18 against 1.11 mg/dL per
 minute, and median times to reach the threshold of 17 and 18 minutes respectively.
 
-| Excursion | False-alarm rate | Fall: latency gain | Rise: latency gain | 1-min sensitivity, fall / rise |
-|---|---|---|---|---|
-| 20 mg/dL | 2% | +7.0 min | +6.0 min | 93% / 95% |
-| 20 mg/dL | 5% | +7.0 min | +6.0 min | 93% / 95% |
-| 20 mg/dL | 10% | +3.0 min | +2.0 min | 93% / 95% |
-| 20 mg/dL | 20% | +4.0 min | +4.0 min | 94% / 95% |
-| 30 mg/dL | 2% | +5.0 min | +5.0 min | 92% / 95% |
-| 30 mg/dL | 5% | +6.0 min | +6.0 min | 93% / 95% |
-| 30 mg/dL | 10% | +7.0 min | +7.0 min | 93% / 95% |
-| 30 mg/dL | 20% | +3.0 min | +3.0 min | 93% / 95% |
+| False-alarm rate | Fall: latency gain | Rise: latency gain |
+|---|---|---|
+| 2% | +2.0 min | +1.0 min |
+| 5% | +2.0 min | +1.0 min |
+| 10% | +2.0 min | +2.0 min |
+| 20% | +1.0 min | +2.0 min |
 
-The gains agree to within one minute at every operating point, and are identical at all four
-operating points for the larger excursion. Sensitivity at one minute is, if anything, very
-slightly higher for rises. The effect is symmetric, which is what a pure grid-delay
-explanation requires and what a signal-content explanation would not predict.
+The gains agree to within one minute at every operating point, and sensitivity is 100 per
+cent for both directions at both cadences. The effect is symmetric, which is what a pure
+grid-delay explanation requires and what a signal-content explanation would not predict.
 
 This matters for how the result should be used. An earlier analysis of ours examined falls
 only and concluded that the benefit of faster sensing accrues to withholding insulin rather
@@ -492,6 +487,32 @@ than to delivering it. At the level of the signal that conclusion is not support
 are as informative, as early, about a rise as about a fall. Any asymmetry in how a controller
 *acts* on the two is a decision about the asymmetry of clinical risk, not a property of what
 the sensor is able to tell it.
+
+### 4.10 A defect in an earlier version of this analysis, and its correction
+
+An earlier version of this paper reported a latency gain of three to seven minutes and a
+sensitivity advantage of twelve to fourteen percentage points, and a small but statistically
+distinguishable advantage to one-minute features in forward prediction. Those figures were
+wrong, and the reason is worth recording because the error is an easy one to make with this
+kind of data.
+
+The five-minute view was constructed by selecting samples whose offset from a reference
+satisfied `(t − t₀) mod 300000 ms = 0`. This sensor's timestamps jitter by one to four
+seconds — only 1.2 per cent of readings land on an exact minute — so that test finds a mean
+of 3.22 of the roughly seven grid points actually available in a thirty-minute window. The
+"five-minute feed" was therefore sampling at closer to ten minutes. Every comparison that
+favoured the faster cadence was inflated, and the apparent sensitivity deficit was an
+artefact of a slower consumer than the one being claimed.
+
+All cadence comparisons have been re-run selecting the five-minute view by index — every
+fifth reading of a roughly one-per-minute series, which is what a five-minute sensor
+delivers — and averaging detection results over all five grid phases. The corrected figures
+are those given above. The direction of the rate-of-change result is unchanged and its
+common mask grew from 11,440 to 80,046 points; the prediction advantage disappeared entirely;
+and the detection gain fell from three-to-seven minutes to one-to-two.
+
+The results in sections 4.1, 4.2, 4.3, 4.6 and 4.7 are unaffected, because those decimate by
+index already and never used the defective construction.
 
 ## 5. Why the nulls occur
 
@@ -544,35 +565,40 @@ rate of change, forward prediction, variability, time in range — improves mate
 rate of change measurably degrades if the raw feed is used without accounting for the noise
 correlation.
 
-**For latency, refining the interval is genuinely useful, but only for events.** Removing up
-to five minutes of grid delay is worth three to seven minutes on the detection of a
-clinically meaningful excursion in either direction, at matched false-alarm rate and with
-materially higher sensitivity. Anyone whose task is an estimate should not expect a benefit
-and should check that they have not incurred a cost.
+**For latency, refining the interval helps only event detection, and only by about two
+minutes.** Removing the grid wait is worth one to two minutes on the detection of a clinically
+meaningful excursion in either direction, at matched false-alarm rate and with no sensitivity
+advantage. Anyone whose task is an estimate should not expect a benefit and should check that
+they have not incurred a cost.
 
-**The gain is only usable by a response channel faster than the gain itself.** On this record
-there are 12.5 qualifying falls and 12.5 qualifying rises per day, of which 13 per cent and
-35 per cent respectively go on to cross 70 or 180. On those that do, a five-minute feed
-already provides a median of 25 minutes of warning before hypoglycaemia and 17 before
-hyperglycaemia; the one-minute feed extends these to 31 and 22, that is by +4.0 [+3.8, +6.0]
-and +3.0 [+3.0, +4.0] minutes, or 16 to 18 per cent. Glucose moves a median of 5 to 6 mg/dL
-during the delay.
+**Two minutes is smaller than every response channel it would have to drive.** On this record
+1.84 falls per day go on to cross 70 and 4.59 rises go on to cross 180. On those, a
+five-minute feed already provides a median of 25 minutes of warning before hypoglycaemia and
+19 before hyperglycaemia; the one-minute feed extends these to 27 and 20, a median of +2.0
+minutes, or roughly eight to ten per cent more warning.
 
-Set against that, the time constants of the available responses are mostly longer than the
-gain: rapid-acting insulin has an onset near 15 minutes and peaks at 60 to 90; a basal
-suspend acts through insulin-on-board decay over 30 minutes or more; oral glucose acts in 10
-to 15; a person reading an alarm acts immediately. Four minutes is a large fraction of the
-last of these and a small fraction of the first two. A controller that begins an insulin
-action four minutes earlier shifts a curve peaking 75 minutes later by roughly five per cent
-of its time to peak, worth on the order of the 6 mg/dL that glucose moves in the interval.
+Set against that, the available responses are all slower: rapid-acting insulin has an onset
+near 15 minutes and peaks at 60 to 90; a basal suspend acts through insulin-on-board decay
+over 30 minutes or more; oral glucose acts in 10 to 15; a person reading an alarm acts
+immediately. Two minutes is a small fraction of every one of these except the last.
 
-The practical division is therefore between alerting and actuation rather than between rising
-and falling. The benefit accrues to the alarm and to fast responses, and very little of it to
-insulin dosing, whose actuator is an order of magnitude slower than the latency recovered.
-The exception worth noting is the tail: on 8 per cent of hypoglycaemia-bound falls a
-five-minute feed supplies less than five minutes of warning, and 27 per cent less than
-fifteen, and in that regime the same four minutes roughly doubles the available response
-window. Whether acting on it improves outcomes is not established by anything here.
+For an automated system the position is sharper still, because a controller re-decides on a
+cycle. A gain smaller than one cycle changes nothing at all: the decision lands in the same
+epoch either way. The gain exceeds one five-minute cycle on 5.2 per cent of hypoglycaemia-
+bound episode-phases and 7.7 per cent of hyperglycaemia-bound ones, which is 0.09 and 0.20
+occasions per day on which a five-minute controller would have acted one epoch earlier — and
+one epoch earlier on an actuator whose onset is 15 to 30 minutes.
+
+Cases where the slower feed gives no usable warning at all are correspondingly rare. Before
+hypoglycaemia, 7.1 per cent of five-minute episode-phases produce no warning against 4.0 per
+cent at one minute, a net 3.8 episodes over 68 days, or one per 18 days. Before
+hyperglycaemia the same comparison is 43.9 against 37.4 per cent, a net 20.2 episodes or one
+per 3 days, though a warning of a rise above 180 is a lower-stakes thing to gain.
+
+The honest summary is that the one measurable benefit of one-minute sampling is a two-minute
+reduction in reporting delay, that this is worth something to an alarm and to a person who
+can act immediately, and that it is below the resolution of every automated actuator that
+would otherwise consume it.
 
 **The benefit does not favour one direction.** Rises are detected earlier by the same margin
 as falls, to within a minute at every operating point. A system that uses a faster feed to
@@ -627,13 +653,19 @@ minutes, withheld minutes are recoverable from a five-minute subsequence to 1.56
 of change is estimated worse rather than better, forward prediction improves by three-tenths
 of one per cent, and standard metrics do not move at all.
 
-The one thing faster sampling reliably delivers is time. A five-minute consumer waits for the
-next grid point, and misses excursions that resolve between points. Removing that delay is
-worth three to seven minutes on the detection of a 20 mg/dL fall, with sensitivity 93 against
-79 per cent, at a matched false-alarm rate — and the same three to seven minutes on a rise of
-the same size. That symmetry is the strongest single piece of evidence for the interpretation
-offered here, because a grid effect must be direction-blind and an information effect need
-not be.
+The one thing faster sampling reliably delivers is time, and not much of it. A five-minute
+consumer waits an average of two minutes for the next grid point, and removing that wait is
+worth one to two minutes on the detection of a 20 mg/dL excursion at a matched false-alarm
+rate, in either direction and with no sensitivity advantage. That the gain is exactly the
+average grid wait, and that it is direction-blind, are together the strongest evidence for
+the interpretation offered here: a scheduling effect must behave this way and an information
+effect need not.
+
+Whether two minutes is worth having depends entirely on what consumes it. It is real for an
+alarm and for a person who can act immediately. It is below the resolution of insulin, whose
+onset is 15 minutes and whose peak is an hour or more, and smaller than one control cycle on
+95 per cent of occasions, so an automated system will usually take the same decision in the
+same epoch whichever feed it is given.
 
 One-minute sampling buys latency, not bandwidth. That single sentence predicts which
 downstream tasks will improve and which will not, and every result above is consistent with
@@ -670,8 +702,12 @@ results in this paper are produced by:
   attenuation, AR(2) noise attribution
 - `13_rise_vs_fall_symmetry.py` — the matched-false-alarm detection design run on rises and
   falls side by side
-- `14_what_is_the_latency_worth.py` — episode rates, glucose moved during the delay, and
-  warning time before a clinical threshold at each cadence
+- `14_what_is_the_latency_worth.py`, `15_actionability.py`, `16_actionability_challenge.py` —
+  superseded; retained because 16 is the challenge that exposed the defect in section 4.10
+- `17_corrected_cadence_tests.py` — rate, prediction and detection re-run with an index-based
+  five-minute view and phase averaging
+- `18_actionability_corrected.py` — warning time, decision-change counts and control-cycle
+  comparison on the corrected construction
 
 Scripts `01`–`09` are the earlier implementation-specific study and are retained for the
 provenance checks and the earlier prediction results cited in section 4.5.
