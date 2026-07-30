@@ -336,12 +336,12 @@ class BoostV5AutoConfigTest {
             .isEqualTo(BoostV5AutoConfigApply.Outcome.SUGGESTED_NOT_APPLIED_TBR)
     }
 
-    @Test fun `hypo-prone user gets the primer TBR lock, well-controlled does not`() {
+    @Test fun `hypo-prone user is RECOMMENDED temp-basal routing, well-controlled gets bolus`() {
+        // Auto-config only sets the routing DEFAULT. It must never be a lockout — the user override
+        // (ApsBoostV5PrimerBolusMode) always wins at the delivery seam.
         val hypoProne = BoostV5AutoConfig.compute(profile(tbr70 = 8.0, sev54 = 2.0))!!
-        assertThat(hypoProne.primerTbrLock).isTrue()
         assertThat(hypoProne.primerTbrFallback).isTrue()
         val wellControlled = BoostV5AutoConfig.compute(profile(tbr70 = 0.5, sev54 = 0.1))!!
-        assertThat(wellControlled.primerTbrLock).isFalse()
         assertThat(wellControlled.primerTbrFallback).isFalse()
     }
 

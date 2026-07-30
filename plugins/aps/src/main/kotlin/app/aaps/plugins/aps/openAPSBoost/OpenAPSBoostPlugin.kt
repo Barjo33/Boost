@@ -1702,8 +1702,18 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     } else {
                         // Bolus mode: already folded into the SMB above (finalDose) + exempted from the
                         // non-meal cap. Just log the reclaimed early insulin.
-                        it.reason.append("primer=bolus,${Round.roundTo(v5decision.primerBolusU, 0.001)}U; ")
-                        aapsLogger.info(LTag.APS, "V6 primer (bolus): ${v5decision.primerBolusU}U folded into SMB")
+                        // 2026-07-30: if auto-config RECOMMENDED the retractable temp-basal route and the
+                        // user has overridden it to a bolus, say so in the reason. The override is always
+                        // honoured — auto-config never makes a setting unreachable — but an overridden
+                        // routing must be VISIBLE in the data, because it is the difference between a
+                        // primer the loop can unwind and one it cannot. Both live primer users had
+                        // silently overridden, which is why the 2026-07-29 incident could not be undone.
+                        val routeOverridden = preferences.getBoostDosing(BooleanKey.ApsBoostV5PrimerTbrFallback) &&
+                            preferences.getBoostDosing(BooleanKey.ApsBoostV5PrimerBolusMode)
+                        it.reason.append("primer=bolus,${Round.roundTo(v5decision.primerBolusU, 0.001)}U" +
+                            (if (routeOverridden) ";primerRoute=bolus-USER-OVERRIDE(recommended=tbr)" else "") + "; ")
+                        aapsLogger.info(LTag.APS, "V6 primer (bolus): ${v5decision.primerBolusU}U folded into SMB" +
+                            if (routeOverridden) " [user override of recommended temp-basal routing]" else "")
                     }
                 }
                 // 2026-07-30 primer sizing telemetry. Emitted whenever the primer GATE opened — including

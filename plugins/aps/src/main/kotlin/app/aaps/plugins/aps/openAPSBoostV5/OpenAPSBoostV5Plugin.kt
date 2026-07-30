@@ -163,7 +163,6 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         BooleanKey.ApsBoostV5AggressiveEarlyConfirm,
         BooleanKey.ApsBoostV5VelocityBudgetActive,
         BooleanKey.ApsBoostV5PrimerTbrFallback,   // 2026-07-20 primer routing (NOT the user override, which is unmanaged)
-        BooleanKey.ApsBoostV5PrimerTbrLock,       // 2026-07-30 hypo-prone: routing locked against the override
     )
 
     private fun suggestionBoolean(s: BoostV5AutoConfig.V5Suggestion, key: BooleanKey): Boolean = when (key) {
@@ -171,7 +170,6 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         BooleanKey.ApsBoostV5AggressiveEarlyConfirm  -> s.aggressiveEarlyConfirm
         BooleanKey.ApsBoostV5VelocityBudgetActive    -> s.velocityBudgetFloor
         BooleanKey.ApsBoostV5PrimerTbrFallback       -> s.primerTbrFallback
-        BooleanKey.ApsBoostV5PrimerTbrLock           -> s.primerTbrLock
         else                                         -> key.defaultValue
     }
 
@@ -612,11 +610,12 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             // 2026-07-20 V1-acceleration primer (LIVE). Mode = auto-config's temp-basal routing UNLESS
             // the user override (ApsBoostV5PrimerBolusMode) forces the bolus. Only active while V6 doses.
             primerCapU = if (activeMode) preferences.getBoostDosing(DoubleKey.ApsBoostV5PrimerCapU) else 0.0,
-            // 2026-07-30: the TBR LOCK wins outright. For a hypo-prone user the retractable temp basal
-            // IS the safety, so ApsBoostV5PrimerBolusMode must not be able to convert it to a bolus.
-            primerUseTempBasal = preferences.getBoostDosing(BooleanKey.ApsBoostV5PrimerTbrLock) ||
-                (preferences.getBoostDosing(BooleanKey.ApsBoostV5PrimerTbrFallback) &&
-                    !preferences.getBoostDosing(BooleanKey.ApsBoostV5PrimerBolusMode)),
+            // 2026-07-30: the USER OVERRIDE ALWAYS WINS. A brief attempt to hard-lock hypo-prone users
+            // to the temp basal was reverted: auto-config may recommend a routing, it may never make a
+            // setting unreachable. The safety response to an override is to make it VISIBLE (see the
+            // primerRoute breadcrumb at the delivery seam), not to block it.
+            primerUseTempBasal = preferences.getBoostDosing(BooleanKey.ApsBoostV5PrimerTbrFallback) &&
+                !preferences.getBoostDosing(BooleanKey.ApsBoostV5PrimerBolusMode),
             nowMs = dateUtil.now(),   // 2026-07-21 wall-clock for the primer-IOB accumulator decay
         )
     }

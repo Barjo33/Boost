@@ -98,8 +98,6 @@ object BoostV5AutoConfig {
         // 2026-07-20 V1-acceleration primer: per-user fizzle-safe base (0 = off) + delivery routing.
         val primerCapU: Double,
         val primerTbrFallback: Boolean,
-        /** 2026-07-30: hypo-prone → temp-basal delivery is LOCKED (the bolus override cannot undo it). */
-        val primerTbrLock: Boolean,
         val rationale: List<String>
     )
 
@@ -202,11 +200,7 @@ object BoostV5AutoConfig {
         // so the primer cap is NOT raise-guarded — the delivery routing is the safety differentiator.
         // A user can force the bolus via ApsBoostV5PrimerBolusMode (the override).
         val primerTbrFallback = !wellControlled
-        // 2026-07-30: for a HYPO-PRONE user the temp-basal routing is not a default to be overridden,
-        // it is the condition under which the primer is safe for them at all. Lock it: they still get a
-        // provisioned cap (the temp basal needs a size), but delivery cannot be switched to a bolus.
-        val primerTbrLock = hypoProne
-        reasons += "Primer ceiling ${primerCapU}U ${if (primerTbrFallback) "via retractable temp-basal${if (primerTbrLock) " (LOCKED — hypo-prone; bolus override disabled)" else " (override-able to bolus)"}" else "as bolus (well-controlled)"} — reclaims V1's earlier acceleration response. This is now a CEILING paid only on a confirm-strength rise (delta≥${PRIMER_DELTA_MIN.toInt()} to fire, full at ≥${PRIMER_DELTA_FULL.toInt()} mg/dL/5min) and scaled down by BG room and IOB headroom; the old acceleration multiplier is removed because it paid most on flat traces"
+        reasons += "Primer ceiling ${primerCapU}U ${if (primerTbrFallback) "via retractable temp-basal (recommended; override-able to bolus)" else "as bolus (well-controlled)"} — reclaims V1's earlier acceleration response. This is now a CEILING paid only on a confirm-strength rise (delta≥${PRIMER_DELTA_MIN.toInt()} to fire, full at ≥${PRIMER_DELTA_FULL.toInt()} mg/dL/5min) and scaled down by BG room and IOB headroom; the old acceleration multiplier is removed because it paid most on flat traces"
 
         return V5Suggestion(
             aggression = aggression, hypoCaution = hypoCaution,
@@ -218,7 +212,6 @@ object BoostV5AutoConfig {
             velocityBudgetFloor = velocityBudgetFloor,
             primerCapU = primerCapU,
             primerTbrFallback = primerTbrFallback,
-            primerTbrLock = primerTbrLock,
             rationale = reasons
         )
     }
