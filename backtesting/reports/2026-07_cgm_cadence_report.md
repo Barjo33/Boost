@@ -251,7 +251,82 @@ A genuine cadence benefit would also be largest at the shortest horizon, where r
 matters most, and would fade as the horizon lengthened. Neither task behaves that way. What
 these differences track is how difficult each period was to predict.
 
-## 7. What cadence does change
+## 7. Point to point acceleration
+
+Velocity is the first difference of consecutive readings and acceleration the difference of
+consecutive velocities, so over one sampling interval h the literal construction is (x(t) -
+2x(t-h) + x(t-2h)) / h^2. Figures below are in mg/dL per 5 min per 5 min so that the two
+cadences can be read against each other.
+
+| | Five-minute era | One-minute era |
+|---|---|---|
+| Samples | 23,727 | 81,645 |
+| SD over one interval (mg/dL) | 6.32 | 1.93 |
+| SD as mg/dL per 5 min per 5 min | 6.32 | 48.32 |
+| Median absolute value (mg/dL) | 3.00 | 1.00 |
+| Exactly zero | 11.9% | 37.6% |
+| Predicted from the variogram (mg/dL) | 6.36 | 2.35 |
+| Lag-1 autocorrelation | -0.290 | -0.049 |
+
+The mean square of a second difference is exactly 4D(h) minus D(2h) for any process, so the
+variogram of section 3 predicts the acceleration magnitude with no free parameters. On the
+five-minute record the prediction is 6.36 mg/dL against a measured 6.32. Acceleration
+therefore carries nothing the variogram did not already describe.
+
+### 7.1 It has no cadence-independent value
+
+For a process whose variogram goes as h to the power alpha, the second difference goes as
+the same power, so acceleration, which divides by h squared, goes as h to the power alpha/2
+minus 2. The number therefore depends on the interval it was computed over.
+
+| Ratio of one-minute to five-minute acceleration SD | Value |
+|---|---|
+| Measured | 7.65 |
+| Predicted from alpha = 1.35 (this record, 5 to 20 min) | 8.43 |
+| Predicted from alpha = 1.49 (this record, 1 to 5 min) | 7.53 |
+| Predicted from alpha = 0.00 (white noise) | 25.00 |
+| A twice differentiable signal | 1.00 |
+
+A twice differentiable signal would give a ratio of 1.00, because the leading term cancels
+and acceleration converges on a real value as the interval shrinks. This record gives 7.65,
+close to the value implied by its own roughness. Acceleration measured over one minute is
+roughly eight times larger than the same quantity measured over five minutes, and neither is
+more correct than the other.
+
+The practical consequence is that any threshold placed on a point to point acceleration is a
+threshold at one particular cadence and does not transfer to another. The construction used
+by the controller avoids this, since it averages rates over windows fixed in minutes rather
+than in samples, and normalises by the slower of the two.
+
+### 7.2 It adds nothing to prediction
+
+Adding acceleration to a feature set that already contains the current value and several
+backward differences and slopes, then predicting within 30 minutes:
+
+| Era | Task | Feature set | AUC | Lift |
+|---|---|---|---|---|
+| 5-min | low below 70 | velocity only | 0.8935 [0.8668, 0.9224] | 7.25x |
+| 5-min | low below 70 | + point to point acceleration | 0.8934 [0.8666, 0.9223] | 7.22x |
+| 5-min | low below 70 | + controller acceleration | 0.8939 [0.8683, 0.9220] | 7.29x |
+| 5-min | low below 70 | + both | 0.8938 [0.8681, 0.9219] | 7.29x |
+| 5-min | high above 180 | velocity only | 0.9283 [0.9058, 0.9478] | 7.77x |
+| 5-min | high above 180 | + point to point acceleration | 0.9284 [0.9062, 0.9477] | 7.77x |
+| 5-min | high above 180 | + controller acceleration | 0.9283 [0.9059, 0.9478] | 7.77x |
+| 5-min | high above 180 | + both | 0.9282 [0.9057, 0.9477] | 7.77x |
+| 1-min | low below 70 | velocity only | 0.9275 [0.9074, 0.9442] | 7.61x |
+| 1-min | low below 70 | + point to point acceleration | 0.9268 [0.9047, 0.9444] | 7.58x |
+| 1-min | low below 70 | + controller acceleration | 0.9276 [0.9070, 0.9445] | 7.60x |
+| 1-min | low below 70 | + both | 0.9268 [0.9042, 0.9446] | 7.56x |
+| 1-min | high above 180 | velocity only | 0.8912 [0.8745, 0.9069] | 6.39x |
+| 1-min | high above 180 | + point to point acceleration | 0.8938 [0.8768, 0.9091] | 6.44x |
+| 1-min | high above 180 | + controller acceleration | 0.8918 [0.8751, 0.9074] | 6.39x |
+| 1-min | high above 180 | + both | 0.8943 [0.8771, 0.9096] | 6.44x |
+
+Every variant sits within a few thousandths of the velocity-only baseline and every interval
+overlaps it. Neither the point to point form nor the controller form carries predictive
+information that the velocity terms do not already hold, at either cadence.
+
+## 8. What cadence does change
 
 A threshold is crossed at some instant between two reported samples. Locating that instant
 by interpolation and measuring the wait until the next sample the sensor actually reported
@@ -272,7 +347,7 @@ Whether two minutes is worth having depends on what consumes it. An alarm can us
 full, as can a person who is able to act at once. It is small against the onset of
 rapid-acting insulin, which is on the order of fifteen minutes.
 
-## 8. Limitations
+## 9. Limitations
 
 The comparison rests on one person. It is observational and between eras, so the sensor
 hardware changed at the boundary and so did glycaemic control. The analysis is built to be
@@ -299,8 +374,9 @@ records contain.
 03_forecast.py         normalised forecast error by horizon
 04_events.py           event prediction, AUC and base-rate lift
 05_reporting_delay.py  delay from an interpolated crossing to the next reported sample
-06_report.py           regenerates this document from results/*.json
-07_style_check.py      house-style gate on the generated document
+06_acceleration.py     point to point acceleration, scale dependence, predictive value
+08_report.py           regenerates this document from results/*.json
+09_style_check.py      house-style gate on the generated document
 ```
 
 Provisional. One subject, observational between-era comparison.
