@@ -1,0 +1,55 @@
+A. PROFILE RAISE DURING SLEEP  (the reported defect, measured)
+
+   user   cycles   raised  raised%  RAISED WHILE ASLEEP  % of raised  % of sleep
+      A   10,526    5,739    54.5%                    4         0.1%        0.2%
+      B   11,417    6,354    55.7%                  251         4.0%        9.9%
+      C   13,183    6,568    49.8%                  221         3.4%        7.6%
+      D   11,168    4,616    41.3%                  195         4.2%        6.6%
+      E   10,306    7,198    69.8%                  243         3.4%        8.6%
+      F   13,291    7,866    59.2%                   75         1.0%        2.6%
+      H    9,800       20     0.2%                    0         0.0%        0.0%
+      I      899      733    81.5%                  461        62.9%      100.0%
+    tim   12,190        0     0.0%                    0         0.0%        0.0%
+
+  cohort: 1,450 of 39,094 raised cycles were during sleep (3.7%), i.e. 6.3% of all sleeping cycles ran on a raised profile.
+
+B. DO THE STATES FLAP?  (transitions per day; dwell time between changes)
+
+   user  sleep flips/d  med dwell  profile flips/d  med dwell  zone flips/d
+      A            2.1         5m              9.8         5m          10.4
+      B            4.6         5m              9.4         5m           0.0
+      C            2.3         5m             12.6         5m           4.4
+      D            2.7         5m             13.4         5m           0.4
+      E            2.6         5m              5.2         5m           0.0
+      F            4.6         5m              7.5         5m          20.4
+      H            2.4         5m              2.1         5m           1.4
+      I            0.3         1m              2.5         2m           0.0
+    tim            4.0         5m              8.7         5m           4.7
+
+C. PROFILE RAISE AT LOW OR FALLING GLUCOSE  (left unguarded by design; size of it)
+
+   user  raised w/ BG    BG<80    BG<70  median BG
+      A         5,739      136       34        155
+      B         6,354      270      112        141
+      C         6,568      609      279        119
+      D         4,616      484      173        106
+      E         7,198      322       92        114
+      F         7,866      275      114        139
+      I           733       28        0        136
+
+D. IS THE HR LAYER REACHABLE?  (July suppression needs HR present AND the pref on)
+
+   user   cycles   with HR     HR%   zone>=3  raised & no HR
+      A   16,413     5,956   36.3%       409           3,889
+      B   16,983         1    0.0%         0           7,689
+      C   19,740     8,564   43.4%       105           4,185
+      D   16,932     4,941   29.2%         8           4,342
+      E   15,781         0    0.0%         0          12,354
+      F   20,003    11,306   56.5%       751           1,807
+      H   19,724     3,120   15.8%        36             295
+      I    5,954         0    0.0%         0           1,368
+    tim   18,926     8,402   44.4%       943             853
+
+-> state_safety.json
+
+PROVISIONAL — logged telemetry, pre-fix. Counts are the exposure the fix removes.
