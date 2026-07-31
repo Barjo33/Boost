@@ -31,7 +31,13 @@ from insulin import Insulin
 
 D = os.path.dirname(os.path.abspath(__file__))
 ISF, TARGET, MAX_IOB = 137.0, 100.0, 7.0
-SMB_MIN_GAP = float(os.environ.get("SMB_MIN_GAP", "3"))   # ApsMaxSmbFrequency ships at 3
+# ApsMaxSmbFrequency ships at 3 minutes. At a five-minute cadence that limit is not binding,
+# because cycles are already further apart than it. At a one-minute cadence it IS binding, and
+# it throttles the loop to every third cycle. Applying the same number to both arms therefore
+# does the equalising itself and hides the effect under test. The interval is set per arm:
+# each runs as it would if the user simply changed sensor and left the setting alone.
+GAP_ONE  = float(os.environ.get("GAP_ONE",  "1"))   # 1-min loop, free to dose every cycle
+GAP_FIVE = float(os.environ.get("GAP_FIVE", "3"))   # 5-min loop at the shipped default
 JAVA = "/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin/java"
 
 rows = open(os.path.join(D, "..", "2026-07-v6-cadence-replay", "replay_input.csv")).read().splitlines()[1:]
@@ -45,8 +51,8 @@ print(f"record: {n:,} one-minute samples, {(ts[-1]-ts[0])/86_400_000:.1f} days, 
 ins = Insulin()
 
 class Arm:
-    def __init__(self, name, stride):
-        self.name, self.stride = name, stride
+    def __init__(self, name, stride, min_gap):
+        self.name, self.stride, self.min_gap = name, stride, min_gap
         self.p = subprocess.Popen([JAVA, "-jar", os.path.join(D, "engine_server.jar")],
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
         self.dose_t, self.dose_u = [], []
@@ -86,13 +92,14 @@ def deltas(bg_arm, i, stride):
 EPISODE_MIN = int(os.environ.get("EPISODE_MIN", "360"))     # one insulin duration
 BG_FLOOR, BG_CEIL = 40.0, 400.0
 
-arms = [Arm("1-min", 1), Arm("5-min", 5)]
+arms = [Arm("1-min", 1, GAP_ONE), Arm("5-min", 5, GAP_FIVE)]
 episodes = []
 start = 45
 while start + EPISODE_MIN < n:
     episodes.append((start, min(start + EPISODE_MIN, n)))
     start += EPISODE_MIN
-print(f"  {len(episodes)} independent episodes of {EPISODE_MIN} min\n")
+print(f"  {len(episodes)} independent episodes of {EPISODE_MIN} min; "
+          f"SMB interval {GAP_ONE:.0f} min on the 1-min arm, {GAP_FIVE:.0f} on the 5-min arm\n")
 
 for arm in arms:
     warm = 45
@@ -120,7 +127,7 @@ for arm in arms:
                              baseInsulinReq=req, cumulativeRise30min=cum30,
                              hour=int((ts[i]//3600000) % 24), nowMs=int(ts[i])))
             dose = float(r["finalDose"])
-            if dose > 0 and (tmin[i] - arm.last_smb) >= SMB_MIN_GAP:
+            if dose > 0 and (tmin[i] - arm.last_smb) >= arm.min_gap:
                 arm.dose_t.append(tmin[i]); arm.dose_u.append(dose); arm.last_smb = tmin[i]
             else:
                 dose = 0.0
@@ -140,7 +147,7 @@ good = [e0 for (e0, _) in episodes if e0 not in bad]
 print(f"\n  {len(good)} of {len(episodes)} episodes stayed inside a plausible glucose range; "
       f"{len(bad)} excluded")
 hours = len(good)*EPISODE_MIN/60.0
-res = dict(smb_min_gap=SMB_MIN_GAP, episode_min=EPISODE_MIN,
+res = dict(gap_one=GAP_ONE, gap_five=GAP_FIVE, episode_min=EPISODE_MIN,
            episodes_total=len(episodes), episodes_used=len(good))
 if not good:
     print("  nothing valid to report"); json.dump(res, open(os.path.join(D,"closed_loop.json"),"w"), indent=1); sys.exit(0)
