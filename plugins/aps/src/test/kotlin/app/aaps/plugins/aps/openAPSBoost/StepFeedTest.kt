@@ -57,16 +57,16 @@ class StepFeedTest {
     // ── INACTIVE branch guard ────────────────────────────────────────────────────────────────────
 
     @Test fun `NONE feed - INACTIVE never fires, even at zero steps`() {
-        assertThat(StepFeed.inactivityEligible(stepsAvailable = false, currentProfileSwitch = 100, recentSteps60Min = 0, inactivitySteps = 200, sleepInActive = false, asleep = false)).isFalse()
+        assertThat(StepFeed.inactivityEligible(stepsAvailable = false, currentProfileSwitch = 100, recentSteps60Min = 0, inactivitySteps = 200, sleepInActive = false, asleep = false, inNightWindow = false)).isFalse()
     }
 
     @Test fun `LIVE feed with zero steps - INACTIVE fires as today (real sedentary unchanged)`() {
-        assertThat(StepFeed.inactivityEligible(stepsAvailable = true, currentProfileSwitch = 100, recentSteps60Min = 0, inactivitySteps = 200, sleepInActive = false, asleep = false)).isTrue()
+        assertThat(StepFeed.inactivityEligible(stepsAvailable = true, currentProfileSwitch = 100, recentSteps60Min = 0, inactivitySteps = 200, sleepInActive = false, asleep = false, inNightWindow = false)).isTrue()
     }
 
     @Test fun `LIVE feed with steps above threshold or non-100 profile - not eligible`() {
-        assertThat(StepFeed.inactivityEligible(true, 100, 250, 200, false, false)).isFalse()
-        assertThat(StepFeed.inactivityEligible(true, 80, 0, 200, false, false)).isFalse()
+        assertThat(StepFeed.inactivityEligible(true, 100, 250, 200, false, false, false)).isFalse()
+        assertThat(StepFeed.inactivityEligible(true, 80, 0, 200, false, false, false)).isFalse()
     }
 
     // ── Sleep-in backstop guard ──────────────────────────────────────────────────────────────────
@@ -121,7 +121,7 @@ class StepFeedTest {
             StepFeed.inactivityEligible(
                 stepsAvailable = true, currentProfileSwitch = 100, recentSteps60Min = 0,
                 inactivitySteps = 500, sleepInActive = true, asleep = false
-            )
+            , inNightWindow = false)
         ).isFalse()
     }
 
@@ -133,7 +133,7 @@ class StepFeedTest {
             StepFeed.inactivityEligible(
                 stepsAvailable = true, currentProfileSwitch = 100, recentSteps60Min = 0,
                 inactivitySteps = 500, sleepInActive = false, asleep = true
-            )
+            , inNightWindow = false)
         ).isFalse()
     }
 
@@ -144,7 +144,7 @@ class StepFeedTest {
             StepFeed.inactivityEligible(
                 stepsAvailable = true, currentProfileSwitch = 100, recentSteps60Min = 40,
                 inactivitySteps = 500, sleepInActive = false, asleep = false
-            )
+            , inNightWindow = false)
         ).isTrue()
     }
 
@@ -157,7 +157,7 @@ class StepFeedTest {
             StepFeed.inactivityEligible(
                 stepsAvailable = true, currentProfileSwitch = 100, recentSteps60Min = 300,
                 inactivitySteps = 500, sleepInActive = false, asleep = true
-            )
+            , inNightWindow = false)
         ).isFalse()
     }
 
@@ -179,6 +179,18 @@ class StepFeedTest {
             StepFeed.lieInFailsafeEngages(
                 sleepInActive = true, nightModeEnabled = true,
                 autoBySleepActive = true, detectorSleeping = true
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `inactivity is suppressed inside the configured night window`() {
+        // The point of the 2026-07-31 clock guard: this holds whatever ApsBoostNightModeEnabled
+        // says, and needs no HR, no steps and no sleep detector.
+        assertThat(
+            StepFeed.inactivityEligible(
+                stepsAvailable = true, currentProfileSwitch = 100, recentSteps60Min = 0,
+                inactivitySteps = 500, sleepInActive = false, asleep = false, inNightWindow = true
             )
         ).isFalse()
     }

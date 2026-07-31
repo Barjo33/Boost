@@ -75,9 +75,18 @@ internal object StepFeed {
      * stand down. Guarding the branch itself makes "sleep-in and INACTIVE are mutually exclusive" a
      * property of the predicate, independent of how the gate above it was configured.
      *
-     * @param sleepInActive the morning lie-in window, [sleepInActive]
-     * @param asleep        the sleep detector reports SLEEPING or PRE_SLEEP (covers the core night,
-     *                      which the lie-in window does not reach — it opens AT night end)
+     * Three independent exclusions, because no one of them covers every user:
+     *
+     * @param sleepInActive  the morning lie-in window, [sleepInActive]
+     * @param asleep         the sleep detector reports SLEEPING or PRE_SLEEP. Covers sleep OUTSIDE
+     *                       the configured window — shift work, naps, a late night — but needs the
+     *                       detector to be producing a state, which it does on roughly two thirds of
+     *                       cycles in the field and not at all for some users.
+     * @param inNightWindow  the configured night clock window, [NightWindow]. Read regardless of
+     *                       ApsBoostNightModeEnabled, because the times are a fact about the user
+     *                       while the flag is a policy about dosing. Needs no sensor at all, so it
+     *                       is the one exclusion that always works, and it is what makes "INACTIVE
+     *                       never fires overnight" true by default rather than by configuration.
      */
     fun inactivityEligible(
         stepsAvailable: Boolean,
@@ -85,10 +94,11 @@ internal object StepFeed {
         recentSteps60Min: Int,
         inactivitySteps: Int,
         sleepInActive: Boolean,
-        asleep: Boolean
+        asleep: Boolean,
+        inNightWindow: Boolean
     ): Boolean =
         inactivityStepsMet(stepsAvailable, currentProfileSwitch, recentSteps60Min, inactivitySteps) &&
-            !sleepInActive && !asleep
+            !sleepInActive && !asleep && !inNightWindow
 
     /**
      * The step half of [inactivityEligible], without the sleep exclusion. Split out so the caller can
