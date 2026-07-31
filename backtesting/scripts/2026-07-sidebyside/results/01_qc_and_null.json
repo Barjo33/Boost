@@ -1,0 +1,96 @@
+{
+ "sensors": {
+  "A1": {
+   "cadence": 1.0,
+   "n": 20503,
+   "days": 14.497140393518519,
+   "median_gap": 1.0,
+   "pct_on_cadence": 99.21958833284557,
+   "mean": 130.08691411013024,
+   "grid_coverage": 98.28941063727838
+  },
+  "A2": {
+   "cadence": 1.0,
+   "n": 20503,
+   "days": 14.497140393518519,
+   "median_gap": 1.0,
+   "pct_on_cadence": 99.21958833284557,
+   "mean": 121.28425108520705,
+   "grid_coverage": 98.28941063727838
+  },
+  "B1": {
+   "cadence": 5.0,
+   "n": 4101,
+   "days": 14.492969097222222,
+   "median_gap": 5.0,
+   "pct_on_cadence": 99.34146341463415,
+   "mean": 127.58961228968545,
+   "grid_coverage": 98.76856732151413
+  },
+  "B2": {
+   "cadence": 5.0,
+   "n": 4101,
+   "days": 14.492969097222222,
+   "median_gap": 5.0,
+   "pct_on_cadence": 99.34146341463415,
+   "mean": 120.69422092172641,
+   "grid_coverage": 98.76856732151413
+  }
+ },
+ "pairs": {
+  "A1|A2": {
+   "same_cadence": true,
+   "n": 20513,
+   "bias": 8.802807975430214,
+   "drift_per_day": 0.5020359748394744,
+   "sd_diff": 3.0044969994171735,
+   "implied_noise_sd": 2.1245002023425177
+  },
+  "A1|B1": {
+   "same_cadence": false,
+   "n": 4092,
+   "bias": 2.5053763440860215,
+   "drift_per_day": 0.1934412824394688,
+   "sd_diff": 5.534542115886212,
+   "implied_noise_sd": null,
+   "sd_diff_all_minutes": 5.645619509456267
+  },
+  "A1|B2": {
+   "same_cadence": false,
+   "n": 4092,
+   "bias": 9.42008797653959,
+   "drift_per_day": 0.7099160835038679,
+   "sd_diff": 5.493257421278265,
+   "implied_noise_sd": null,
+   "sd_diff_all_minutes": 5.581054919345151
+  },
+  "A2|B1": {
+   "same_cadence": false,
+   "n": 4092,
+   "bias": -6.288367546432062,
+   "drift_per_day": -0.30870064788226276,
+   "sd_diff": 5.685178183744293,
+   "implied_noise_sd": null,
+   "sd_diff_all_minutes": 5.767226121384993
+  },
+  "A2|B2": {
+   "same_cadence": false,
+   "n": 4092,
+   "bias": 0.6263440860215054,
+   "drift_per_day": 0.20777415318213674,
+   "sd_diff": 5.615815533729756,
+   "implied_noise_sd": null,
+   "sd_diff_all_minutes": 5.678216410884792
+  },
+  "B1|B2": {
+   "same_cadence": true,
+   "n": 4118,
+   "bias": 6.904322486644002,
+   "drift_per_day": 0.5163289609229381,
+   "sd_diff": 3.4933446896107454,
+   "implied_noise_sd": 2.470167719045773
+  }
+ },
+ "null_sd_same_cadence": 3.2489208445139592,
+ "sd_cross_cadence": 5.582198313659631
+}
