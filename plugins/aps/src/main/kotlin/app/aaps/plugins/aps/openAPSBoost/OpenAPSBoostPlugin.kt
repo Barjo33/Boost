@@ -663,8 +663,23 @@ open class OpenAPSBoostPlugin @Inject constructor(
         // for a lie-in backstop.
         val sleepInActive = StepFeed.sleepInActive(stepsAvailable, now, nightEndMs, sleepInMillis, recentSteps60Min, sleepInSteps)
         val autoBySleepActive = preferences.get(BooleanKey.ApsBoostNightModeAutoBySleep)
+        val nightModeEnabled = preferences.getBoostDosing(BooleanKey.ApsBoostNightModeEnabled)
         val detectorSleeping = sleepStateCached.state == SleepStateDetector.SleepState.SLEEPING
-        if (boostActive && StepFeed.lieInFailsafeEngages(sleepInActive, autoBySleepActive, detectorSleeping)) {
+        // Sleep as the INACTIVE branch must see it. SLEEPING is confirmed sleep; PRE_SLEEP is the
+        // wind-down before it, and the user is in bed for both. This covers the CORE NIGHT, which
+        // sleepInActive cannot reach — that window opens AT night end, so at 06:09 with a 07:00 end
+        // it is false by construction, which is why the original report fired before dawn.
+        val detectorAsleep = sleepStateCached.state == SleepStateDetector.SleepState.SLEEPING ||
+            sleepStateCached.state == SleepStateDetector.SleepState.PRE_SLEEP
+        // Audit trail for the 2026-07-31 fix: record when the step test alone WOULD have raised the
+        // profile but sleep blocked it, so the suppression is visible in NS rather than silent.
+        if (StepFeed.inactivityStepsMet(stepsAvailable, profilePercent, recentSteps60Min, inactivitySteps) &&
+            (sleepInActive || detectorAsleep)
+        ) {
+            debug.append("\nInactivity SUPPRESSED by sleep (60m steps $recentSteps60Min < $inactivitySteps; " +
+                "sleepIn=$sleepInActive detector=${sleepStateCached.state}) → profile held at 100%")
+        }
+        if (boostActive && StepFeed.lieInFailsafeEngages(sleepInActive, nightModeEnabled, autoBySleepActive, detectorSleeping)) {
             boostActive = false
             disableReason = "Sleep-in failsafe (60m steps $recentSteps60Min < threshold $sleepInSteps, within ${sleepInHours}h of night end; auto-by-sleep=$autoBySleepActive detector=${sleepStateCached.state})"
             aapsLogger.debug(LTag.APS, "Boost disabled due to lie-in (failsafe; auto-by-sleep=$autoBySleepActive detector=${sleepStateCached.state})")
@@ -768,7 +783,10 @@ open class OpenAPSBoostPlugin @Inject constructor(
                         debug.append("\nActivity detected (HR inconclusive: ${hrClassification.exerciseState}) → profile ${currentProfileSwitch}%, target $activityTargetBg")
                     }
                 }
-            } else if (StepFeed.inactivityEligible(stepsAvailable, currentProfileSwitch, recentSteps60Min, inactivitySteps)) {
+            } else if (StepFeed.inactivityEligible(
+                    stepsAvailable, currentProfileSwitch, recentSteps60Min, inactivitySteps,
+                    sleepInActive = sleepInActive, asleep = detectorAsleep
+                )) {
                 // Inactivity confirmed on a LIVE feed — check HR for stress. (F1 2026-07-07: a dark
                 // feed can no longer reach this branch — "no steps" must not mean "sedentary".)
                 if (hrIntegrationEnabled && HrActivityCalculator.inactivitySuppressedByElevatedHr(hrClassification)) {
