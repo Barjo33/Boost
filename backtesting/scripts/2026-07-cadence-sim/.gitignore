@@ -1,3 +1,4 @@
 engine_server.jar
 src/engine/
 __pycache__/
+sensor_fidelity.json
