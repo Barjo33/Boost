@@ -1933,7 +1933,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
                         stepsToday = stepsTodayForSleep,
                         // 2026-07-08 sleep-in merge (v7-shadow): fold the lie-in backstop into the state machine.
                         sleepInStepsThreshold = sleepInSteps,
-                        sleepInWindowMin = (sleepInHours * 60.0).toInt()
+                        sleepInWindowMin = (sleepInHours * 60.0).toInt(),
+                        cycleSpacingMinutes = iobCobCalculator.ads.detectedCadenceMinutes
                     ),
                     aapsLogger = aapsLogger
                 )

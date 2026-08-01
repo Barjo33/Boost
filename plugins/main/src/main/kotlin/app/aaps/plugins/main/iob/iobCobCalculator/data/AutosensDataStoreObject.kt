@@ -55,6 +55,9 @@ class AutosensDataStoreObject : AutosensDataStore {
         }
 
     override fun getBucketedDataTableCopy(): MutableList<InMemoryGlucoseValue>? = synchronized(dataLock) { bucketedData?.toMutableList() }
+
+    override fun getBucketedDataNativeTableCopy(): MutableList<InMemoryGlucoseValue>? =
+        synchronized(dataLock) { (bucketedDataNative ?: bucketedData)?.toMutableList() }
     override fun getBgReadingsDataTableCopy(): List<GV> = synchronized(dataLock) { bgReadings.toMutableList() }
 
     override fun reset() {
@@ -241,8 +244,14 @@ class AutosensDataStoreObject : AutosensDataStore {
     private fun createBucketedDataNative(aapsLogger: AAPSLogger) {
         synchronized(dataLock) {
             val cadence = detectedCadenceMinutes
-            if (cadence == null || cadence >= 4.0) {
-                // five-minute feed, or cadence unknown: nothing to gain, keep one representation
+            // Only a genuinely sub-two-minute feed takes the native path. An earlier draft used
+            // 4.0, which also captured three-minute sensors and changed their deltas: with 3-min
+            // raw data the 2.5-7.5 minute window holds two points rather than one, so the delta
+            // becomes an average over two lookbacks instead of a single one. Caught by
+            // AutosensDataStoreTest.threeMinDataWithRecalculation, which moved 2.0 -> 1.67.
+            // That is a real behaviour change and not one this branch is asking for, so the
+            // native path is confined to the one-minute case it exists to serve. (2026-08-01)
+            if (cadence == null || cadence >= 2.0) {
                 bucketedDataNative = bucketedData
                 return
             }

@@ -52,6 +52,12 @@ interface AutosensDataStore {
     fun getLastAutosensData(reason: String, aapsLogger: AAPSLogger, dateUtil: DateUtil): AutosensData?
     fun getAutosensDataAtTime(fromTime: Long): AutosensData?
     fun getBucketedDataTableCopy(): MutableList<InMemoryGlucoseValue>?
+
+    /**
+     * Copy of [bucketedDataNative], falling back to [bucketedData] when no native series exists.
+     * For consumers that work in elapsed time and want every reading the sensor produced.
+     */
+    fun getBucketedDataNativeTableCopy(): MutableList<InMemoryGlucoseValue>?
     fun createBucketedData(aapsLogger: AAPSLogger, dateUtil: DateUtil)
     fun slowAbsorptionPercentage(timeInMinutes: Int): Double
     fun newHistoryData(time: Long, aapsLogger: AAPSLogger, dateUtil: DateUtil)

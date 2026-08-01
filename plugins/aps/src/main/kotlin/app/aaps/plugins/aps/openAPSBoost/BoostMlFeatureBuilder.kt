@@ -63,8 +63,28 @@ object BoostMlFeatureBuilder {
             .put("sug_minDelta", sugMinDelta)
     }
 
+    /**
+     * Spacing the lag features must keep, in ms. The models were TRAINED on five-minute lags, so
+     * lag1..lag5 have to remain five-minute steps whatever the loop cycles at. On a one-minute
+     * feed an unguarded push would make LOOKBACK=6 span six minutes instead of thirty, and the
+     * model would be extrapolating from inputs unlike anything it saw in training.
+     *
+     * This is the one count-based window in the 1-minute sweep that must NOT simply be retimed:
+     * the lag COUNT is part of the model, so the INPUT is resampled instead. (2026-08-01)
+     */
+    const val LAG_SPACING_MS = 5L * 60 * 1000
+    private const val LAG_SPACING_TOLERANCE_MS = 30L * 1000
+
     data class RingBuffer(val snapshots: MutableList<CycleSnapshot> = mutableListOf()) {
         fun push(s: CycleSnapshot) {
+            // Admit a snapshot only once per lag interval, so the buffer holds five-minute steps
+            // even when called every minute. Replaces the newest when called again too soon, so
+            // the freshest reading within the interval is the one kept.
+            val last = snapshots.lastOrNull()
+            if (last != null && s.ts - last.ts < LAG_SPACING_MS - LAG_SPACING_TOLERANCE_MS) {
+                snapshots[snapshots.lastIndex] = s
+                return
+            }
             snapshots.add(s)
             while (snapshots.size > LOOKBACK) snapshots.removeAt(0)
         }
