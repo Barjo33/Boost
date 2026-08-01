@@ -23,6 +23,12 @@ class AutosensDataStoreTest : TestBaseWithProfile() {
         whenever(iobCobCalculator.ads).thenReturn(autosensDataStore)
     }
 
+    /** Terse GV for the native-cadence tests below. */
+    private fun gv(ts: Long, v: Double) = GV(
+        raw = 0.0, noise = 0.0, value = v, timestamp = ts,
+        sourceSensor = SourceSensor.UNKNOWN, trendArrow = TrendArrow.FLAT
+    )
+
     @Test
     fun isAbout5minDataTest() {
         val bgReadingList: MutableList<GV> = ArrayList()
@@ -1533,5 +1539,55 @@ class AutosensDataStoreTest : TestBaseWithProfile() {
         ads.autosensDataTable = LongSparseArray<AutosensData>()
         ads.autosensDataTable.append(now - T.mins(20).msecs(), AutosensDataObject(aapsLogger, preferences, dateUtil).apply { time = now - T.mins(20).msecs() })
         assertThat(ads.getLastAutosensData("test", aapsLogger, dateUtil)?.time).isEqualTo(now - 1)
+    }
+
+    // ── native one-minute grid (2026-08-01) ────────────────────────────────────────────────
+    // Trio hit a "V-spike" on 2026-07-17: a CGM backfill landed a minute after a regular reading,
+    // the smoother's segment test broke on the sub-2-minute gap, and the filter re-initialised
+    // from that point's RAW value, discarding the smoothed trend. It was Trio-specific only
+    // because AAPS buckets before smoothing. Passing AAPS the raw series would inherit it, so the
+    // native series is a regular grid rather than the raw readings.
+
+    @Test
+    fun nativeSeriesIsRegularlySpacedDespiteAnIrregularBackfill() {
+        val store = autosensDataStore
+        val base = 1_700_000_000_000L
+        val readings = ArrayList<GV>()
+        // one-minute feed with a backfill landing 20 s after the reading at t-4 min
+        for (i in 0 until 40) {
+            readings.add(gv(base - i * 60_000L, 100.0 + i))
+        }
+        readings.add(gv(base - 4 * 60_000L + 20_000L, 65.0))
+        readings.sortByDescending { it.timestamp }
+        store.bgReadings = readings
+        store.createBucketedData(aapsLogger, dateUtil)
+
+        val native = store.bucketedDataNative
+        assertThat(native).isNotNull()
+        assertThat(native!!.size).isGreaterThan(10)
+        // every consecutive spacing is the cadence, so no sub-cadence gap can break a segment
+        for (i in 0 until native.size - 1) {
+            val gap = (native[i].timestamp - native[i + 1].timestamp) / 60000.0
+            assertThat(gap).isWithin(0.01).of(1.0)
+        }
+    }
+
+    @Test
+    fun nativeSeriesKeepsEveryMinuteRatherThanOneInFive() {
+        val store = autosensDataStore
+        val base = 1_700_000_000_000L
+        store.bgReadings = (0 until 30).map { gv(base - it * 60_000L, 100.0 + it) }.toMutableList()
+        store.createBucketedData(aapsLogger, dateUtil)
+        // the five-minute series thins to roughly a fifth; the native one does not
+        assertThat(store.bucketedDataNative!!.size).isGreaterThan(store.bucketedData!!.size * 3)
+    }
+
+    @Test
+    fun aFiveMinuteFeedSharesOneSeriesRatherThanBuildingTwo() {
+        val store = autosensDataStore
+        val base = 1_700_000_000_000L
+        store.bgReadings = (0 until 20).map { gv(base - it * 300_000L, 100.0 + it) }.toMutableList()
+        store.createBucketedData(aapsLogger, dateUtil)
+        assertThat(store.bucketedDataNative).isSameInstanceAs(store.bucketedData)
     }
 }

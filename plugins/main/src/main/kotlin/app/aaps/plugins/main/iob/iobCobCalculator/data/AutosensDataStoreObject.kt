@@ -259,10 +259,43 @@ class AutosensDataStoreObject : AutosensDataStore {
                 bucketedDataNative = bucketedData
                 return
             }
-            bucketedDataNative = bgReadings
-                .filter { it.value >= 39 }
-                .map { InMemoryGlucoseValue.fromGv(it) }
-                .toMutableList()
+            // Build a REGULAR grid at the native cadence rather than passing the raw readings
+            // through. Raw readings are irregularly spaced: a CGM backfill landing just after a
+            // regular reading produces a pair seconds apart, and the smoother starts a new
+            // segment on any spacing below its minimum, re-initialising from that point's RAW
+            // value and discarding the smoothed trend. The visible result is a sharp downward V
+            // where the smoothed line steps to the raw dot and recovers near-vertically.
+            //
+            // This is not hypothetical. Trio hit exactly this on 2026-07-17, reproduced to within
+            // 1 mg/dL, and it was Trio-specific only because AAPS buckets before smoothing and
+            // Trio did not. Feeding AAPS the raw series would have handed it the same defect.
+            // Trio's fix was to bucket onto a five-minute grid; the same reasoning at the native
+            // cadence keeps every reading AND regular spacing.
+            val stepMs = Math.round(cadence * 60_000.0)
+            val out = ArrayList<InMemoryGlucoseValue>()
+            var t = bgReadings[0].timestamp
+            val oldest = bgReadings[bgReadings.size - 1].timestamp
+            while (t >= oldest) {
+                val newer = findNewer(t)
+                val older = findOlder(t)
+                if (newer == null || older == null) break
+                if (older.timestamp == newer.timestamp) {
+                    out.add(InMemoryGlucoseValue.fromGv(newer))
+                } else {
+                    val span = (newer.timestamp - older.timestamp).toDouble()
+                    val toNew = (newer.timestamp - t).toDouble()
+                    val filled = min(t - older.timestamp, newer.timestamp - t) > T.secs(IRREGULAR_DATA_SEC).msecs()
+                    val v = newer.value - toNew / span * (newer.value - older.value)
+                    out.add(
+                        InMemoryGlucoseValue(
+                            t, v.roundToLong().toDouble(), filledGap = filled,
+                            sourceSensor = bgReadings[0].sourceSensor
+                        )
+                    )
+                }
+                t -= stepMs
+            }
+            bucketedDataNative = out
             aapsLogger.debug(
                 LTag.AUTOSENS,
                 "Native cadence ${String.format(java.util.Locale.ENGLISH, "%.1f", cadence)} min: " +
