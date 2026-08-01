@@ -1,0 +1,18 @@
+01. MEALS, THE LOWS THAT FOLLOW, AND THE WINDOW BETWEEN
+
+   user  meals  ->low   rate  ->severe  med gap h  lows w/o meal
+      A    554     82  14.8%         0        2.3              9
+      B    481    135  28.1%         0        2.1             28
+      C    545    235  43.1%         0        2.4             25
+      D    370    184  49.7%         1        2.1            107
+      E    214     30  14.0%         0        2.9              7
+      F    417    123  29.5%         0        2.6             17
+      G    607    225  37.1%         4        2.3             28
+      H    337     41  12.2%         0        2.7             12
+      I    326     93  28.5%         0        2.8             21
+    tim    548    238  43.4%         7        1.6             33
+
+  cohort: 4,399 meals, 1,386 ended in a low within 6h (31.5%)
+  of 1,135 sustained lows, 287 (25%) had NO meal in the preceding 6h — those are a different pathway and are excluded from the comparison
+
+  4,097 meal windows with context -> meals_lows.json

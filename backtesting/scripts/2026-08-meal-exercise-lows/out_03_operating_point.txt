@@ -1,0 +1,22 @@
+03. OPERATING POINT
+
+  3,426 meals, base rate 30.7% end in a low
+
+   threshold   fires  % meals  precision   lift  recall  lows missed
+         100    2413    70.4%      35.5%   1.16   81.5%          194
+         200    1743    50.9%      40.6%   1.32   67.4%          343
+         300    1322    38.6%      44.3%   1.44   55.7%          466
+         400    1062    31.0%      46.0%   1.50   46.4%          563
+         500     880    25.7%      47.3%   1.54   39.6%          635
+         750     564    16.5%      48.9%   1.60   26.3%          775
+        1000     401    11.7%      48.9%   1.59   18.6%          855
+        1500     252     7.4%      45.2%   1.47   10.8%          937
+
+  best lift 1.60x at >= 750 steps: precision 48.9% against a 30.7% base, catching 26% of the lows
+
+  severity: nadir of the lows caught vs missed, at the best threshold
+    caught n= 276 median nadir 57 mg/dL
+    missed n= 775 median nadir 58 mg/dL
+
+PROVISIONAL — observational. The rule identifies meals followed by activity; whether
+acting on it prevents the low is a separate question this cannot answer.

@@ -1,0 +1,44 @@
+02. EXERCISE SIGNATURE IN THE POST-MEAL WINDOW
+
+  4,086 meals with context; 1,286 ended low (31.5%)
+
+  DESCRIPTIVE — whole meal-to-low window
+                 indicator      n               AUC (95% CI)        verdict
+          peak 5-min steps   3423    0.590 [0.567, 0.612]             separates
+         peak 30-min steps   3423    0.620 [0.598, 0.642]             separates
+         peak 60-min steps   3423    0.631 [0.611, 0.650]             separates
+                   peak HR   1582    0.451 [0.419, 0.482]             separates
+         peak HR reserve %   1582    0.444 [0.415, 0.478]             separates
+       activity-load ratio   1418    0.548 [0.513, 0.582]             separates
+                  mean IOB   4086    0.432 [0.413, 0.449]             separates
+                   min IOB   4086    0.508 [0.487, 0.527]   not distinguishable
+                  peak COB   4080    0.478 [0.469, 0.488]             separates
+
+  PREDICTIVE — first 75 min after the meal only
+                 indicator      n               AUC (95% CI)        verdict
+          peak 5-min steps   3423    0.634 [0.614, 0.653]             separates
+         peak 30-min steps   3423    0.650 [0.631, 0.670]             separates
+         peak 60-min steps   3423    0.655 [0.634, 0.673]             separates
+                   peak HR   1480    0.478 [0.446, 0.508]   not distinguishable
+         peak HR reserve %   1480    0.469 [0.440, 0.502]   not distinguishable
+       activity-load ratio   1415    0.545 [0.512, 0.582]             separates
+                  mean IOB   4086    0.463 [0.445, 0.482]             separates
+                   min IOB   4086    0.461 [0.442, 0.481]             separates
+                  peak COB   4072    0.482 [0.473, 0.492]             separates
+
+  PER-USER (predictive framing, peak 30-min steps)
+     user  meals   low%                  AUC
+        A    554  14.8%  0.653 [0.587, 0.715]
+        B    476  28.4%  0.595 [0.532, 0.655]
+        C    522  42.1%  0.622 [0.576, 0.663]
+        D    370  49.7%  0.673 [0.618, 0.734]
+        E    214  14.0%  0.719 [0.631, 0.806]
+        F    417  29.5%  0.617 [0.551, 0.673]
+        G    603                     too few
+        H    301  12.4%  0.483 [0.390, 0.560]
+        I     63                     too few
+      tim    545  43.5%  0.582 [0.537, 0.625]
+
+  7 of 8 users show a distinguishable per-user effect: ['A', 'B', 'C', 'D', 'E', 'F', 'tim']
+
+PROVISIONAL — observational; a meal that ends low differs in more than exercise.
