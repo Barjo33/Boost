@@ -13,6 +13,24 @@ interface AutosensDataStore {
     var bgReadings: List<GV>
     var autosensDataTable: LongSparseArray<AutosensData>
     var bucketedData: MutableList<InMemoryGlucoseValue>?
+
+    /**
+     * The same glucose at the sensor's OWN cadence, rather than resampled to five minutes.
+     *
+     * [bucketedData] is built by stepping back in fixed five-minute increments and interpolating,
+     * so on a one-minute sensor four of every five readings are replaced by an interpolation of
+     * their neighbours. That is deliberate for the sensitivity chain, which defines deviations
+     * and carbohydrate impact per five-minute bucket and would be silently rescaled by a change
+     * of interval. Consumers that work in elapsed time rather than sample counts, the smoother
+     * and the delta calculation, can use this instead and see every reading.
+     *
+     * Identical to [bucketedData] on a five-minute feed. Null until [createBucketedData] runs.
+     */
+    var bucketedDataNative: MutableList<InMemoryGlucoseValue>?
+
+    /** Median spacing of the raw readings in minutes, or null when it cannot be established. */
+    var detectedCadenceMinutes: Double?
+
     var lastUsed5minCalculation: Boolean?
 
     /**

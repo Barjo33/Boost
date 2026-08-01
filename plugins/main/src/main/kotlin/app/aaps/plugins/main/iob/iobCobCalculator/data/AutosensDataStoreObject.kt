@@ -38,6 +38,8 @@ class AutosensDataStoreObject : AutosensDataStore {
         @Synchronized get
 
     override var bucketedData: MutableList<InMemoryGlucoseValue>? = null
+    override var bucketedDataNative: MutableList<InMemoryGlucoseValue>? = null
+    override var detectedCadenceMinutes: Double? = null
         @Synchronized set
         @Synchronized get
 
@@ -47,6 +49,8 @@ class AutosensDataStoreObject : AutosensDataStore {
                 it.bgReadings = this.bgReadings.toMutableList()
                 it.autosensDataTable = LongSparseArray<AutosensData>(this.autosensDataTable.size).apply { putAll(this@AutosensDataStoreObject.autosensDataTable) }
                 it.bucketedData = this.bucketedData?.toMutableList()
+                it.bucketedDataNative = this.bucketedDataNative?.toMutableList()
+                it.detectedCadenceMinutes = this.detectedCadenceMinutes
             }
         }
 
@@ -199,6 +203,63 @@ class AutosensDataStoreObject : AutosensDataStore {
         }
         lastUsed5minCalculation = fiveMinData
         if (fiveMinData) createBucketedData5min(aapsLogger, dateUtil) else createBucketedDataRecalculated(aapsLogger, dateUtil)
+        detectedCadenceMinutes = detectCadenceMinutes()
+        createBucketedDataNative(aapsLogger)
+    }
+
+    /**
+     * Median spacing of the raw readings, in minutes. Median rather than mean so that one gap
+     * cannot move it. Spacings above an hour are treated as gaps and ignored.
+     */
+    fun detectCadenceMinutes(): Double? {
+        synchronized(dataLock) {
+            if (bgReadings.size < 4) return null
+            val gaps = ArrayList<Double>(bgReadings.size - 1)
+            for (i in 0 until bgReadings.size - 1) {
+                // bgReadings is newest-first
+                val d = (bgReadings[i].timestamp - bgReadings[i + 1].timestamp) / 60000.0
+                if (d > 0.1 && d <= 60.0) gaps.add(d)
+            }
+            if (gaps.size < 3) return null
+            gaps.sort()
+            val m = gaps.size / 2
+            return if (gaps.size % 2 == 0) (gaps[m - 1] + gaps[m]) / 2.0 else gaps[m]
+        }
+    }
+
+    /**
+     * Build the native-cadence series.
+     *
+     * On a five-minute feed this is the existing bucketed series, shared rather than copied,
+     * because they are the same thing and nothing downstream mutates it. On a faster feed the
+     * raw readings are used directly: no resampling, no interpolation, every reading kept.
+     *
+     * The raw path deliberately does not snap to a grid. [adjustToReferenceTime] exists so that
+     * cached five-minute buckets line up between cycles; the native series is rebuilt each cycle
+     * and has no such cache to align with.
+     */
+    private fun createBucketedDataNative(aapsLogger: AAPSLogger) {
+        synchronized(dataLock) {
+            val cadence = detectedCadenceMinutes
+            if (cadence == null || cadence >= 4.0) {
+                // five-minute feed, or cadence unknown: nothing to gain, keep one representation
+                bucketedDataNative = bucketedData
+                return
+            }
+            if (bgReadings.size < 3) {
+                bucketedDataNative = bucketedData
+                return
+            }
+            bucketedDataNative = bgReadings
+                .filter { it.value >= 39 }
+                .map { InMemoryGlucoseValue.fromGv(it) }
+                .toMutableList()
+            aapsLogger.debug(
+                LTag.AUTOSENS,
+                "Native cadence ${String.format(java.util.Locale.ENGLISH, "%.1f", cadence)} min: " +
+                    "${bucketedDataNative?.size} readings kept against ${bucketedData?.size} five-minute buckets"
+            )
+        }
     }
 
     fun findNewer(time: Long): GV? {
