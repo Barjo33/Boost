@@ -89,6 +89,13 @@ A record of the data relationships, dosing levers, mechanisms and models we've e
 | V4.4 post-SMB gate | Too restrictive to ever fire | engaged 0/99 then 0/115 (max delta far below trigger) |
 | Second confirm on continued post-confirm acceleration | Real prediction signal (peak +23 mg/dL, distinguishable) but NO low-rate headroom — accel group already crashes ~19%/severe ~6.6% at current dose, not lower than decel (Δ overlaps 0); per-user C/F crash MORE; the fast-carb overshoot shape. Engine already blocks it (Fix 6) + holds COMMITTED 1.0×, which is correct | 2026-07-20 `2026-07-postconfirm-accel/` (3,879 anchors, 9 users, cluster-boot CI + real-engine scenario run) |
 
+### Design decisions settled by the user community
+
+| Question | Decision | Basis |
+|---|---|---|
+| Should Boost on/off be decoupled from night mode, restoring separate `ApsBoostStartTime`/`ApsBoostEndTime`? | NO. Keep them linked. | 2026-08 poll: ~90% of voters prefer night mode and Boost on/off to stay linked. Reintroducing a second window also revives the divergence the 2026-07-02 merge removed, where two mechanisms with different thresholds could disagree at e.g. 150 morning steps. |
+| Should the INACTIVE profile raise be suppressed overnight even when night mode is DISABLED? | YES, shipped. | Same poll approved the patch. `NightWindow.contains()` reads `ApsBoostNightModeStart`/`End` regardless of `ApsBoostNightModeEnabled`, because the times are a fact about the user while the flag is a policy about dosing. Landed `2b3b986e7e` (experimental), `4e984e96b9` (dev), `483d2fec20` (V7-shadow). |
+
 ### Signals and predictors
 | Relationship | Why discarded | Evidence |
 |---|---|---|
