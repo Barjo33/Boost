@@ -110,8 +110,14 @@ class UnscentedKalmanFilterPlugin @Inject constructor(
     private val rMax = 225.0  // ~15 mg/dL std dev - poor sensor.
     private val rEffMax = 400.0
 
-    // R adaptation window length for innovation statistics.
-    private val innovationWindow = 18  // ≈90 minutes at 5‑min intervals.
+    // R adaptation window for innovation statistics, expressed in MINUTES so that it means the
+    // same thing at any cadence. It was 18 readings, whose own comment read "≈90 minutes at
+    // 5-min intervals" — true only there, and 18 minutes on a one-minute feed. The reading count
+    // is derived per call from the observed spacing and kept as a buffer bound. (2026-08-01)
+    private val innovationWindowMinutes = 90.0
+    private val innovationWindowMinReadings = 6
+    private val innovationWindowMaxReadings = 120
+    private var innovationWindow = 18
 
     // Chi-squared based outlier detection (99.99% confidence, 1 DOF).
     private val chiSquaredThreshold = 15.13  // Statistically rigorous.
@@ -148,7 +154,11 @@ class UnscentedKalmanFilterPlugin @Inject constructor(
     private val compressionWindowMinutes = 25.0
     private val compressionWindowMaxReadings = 30
     private val compressionR = 900.0             // effective measurement variance for a suspect
-    private val maxConsecutiveCompression = 3    // ≤15 min: after this, follow even if still matching
+    // After this long of continuous suspicion, follow the sensor even if it still looks like a
+    // compression low. Expressed in minutes; it was a count of 3 whose comment read "≤15 min",
+    // which is 3 minutes on a one-minute feed. (2026-08-01)
+    private val maxCompressionMinutes = 15.0
+    private var maxConsecutiveCompression = 3
 
     // Covariance limits (tighter for faster recovery).
     private val maxGlucoseVariance = 400.0  // Max 20 mg/dL std dev.
@@ -159,6 +169,17 @@ class UnscentedKalmanFilterPlugin @Inject constructor(
     private val innovationValidationSamples = 15  // Need 15 samples before validating.
 
     // Gap handling.
+    /**
+     * Smallest spacing treated as a valid step. Below this the samples are duplicates or clock
+     * noise rather than a faster feed.
+     *
+     * This was 2.0, which silently made the filter a no-op on a one-minute sensor: every
+     * consecutive pair failed the segment test below, so no segment ever reached the two-sample
+     * minimum and [findValidSegments] returned an empty list. It never showed because the filter
+     * is fed the five-minute bucketed series, where the spacing is always 5.0. It bites the
+     * moment it is fed a native one-minute series. (2026-08-01)
+     */
+    private val minSampleSpacingMinutes = 0.5
     private val minorGapThreshold = 7.0       // Minutes - bridge with prediction.
     private val majorGapThreshold = 60.0      // Minutes - segment data.
     private val rateDecayTimeConstant = 30.0 // Minutes - physiological decay.
@@ -538,12 +559,56 @@ class UnscentedKalmanFilterPlugin @Inject constructor(
     // MAIN FILTERING API
     // ============================================================
 
+
+    /**
+     * Median spacing of the supplied series, in minutes, or null when it cannot be established.
+     * Median rather than mean so that a single gap does not move it.
+     */
+    internal fun medianSpacingMinutes(data: List<InMemoryGlucoseValue>): Double? {
+        if (data.size < 3) return null
+        val gaps = ArrayList<Double>(data.size - 1)
+        for (i in 0 until data.size - 1) {
+            // data is newest-first
+            val d = (data[i].timestamp - data[i + 1].timestamp) / millisPerMinute
+            if (d > 0 && d <= majorGapThreshold) gaps.add(d)
+        }
+        if (gaps.size < 2) return null
+        gaps.sort()
+        val m = gaps.size / 2
+        return if (gaps.size % 2 == 0) (gaps[m - 1] + gaps[m]) / 2.0 else gaps[m]
+    }
+
+    /**
+     * Convert the two duration-defined windows into reading counts for the cadence in hand.
+     *
+     * Both were fixed counts tuned at five minutes. On a one-minute feed the R adaptation window
+     * shrank from 90 minutes to 18, and the compression follow-through from 15 minutes to 3.
+     * Neither failure is visible in the output, which is why they survived until the cadence work
+     * of 2026-07. Falls back to the five-minute counts when the spacing cannot be determined.
+     */
+    /** Test accessors for the two cadence-derived window sizes. */
+    internal fun innovationWindowForTest(): Int = innovationWindow
+    internal fun maxCompressionForTest(): Int = maxConsecutiveCompression
+
+    internal fun adaptWindowsToCadence(data: List<InMemoryGlucoseValue>) {
+        val spacing = medianSpacingMinutes(data) ?: 5.0
+        val safe = spacing.coerceAtLeast(minSampleSpacingMinutes)
+        innovationWindow = Math.round(innovationWindowMinutes / safe).toInt()
+            .coerceIn(innovationWindowMinReadings, innovationWindowMaxReadings)
+        maxConsecutiveCompression = Math.round(maxCompressionMinutes / safe).toInt()
+            .coerceAtLeast(1)
+    }
+
     override fun smooth(data: MutableList<InMemoryGlucoseValue>): MutableList<InMemoryGlucoseValue> {
         if (data.isEmpty()) return data
 
         // Poll for a sensor change each cycle (replaces the upstream reactive TE subscription,
         // unavailable in this 3.4 codebase). Async; the reset is consumed on the next reading.
         checkForSensorChange()
+
+        // Size the reading-count windows from the cadence actually present, so that a window
+        // meaning "90 minutes" or "15 minutes" means that at any sampling rate. (2026-08-01)
+        adaptWindowsToCadence(data)
 
         try {
             return smoothInternal(data)
@@ -574,7 +639,7 @@ class UnscentedKalmanFilterPlugin @Inject constructor(
             val timeDiff = (data[i].timestamp - data[i + 1].timestamp) / millisPerMinute
 
             // Segment at major gaps (>60 min), invalid spacing, or error code.
-            if (timeDiff !in 2.0..majorGapThreshold || data[i].value == 38.0) {
+            if (timeDiff !in minSampleSpacingMinutes..majorGapThreshold || data[i].value == 38.0) {
                 // Close current segment if it has enough points.
                 if (i - segmentStart >= 2) {
                     segments.add(DataSegment(segmentStart, i))
@@ -719,7 +784,10 @@ class UnscentedKalmanFilterPlugin @Inject constructor(
 
         if (endIdx > 0) {
             val dt = (data[endIdx - 1].timestamp - data[endIdx].timestamp) / millisPerMinute
-            if (dt in 3.0..7.0) {
+            // Was 3.0..7.0, which no one-minute sample pair can satisfy, leaving the rate
+            // unseeded and the filter to converge from zero. Accept any spacing that is a real
+            // step and not a gap. (2026-08-01)
+            if (dt in minSampleSpacingMinutes..minorGapThreshold) {
                 initialRate = (data[endIdx - 1].value - data[endIdx].value) / dt
                 initialRate = initialRate.coerceIn(-4.0, 4.0)
             }
