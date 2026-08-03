@@ -121,6 +121,95 @@ anything periodic ever ships, and it argues for widening `LOOKBACK_DAYS` on its 
 7. **Log which term bound each cap.** One string per derivation makes the anchor assumption
    monitorable on-device instead of re-litigable only by backtest.
 
+---
+
+# Addendum — sizing `confirmedCap` for a hands-free user
+
+Raised the same day: Boost targets zero manual bolusing, so anchoring `confirmedCap` on
+`p90(manual boluses)` is anchoring on a behaviour the system exists to remove. For an
+older-Boost migrant or any hands-free setup the term is absent by design and the fallback
+`p95(all SMBs)` takes over. Study: `anchor_study.py` → `ANCHOR_REPORT.md`.
+
+## The fallback is not sized for the job
+
+`p95(all SMBs)` comes out at **0.43× the cap the user actually runs** (95% CI 0.35–0.70)
+and **0.21× the shot the engine actually wanted** (R1). The reason is the population, not
+the percentile: IDLE / OBSERVING / COMMITTED micro-doses are the large majority of SMBs, so
+the 95th percentile of the pooled distribution still sits inside the micro-dose mass. For
+tim — the closest thing the cohort has to a hands-free user — it returns **1.0 U** against
+CONFIRMED shots whose p90 is 2.25 U and a cap he set himself at 3.0 U.
+
+## "Obviously large boluses" — right target, wrong selector
+
+Selecting by size instead of type does **not** fix it. `p90(SMBs above the user's own
+median)` scores **0.43× the operative cap** — indistinguishable from the current fallback,
+because the above-median SMB pool is still mostly holds. `p90(all boluses, type-blind)`
+is 0.47×. Size-based selection cannot separate a confirm shot from a hold, because the
+distributions overlap.
+
+Selecting by **state** does separate them: `p90(CONFIRMED-state shots)` scores 1.00× the
+operative cap (CI 0.84–1.07).
+
+## But every delivered-dose statistic is censored by the cap it would set
+
+That 1.00 is largely tautological. The top CONFIRMED shots sit at the live cap for six of
+eight users (`clip_conf_p90` = 1.00 for A/B/C/D/E, 0.89 for H). For the two users whose
+confirm shots are *not* pinned to the cap — tim (0.33) and F (0.18) — `conf_p90` is only
+**0.67–0.75× the cap they actually run**. So anchoring on CONFIRMED shots would shrink a
+well-configured user's cap by about a third, and for everyone else it just reads their own
+cap back. This is the ratchet from the main study, now on the binding path: moving the
+anchor onto delivered doses is exactly what would arm it.
+
+## What is left once you exclude the censored signals
+
+Only two quantities live outside the cap's own feedback loop: **manual boluses** and **TDD**.
+Hands-free removes the first. That leaves TDD as the only uncensored anchor available — and
+it is already how `committedCap` is anchored (TDD/40).
+
+| candidate | ÷ operative cap | uncensored? | needs announcing? |
+|---|---|---|---|
+| `p95(all SMBs)` — current fallback | 0.43 [0.35, 0.70] | yes | no |
+| `p90(large SMBs)` — size-selected | 0.43 [0.35, 0.73] | yes | no |
+| `p90(CONFIRMED shots)` — state-selected | 1.00 [0.84, 1.07] | **no** | no |
+| `p90(manual bolus)` — current primary | 1.37 [1.16, 1.96] | yes | **yes** |
+| **TDD/10** | **1.14 [0.90, 1.62]** | **yes** | **no** |
+| TDD/8 | 1.42 [1.14, 2.02] | yes | no |
+
+**TDD/10 is the only candidate that is both uncensored and available hands-free**, and its
+ratio to the caps people actually run overlaps 1. It is also dimensionally consistent with
+the rest of the derivation: `confirmedCap = TDD/10` is exactly 4× `committedCap = TDD/40`.
+
+## The manual anchor is also mis-specified for announcing users
+
+`p90(manual bolus)` sits at **0.87× the whole-meal episode cost** but **1.37× the cap users
+actually run** (CI 1.16–1.96, excludes 1). That is the tell: a manual bolus measures the
+*meal*, while `confirmedCap` bounds one *shot* in a sequence that Boost deliberately splits
+across a confirm plus holds. So the current anchor over-sizes the cap even for the users it
+was designed for — it is not merely unavailable hands-free, it is measuring the wrong thing.
+
+## Proposal (untested — this is a spec, not a result)
+
+Replace the manual/SMB-p95 pair with the exogenous anchor:
+
+    confirmedCap = clamp(TDD/10, 1.5, 7.5)
+
+keeping `p90(manual bolus)` only as an optional additional `max` term for announcing users,
+and only if a within-user trial shows the 1.37× over-sizing is wanted rather than tolerated.
+
+Per-user effect against today's derived value: A 7.50→4.36, E 5.06→2.97, H 5.06→3.64,
+F 4.50→3.71, tim 2.00→1.41 (all reductions); C 3.25→3.38, B 3.60→5.67, **D 1.50→5.30**.
+
+D is the warning. He is the most hypo-prone user in the cohort (TBR<70 ~9–10%) with a high
+TDD, and a pure TDD anchor is blind to glycaemia. The existing raise-guard already blocks
+this — a dose-cap raise is held whenever 14-day TBR<70 > 4% or <54 ≥ 1% — and D trips it by
+a wide margin. That guard is load-bearing for this proposal, not incidental to it.
+
+**Confidence: PROVISIONAL.** n = 8 users, one era, CIs wide and several overlapping 1. The
+censoring stratification rests on two users. Nothing here is a reason to change a shipped
+cap without a pre-registered within-user trial.
+
+---
+
 ## Limitations
 
 - TDD telemetry only exists from ~Feb/Mar 2026, so the trajectory is 3–6 windows per user over five
