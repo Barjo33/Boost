@@ -70,6 +70,9 @@ A record of the data relationships, dosing levers, mechanisms and models we've e
 | hypoCaution by TBR (static) | Well-targeted for the hypo-prone, off for the well-controlled | removed-insulin pre-low share 28–32% (hypo-prone) vs 1–6% (well-controlled) | Already in auto-config; validated |
 | Auto-config policy | Never auto-raise aggression; TBR-driven hypoCaution | four online-tuning experiments re-derived it | Ships |
 | V7 residual substrate | Regime-conditioned pools debias the IOB forecast | criterion met when QUIET_FLAT drift ≈ 0 | GO as a substrate (shadow) |
+| Auto-config cap anchoring | The derived caps bind on EXOGENOUS terms, not on Boost's own clipped SMBs: committedCap on TDD/40 (36/37 windows), confirmedCap on manual-bolus p90 (32/37). ΔccapΔTDD r=0.996; ΔfcapΔmanual-p90 r=0.93 | 2026-08-03 re-derivation replay, 8 users, 37 windows | Why periodic re-derivation does NOT self-ratchet |
+| Periodic re-derivation (28d, TDD-anchored knobs) | committedCap/cumulative60 drift beats their own noise (2.72 [1.15,4.59] / 2.33 [1.06,3.63]); hypoCaution + aggression do NOT (1.00 [0.11,1.89] / 1.57 [0.00,3.21]) | same replay, day-block bootstrap bands | Candidate: re-derive the TDD-anchored knobs only, with a measured deadband |
+| Auto-config LOOKBACK_DAYS = 14 is noise-dominated | Two independent 14d derivations of the SAME person differ by 0.69 U on confirmedCap (CI 0.30–1.17); 63% of split-halves differ at all | same replay, split-half A/A | Argues for widening the window in the SHIPPING one-shot derivation |
 
 ---
 
@@ -82,6 +85,7 @@ A record of the data relationships, dosing levers, mechanisms and models we've e
 | Online cap-raise, confirmedCap | Rarely binds | 1–5 raises/6wk, all reverts from one user |
 | Online aggression slider (up-on-highs) | Mis-targeted; highs are sizing/timing | 45% revert |
 | Online hypoCaution slider (up-on-lows) | Coarse targeting; ratchets to max | good:wrong 0.74 flat; static per-user version used instead |
+| Self-ratchet of the derived caps under re-derivation | Real as algebra (p95 of a clipped variable cannot exceed the clip) but NOT the dominant effect: the censored SMB term binds in 1/37 windows. Bias when it does bind is large (confirmedCap +0.86 U [+0.03,+1.90]) | 2026-08-03 re-derivation replay — hypothesis raised and refuted in the same session |
 | Blanket committedCap raise | Suppressed confirms; priced badly | rejected 07-03 |
 | RECOVERING-state SMB | Adds into a high-IOB tail → lows | rejected 07-03 |
 | "Re-engage tuning" after confirmed highs | Same high-IOB problem | rejected 07-03 |
