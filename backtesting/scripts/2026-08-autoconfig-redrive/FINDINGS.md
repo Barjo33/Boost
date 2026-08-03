@@ -270,6 +270,69 @@ bound; the direction (V6 does not cost more per meal) is what the row is being u
 
 ---
 
+# Third addendum — pricing the re-anchor
+
+Study: `reanchor_pricing.py` → `REANCHOR_PRICING.md`. Propagates a different cap through the
+*observed* dose chain (`min(raw, capNew) × brakeFactor`, brake factor taken from the logged
+`doseAfterBrakes / doseAfterCaps`). Window is the `velocityFactor` telemetry era — 7 days for most
+users, 19–24 for tim and C. Thin, and the load-bearing caveat on everything below.
+
+## Today's caps have no consistent relationship to anything
+
+As a share of TDD the operative `confirmedCap` runs from **2.6% (D) to 18.0% (tim)** — a 6.9× spread,
+median 9.3%. That dispersion is the anchor problem stated in one number. `TDD/10` puts everyone at
+10%, which is close to the current median: **this is a re-anchoring, not a loosening.** It lowers the
+cap for tim, F and H, and raises it for A, B, C, D and E.
+
+## The value lands exactly where the raise-guard blocks it
+
+| user | cap → | clip rate now | added U/day (level) | added U/day (shape) | raise-guard |
+|---|---|---|---|---|---|
+| B | 3.5 → 6.13 | **0.80** | 6.59 | 3.37 | **BLOCKED** |
+| D | 1.5 → 5.76 | 0.57 | 5.69 | 0.61 | **BLOCKED** |
+| C | 2.0 → 3.29 | 0.55 | 2.61 | 2.56 | **BLOCKED** |
+| A | 4.0 → 4.49 | 0.29 | 0.35 | 0.35 | allowed |
+| E | 2.5 → 2.59 | 0.50 (n=4) | 0.03 | 0.01 | allowed |
+
+The three users whose confirm shots are pinned to the cap most often — the ones the re-anchor exists
+for — all trip the guard. The two it would reach gain **0.19 U/day between them (0.4% of TDD)**, which
+is nothing. Among those two the added insulin's pre-low share is 0.124 *below* their baseline
+(CI −0.160, −0.088), i.e. favourably targeted, but that rests on eight raised cycles and is not
+evidence of anything.
+
+This is not a defect in the guard. It is the recurring shape of the whole problem: the users who want
+more insulin at meals are the users who run more lows.
+
+## The way through is to make it a shape change, not a level change
+
+Today's apply layer recomputes `cumulativeCap60 = confirmedCap + 2 × committedCap`, so raising the
+per-shot cap raises the hourly budget with it and the extra is genuinely new insulin. Holding
+`cumulativeCap60` at its current value instead lets the confirm shot grow while the hour's total
+cannot — the extra has to come out of the holds that would have followed:
+
+**55% of the added insulin is absorbed** across the raise users (3.05 → 1.38 U/day). Per user it
+varies with how tightly their hourly budget already binds: D 5.69 → 0.61 (89% absorbed), B 6.59 →
+3.37 (49%), C 2.61 → 2.56 (2%, his hourly budget rarely binds).
+
+That is the difference between the early-dosing audit's two categories: MOVED insulin priced
+harm-neutral, NEW insulin priced +15pp. A shape-only re-anchor is mostly the former.
+
+## Where that leaves it
+
+The proposal is now specific: **`confirmedCap = clamp(TDD/10, 1.5, 7.5)` with `cumulativeCap60`
+decoupled from it rather than recomputed as `conf + 2 × comm`.** The open question is a policy one I
+can't settle from data: the raise-guard currently fires on any dose-cap raise, so it would block
+B/C/D even under the shape-only form, where the hourly total does not increase. Whether a shape-only
+change should face the same guard as a level change is a judgement about what the guard is for.
+
+**Confidence: PROVISIONAL, and weaker than the earlier sections.** Seven-day windows for five of eight
+users; TBR percentages computed over that same short window rather than a trailing 14 days, so the
+guard verdicts are indicative; the brake propagation assumes the brake stack attenuates a larger
+pre-brake dose by the same factor it attenuated the observed one, which holds if the brakes are pure
+multipliers and not if any of them are thresholded on dose size.
+
+---
+
 ## Limitations
 
 - TDD telemetry only exists from ~Feb/Mar 2026, so the trajectory is 3–6 windows per user over five
