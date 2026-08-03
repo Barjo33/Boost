@@ -59,6 +59,10 @@ TRIO_TAG_RE = re.compile(
 
 TWIN_RE = re.compile(r"twin=([-\d.,]+)")
 PLATEAU_RE = re.compile(r"plateau=([^;]+);")
+# 2026-08-03 post-rescue tight-ramp TRIAL: "prTrial=<enrolled 0|1>,<control|tight>,<cap>;"
+# emitted every cycle (not only when the guard fired), so exposure is countable on days the
+# guard never engaged. Pre-reg: backtesting/protocols/2026-08_postrescue_tight_ramp_PREREG.md
+PRTRIAL_RE = re.compile(r"prTrial=([^;]+);")
 ANTBACKOUT_RE = re.compile(r"antBackout=([^;]+);")
 ANTICIP_RE = re.compile(r"anticip=([^;]+);")
 
@@ -105,6 +109,20 @@ def _plat(reason: str, i: int, cast=float):
     trigger context; floor = why it did/didn't fire ('ok'|'n/a'|recent-low|post-rescue|cum-cap|
     minguard|not-active|no-headroom). Mixed numeric+text, so match to ';' then split."""
     m = PLATEAU_RE.search(reason or "")
+    if not m:
+        return None
+    parts = m.group(1).split(",")
+    if i >= len(parts):
+        return None
+    try:
+        return cast(parts[i])
+    except (ValueError, TypeError):
+        return None
+
+
+def _prtrial(reason: str, i: int, cast=float):
+    """Post-rescue tight-ramp trial tag: enrolled(0/1), arm(control|tight), cap(U)."""
+    m = PRTRIAL_RE.search(reason or "")
     if not m:
         return None
     parts = m.group(1).split(",")
@@ -539,6 +557,9 @@ def build_row(rec: dict, user_id: str) -> Optional[dict]:
         "boostv5_plateau_trend": _plat(reason, 3),
         "boostv5_plateau_iob": _plat(reason, 4),
         "boostv5_plateau_floor": _plat(reason, 6, str),
+        "prtrial_enrolled": _prtrial(reason, 0, int),
+        "prtrial_arm": _prtrial(reason, 1, str),
+        "prtrial_cap": _prtrial(reason, 2),
         # 2026-07-20 anticipatory back-out controller SHADOW (read-only; BACKOUT_CONTROLLER_SPEC.md).
         "antbackout_state": _antb(reason, 0, str),
         "antbackout_ra0": _antb(reason, 1), "antbackout_ranow": _antb(reason, 2),
@@ -770,6 +791,9 @@ ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boostv5_plateau_bg         double p
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boostv5_plateau_trend      double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boostv5_plateau_iob        double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boostv5_plateau_floor      text;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS prtrial_enrolled           integer;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS prtrial_arm                text;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS prtrial_cap                double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_state           text;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_ra0             double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_ranow           double precision;
