@@ -147,6 +147,10 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         // overrides a knob the user already tuned.
         runCatching { maybeAutoConfigure() }
             .onFailure { aapsLogger.error(LTag.APS, "BoostV5 auto-config failed (non-fatal)", it) }
+        // Periodic re-derivation (2026-08-03) — every 7 days on a 28-day window, deadband-gated.
+        // Separately wrapped: it must never be able to stop the onboarding path or the dose path.
+        runCatching { maybeRedrive() }
+            .onFailure { aapsLogger.error(LTag.APS, "BoostV5 re-derivation failed (non-fatal)", it) }
         // Run the shared engine with the V5 override active. lastAPSResult/lastAPSRun delegate to
         // the engine (see above), so the result is exposed the instant runEngine sets it.
         openAPSBoostEngine.get().runEngine(initiator, tempBasalFallback, v5Active = true)
@@ -212,6 +216,165 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         return composedFloorAllowedByTbr(cachedTbrBelow63Pct, cachedTbrBelow70Pct)
     }
 
+    // ── small JSON ledgers: what auto-config wrote, and what it is waiting to confirm ─────────
+    private fun ledger(key: StringKey): MutableMap<String, Double> {
+        val raw = preferences.get(key)
+        if (raw.isEmpty()) return mutableMapOf()
+        return runCatching {
+            val o = JSONObject(raw)
+            o.keys().asSequence().associateWith { o.getDouble(it) }.toMutableMap()
+        }.getOrElse { mutableMapOf() }
+    }
+
+    private fun ledgerPut(key: StringKey, prefKey: String, value: Double?) {
+        val m = ledger(key)
+        if (value == null) m.remove(prefKey) else m[prefKey] = value
+        preferences.put(key, JSONObject(m as Map<*, *>).toString())
+    }
+
+    private fun appliedLedger() = ledger(StringKey.ApsBoostV5AutoConfigApplied)
+    private fun recordApplied(key: DoubleKey, value: Double) =
+        ledgerPut(StringKey.ApsBoostV5AutoConfigApplied, key.key, value)
+    private fun retireFromRedrive(key: DoubleKey) =
+        ledgerPut(StringKey.ApsBoostV5AutoConfigApplied, key.key, null)
+
+    /**
+     * Scheduled re-derivation. Runs at most every [BoostV5AutoConfig.REDRIVE_INTERVAL_DAYS] days on
+     * a [BoostV5AutoConfig.REDRIVE_LOOKBACK_DAYS]-day window, and only once the onboarding
+     * derivation has finished. Writes a knob only when the move clears that knob's measured noise
+     * band and the knob is still one auto-config owns — see [BoostV5AutoConfigApply.redrive].
+     *
+     * Visibility is the point of the tail of this method: the outcome goes to the AAPS log, to a
+     * user-facing notification when something actually moved, to a rolling in-app history, and to a
+     * breadcrumb that the Boost engine replays into the reason every cycle so Nightscout and
+     * boost_decisions always carry the current state rather than the one cycle in seven.
+     */
+    private fun maybeRedrive() {
+        val now = dateUtil.now()
+        val last = preferences.get(LongNonKey.ApsBoostV5AutoConfigLastRedriveMs)
+        val intervalMs = BoostV5AutoConfig.REDRIVE_INTERVAL_DAYS * 24L * 60 * 60 * 1000
+        if (last != 0L && now - last < intervalMs) return
+        // Don't run alongside onboarding: if any managed knob is still unresolved the first
+        // derivation has not finished, and that path owns the settings until it has.
+        val allKeys = BoostV5AutoConfigApply.managedDoubleKeys.map { it.key } + BooleanKey.ApsBoostV5FastCarbConfirm.key
+        if (!allKeys.all { isResolved(it) }) return
+        if (appliedLedger().isEmpty()) {                 // nothing auto-config owns → nothing to do
+            preferences.put(LongNonKey.ApsBoostV5AutoConfigLastRedriveMs, now)
+            return
+        }
+
+        val g = gatherProfile(now, BoostV5AutoConfig.REDRIVE_LOOKBACK_DAYS)
+        val suggestion = BoostV5AutoConfig.compute(g.profile)
+        // Stamp the run either way, so a data-thin fortnight doesn't retry every cycle.
+        preferences.put(LongNonKey.ApsBoostV5AutoConfigLastRedriveMs, now)
+        if (suggestion == null) {
+            aapsLogger.info(LTag.APS, "BoostV5 re-derivation: insufficient history (days=${g.daysWithData}, bg=${g.bgCount}) — skipped")
+            return
+        }
+
+        val owned = appliedLedger()
+        val pending = ledger(StringKey.ApsBoostV5AutoConfigPending)
+        val res = BoostV5AutoConfigApply.redrive(
+            suggestion, tbrBelow70Pct = g.tbr70, timeBelow54Pct = g.sev54,
+            storedValue = { preferences.getIfExists(it) },
+            appliedValue = { owned[it.key] },
+            pendingValue = { pending[it.key] },
+            put = { key, value -> preferences.put(key, value) },
+            setApplied = { key, value -> recordApplied(key, value) },
+            setPending = { key, value -> ledgerPut(StringKey.ApsBoostV5AutoConfigPending, key.key, value) },
+            retire = { retireFromRedrive(it) }
+        )
+        res.forEach { aapsLogger.info(LTag.APS, "BoostV5 re-derivation: ${it.key.key} → ${it.reason}") }
+
+        fun shortName(k: DoubleKey) = k.name.removePrefix("ApsBoostV5").removePrefix("ApsBoost")
+        val changed = res.filter { it.outcome == BoostV5AutoConfigApply.Outcome.REDRIVEN }
+        val held = res.filter { it.outcome == BoostV5AutoConfigApply.Outcome.SUGGESTED_NOT_APPLIED_TBR }
+        val retired = res.filter { it.outcome == BoostV5AutoConfigApply.Outcome.RETIRED_USER_EDITED }
+
+        // Breadcrumb replayed into the reason every cycle (see OpenAPSBoostPlugin autordv=).
+        preferences.put(
+            StringKey.ApsBoostV5RedriveSummary,
+            "@${dateUtil.toISOString(now)},win=${BoostV5AutoConfig.REDRIVE_LOOKBACK_DAYS}d" +
+                ",ev=${res.size},ch=${changed.size}" +
+                changed.joinToString("") { ",${shortName(it.key)}:${it.operativeValue}" } +
+                (if (held.isEmpty()) "" else held.joinToString("") { ",held-${shortName(it.key)}:${it.suggestedValue}" }) +
+                (if (retired.isEmpty()) "" else retired.joinToString("") { ",retired-${shortName(it.key)}" })
+        )
+
+        if (changed.isNotEmpty() || held.isNotEmpty()) {
+            // Rolling in-app history so this is answerable after the notification is dismissed.
+            val line = changed.joinToString("; ") { "${shortName(it.key)} ${it.suggestedValue} (was ${it.operativeValue})" }
+            val entry = "${dateUtil.toISOString(now)} ${if (line.isEmpty()) "held only" else line}"
+            val hist = (listOf(entry) + preferences.get(StringKey.ApsBoostV5RedriveHistory)
+                .split("\n").filter { it.isNotBlank() }).take(10)
+            preferences.put(StringKey.ApsBoostV5RedriveHistory, hist.joinToString("\n"))
+
+            val body = buildString {
+                append("Boost re-checked your settings against the last ${BoostV5AutoConfig.REDRIVE_LOOKBACK_DAYS} days")
+                if (changed.isNotEmpty()) {
+                    append(" and changed ${changed.size}:\n")
+                    append(changed.joinToString("\n") { "• ${shortName(it.key)} → ${it.operativeValue} U" })
+                }
+                held.forEach { append("\n• ${shortName(it.key)}: ${it.suggestedValue} U suggested, held back (time-below-range)") }
+            }
+            uiInteraction.addNotification(Notification.USER_MESSAGE, body, Notification.INFO)
+        }
+        aapsLogger.info(
+            LTag.APS,
+            "BoostV5 re-derivation complete: changed=${changed.size} held=${held.size} retired=${retired.size}"
+        )
+    }
+
+    /** Everything [BoostV5AutoConfig.compute] needs, plus the counts the callers report on. */
+    private data class GatheredProfile(
+        val profile: BoostV5AutoConfig.V1Profile,
+        val daysWithData: Int, val bgCount: Int, val bolusCount: Int,
+        val tbr70: Double, val sev54: Double
+    )
+
+    /**
+     * Gather a [BoostV5AutoConfig.V1Profile] over the trailing [lookbackDays]. Shared by the
+     * onboarding derivation (14 d) and the periodic re-derivation (28 d) so the two can never
+     * diverge in how they read the same history.
+     */
+    private fun gatherProfile(now: Long, lookbackDays: Long): GatheredProfile {
+        val start = now - lookbackDays * 24L * 60 * 60 * 1000
+
+        // TDD (median over available days) + days-of-data.
+        val tdds = tddCalculator.calculate(lookbackDays, allowMissingDays = true)
+        val tddValues = mutableListOf<Double>()
+        if (tdds != null) for (i in 0 until tdds.size()) {
+            val t = tdds.valueAt(i)
+            val total = if (t.totalAmount > 0) t.totalAmount else t.basalAmount + t.bolusAmount
+            if (total > 0) tddValues.add(total)
+        }
+        val tddMedian = BoostV5AutoConfig.percentile(tddValues, 50.0)
+
+        // Boluses split into manual (meal) vs SMB.
+        val boluses = persistenceLayer.getBolusesFromTimeToTime(start, now, true)
+        val manual = boluses.filter { it.type == BS.Type.NORMAL && it.amount > 0 }.map { it.amount }
+        val smb = boluses.filter { it.type == BS.Type.SMB && it.amount > 0 }.map { it.amount }
+
+        // Glycaemia (TBR / severe / mean) from CGM.
+        val bgs = persistenceLayer.getBgReadingsDataFromTimeToTime(start, now, true)
+        val n = bgs.size
+        val tbr70 = if (n > 0) 100.0 * bgs.count { it.value >= 1.0 && it.value < 70.0 } / n else 0.0
+        val sev54 = if (n > 0) 100.0 * bgs.count { it.value >= 1.0 && it.value < 54.0 } / n else 0.0
+        val meanBg = if (n > 0) bgs.sumOf { it.value } / n else 0.0
+
+        return GatheredProfile(
+            BoostV5AutoConfig.V1Profile(
+                daysWithData = tddValues.size, bgReadingCount = n, tddMedianU = tddMedian,
+                manualBolusesU = manual, smbAmountsU = smb,
+                tbrBelow70Pct = tbr70, timeBelow54Pct = sev54, meanGlucoseMgdl = meanBg,
+                currentMaxIobU = constraintsChecker.getMaxIOBAllowed().value(),
+                currentMaxBolusU = constraintsChecker.getMaxBolusAllowed().value()
+            ),
+            daysWithData = tddValues.size, bgCount = n, bolusCount = boluses.size,
+            tbr70 = tbr70, sev54 = sev54
+        )
+    }
+
     private fun maybeAutoConfigure() {
         // Migration from the legacy global one-shot flag (raw read — get() would mask it in simple
         // mode): mark resolved ONLY knobs whose stored value differs from the factory default (they
@@ -256,47 +419,20 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         if (allKeys.all { isResolved(it) }) return
 
         val now = dateUtil.now()
-        val start = now - BoostV5AutoConfig.LOOKBACK_DAYS * 24L * 60 * 60 * 1000
-
-        // TDD (median over available days) + days-of-data.
-        val tdds = tddCalculator.calculate(BoostV5AutoConfig.LOOKBACK_DAYS, allowMissingDays = true)
-        val tddValues = mutableListOf<Double>()
-        if (tdds != null) for (i in 0 until tdds.size()) {
-            val t = tdds.valueAt(i)
-            val total = if (t.totalAmount > 0) t.totalAmount else t.basalAmount + t.bolusAmount
-            if (total > 0) tddValues.add(total)
-        }
-        val tddMedian = BoostV5AutoConfig.percentile(tddValues, 50.0)
-        val daysWithData = tddValues.size
-
-        // Boluses split into manual (meal) vs SMB.
-        val boluses = persistenceLayer.getBolusesFromTimeToTime(start, now, true)
-        val manual = boluses.filter { it.type == BS.Type.NORMAL && it.amount > 0 }.map { it.amount }
-        val smb = boluses.filter { it.type == BS.Type.SMB && it.amount > 0 }.map { it.amount }
-
-        // Glycaemia (TBR / severe / mean) from CGM.
-        val bgs = persistenceLayer.getBgReadingsDataFromTimeToTime(start, now, true)
-        val n = bgs.size
-        val tbr70 = if (n > 0) 100.0 * bgs.count { it.value >= 1.0 && it.value < 70.0 } / n else 0.0
-        val sev54 = if (n > 0) 100.0 * bgs.count { it.value >= 1.0 && it.value < 54.0 } / n else 0.0
-        val meanBg = if (n > 0) bgs.sumOf { it.value } / n else 0.0
+        val g = gatherProfile(now, BoostV5AutoConfig.LOOKBACK_DAYS)
+        val daysWithData = g.daysWithData
+        val n = g.bgCount
+        val tbr70 = g.tbr70
+        val sev54 = g.sev54
 
         // Install-time history gap (2026-07-30). Reuses the three quantities just gathered — no extra
         // DB work — and, if the local database is too thin to derive anything from, asks NSClient for
         // a bounded 14-day re-download. Wrapped: a failure here must never stop auto-config, which in
         // turn is already wrapped so it can never stop the dose path.
-        runCatching { maybeBackfillHistory(now, daysWithTdd = daysWithData, bgReadings = n, treatments = boluses.size) }
+        runCatching { maybeBackfillHistory(now, daysWithTdd = daysWithData, bgReadings = n, treatments = g.bolusCount) }
             .onFailure { aapsLogger.error(LTag.APS, "BoostV5 history-gap check failed (non-fatal)", it) }
 
-        val suggestion = BoostV5AutoConfig.compute(
-            BoostV5AutoConfig.V1Profile(
-                daysWithData = daysWithData, bgReadingCount = n, tddMedianU = tddMedian,
-                manualBolusesU = manual, smbAmountsU = smb,
-                tbrBelow70Pct = tbr70, timeBelow54Pct = sev54, meanGlucoseMgdl = meanBg,
-                currentMaxIobU = constraintsChecker.getMaxIOBAllowed().value(),
-                currentMaxBolusU = constraintsChecker.getMaxBolusAllowed().value()
-            )
-        )
+        val suggestion = BoostV5AutoConfig.compute(g.profile)
         if (suggestion == null) {
             // Nothing resolves here: every open knob stays eligible and genuinely retries next cycle.
             aapsLogger.info(LTag.APS, "BoostV5 auto-config: insufficient V1 history (days=$daysWithData, bg=$n) — will retry")
@@ -323,7 +459,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             timeBelow54Pct = sev54,
             isResolved = { isResolved(it.key) },
             storedValue = { preferences.getIfExists(it) },
-            put = { key, value -> preferences.put(key, value) },
+            put = { key, value -> preferences.put(key, value); recordApplied(key, value) },
             markResolved = { markResolved(it.key) }
         )
         // Log every classification verbatim so field diagnosis never needs inference.

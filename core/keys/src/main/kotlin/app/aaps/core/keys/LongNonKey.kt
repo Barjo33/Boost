@@ -16,6 +16,10 @@ enum class LongNonKey(
     // Health Connect HR ingest — high-water mark for incremental polling (epoch ms)
     ApsBoostHealthConnectLastSyncMs("boost_health_connect_last_sync_ms", 0L),
 
+    // 2026-08-03 auto-config periodic re-derivation — when it last RAN (epoch ms), regardless of
+    // whether it changed anything. Drives the 7-day cadence.
+    ApsBoostV5AutoConfigLastRedriveMs("boost_v5_autoconfig_last_redrive_ms", 0L),
+
     // Install-time history-gap backfill (2026-07-30, see BoostHistorySync) — when the last request
     // was made. Enforces BoostHistorySync.RETRY_COOLDOWN_MS so a thin-history install cannot ask
     // NSClient for a re-download on every 5-minute loop cycle.
