@@ -101,6 +101,16 @@ enum class BooleanKey(
     // insulin at ~base rate), so it is NOT a clean cohort default; it is OPT-IN and AUTO-CONFIG
     // MANAGED (BoostV5AutoConfig enables it only for clearly well-controlled users). Default OFF.
     ApsBoostV5AggressiveEarlyConfirm("boost_v5_aggressive_early_confirm", false, defaultedBySM = true),
+    // 2026-08-03 post-rescue TIGHT-RAMP TRIAL enrolment (pre-registered within-user crossover —
+    // backtesting/protocols/2026-08_postrescue_tight_ramp_PREREG.md). When enrolled, days are
+    // randomised into a treatment arm that caps the post-rescue rebound scale at 0.60 and applies
+    // it across the WHOLE window (today the guard is gated off at BG >= 170). Both arms are at or
+    // below the shipped dose on every cycle — the trial can never deliver MORE insulin than today.
+    // Cohort evidence is UNPROVEN (2026-08-03 ramp study: every candidate ramp's cluster-bootstrap
+    // CI overlaps zero; only 2 of 8 users show favourable targeting), which is exactly why this is
+    // a randomised trial and not a ship. Default OFF; NOT auto-config managed — enrolment is a
+    // deliberate per-user act.
+    ApsBoostPostRescueTightRampTrial("boost_postrescue_tight_ramp_trial", false, defaultedBySM = true),
     // 2026-07 composed Phase-3 brake floor (F = 0.25) — when ON (and V6 is the active doser), the
     // delivered dose is floored at min(budget × 0.25, committedCapU) on meal-session high cycles
     // (CONFIRMED/COMMITTED/RECOVERING ∧ BG > 160 ∧ eventualBG > target+20 ∧ awake ∧ not post-rescue ∧

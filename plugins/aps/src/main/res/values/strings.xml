@@ -247,6 +247,8 @@
     <string name="openapsama_link_to_preference_json_doc_txt">Attention!\nNormally you do not have to change these values below. Please CLICK HERE and READ the text and make sure you UNDERSTAND it before change any of these values.</string>
     <string name="openapsama_link_to_preference_json_doc" translatable="false">http://openaps.readthedocs.io/en/latest/docs/walkthrough/phase-3/beyond-low-glucose-suspend.html</string>
     <string name="always_use_short_avg">Always use short average delta instead of simple delta</string>
+    <string name="boost_postrescue_tight_ramp_trial">Post-rescue tight-ramp trial</string>
+    <string name="boost_postrescue_tight_ramp_trial_summary">Pre-registered within-user trial. On randomised treatment days the post-rescue rebound guard is capped at 60% and applies across the whole window instead of switching off above 170 mg/dL. Neither arm can deliver more insulin than the current behaviour. Leave OFF unless you are enrolled.</string>
     <string name="always_use_short_avg_summary">Useful when data from unfiltered sources like xDrip+ gets noisy.</string>
     <string name="openapsama_max_daily_safety_multiplier">Max daily safety multiplier</string>
     <string name="openapsama_current_basal_safety_multiplier">Current basal safety multiplier</string>

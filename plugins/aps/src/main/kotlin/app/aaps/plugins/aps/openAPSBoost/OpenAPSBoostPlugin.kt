@@ -1465,6 +1465,24 @@ open class OpenAPSBoostPlugin @Inject constructor(
         // (zero-imputed) for the first ~6 cycles. No-op after the first cycle.
         determineBasalBoost.loadMlRingBufferOnce(preferences.getBoostDosing(StringKey.ApsBoostMlRingBuffer))
 
+        // ── Post-rescue TIGHT-RAMP trial arm (2026-08-03, pre-registered crossover) ──
+        // Enrolment is an explicit per-user preference; the arm is a pure function of a
+        // once-generated install seed and the LOCAL day index, so the offline analysis can
+        // reproduce every day's assignment from the seed alone. Treatment days cap the
+        // post-rescue scale at 0.60 and apply it across the whole window; control days run the
+        // shipped guard untouched. Neither arm can dose above today's behaviour.
+        val tightRampCap: Double? = if (preferences.getBoostDosing(BooleanKey.ApsBoostPostRescueTightRampTrial)) {
+            var seed = preferences.getBoostDosing(StringKey.ApsBoostTrialSeed)
+            if (seed.isEmpty()) {                       // first cycle after enrolment
+                seed = java.util.UUID.randomUUID().toString()
+                preferences.put(StringKey.ApsBoostTrialSeed, seed)
+                aapsLogger.info(LTag.APS, "Post-rescue tight-ramp trial: seed generated, enrolled")
+            }
+            val dayIndex = java.time.Instant.ofEpochMilli(now)
+                .atZone(java.time.ZoneId.systemDefault()).toLocalDate().toEpochDay()
+            if (DetermineBasalBoost.tightRampArm(seed, dayIndex)) DetermineBasalBoost.TIGHT_RAMP_CAP else null
+        } else null
+
         determineBasalBoost.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -1482,8 +1500,14 @@ open class OpenAPSBoostPlugin @Inject constructor(
             recentSmbVolume60Min = recentSmbVolume60Min,
             cumulativeSmbCap60Min = cumulativeSmbCap60Min,
             recentLowBG45Min = recentLowBG45Min,
-            timeSinceLastSmbMin = timeSinceLastSmbMin
+            timeSinceLastSmbMin = timeSinceLastSmbMin,
+            postRescueTightRampCap = tightRampCap
         ).also {
+            // Trial arm tag, every cycle (not only when the guard fires), so the analysis can
+            // count exposure on days the guard never engaged. enrolled,arm,cap.
+            it.reason.append(
+                "prTrial=${if (preferences.getBoostDosing(BooleanKey.ApsBoostPostRescueTightRampTrial)) 1 else 0}," +
+                    "${if (tightRampCap != null) "tight" else "control"},${tightRampCap ?: 0.0}; ")
             // ISF shadow telemetry — V1's actual variable_sens used the instantaneous
             // ratio = tdd24/tdd7; V4.4.2 would use an EMA(τ=3h) of the same. Compute
             // the implied shadow values for direct comparison:
@@ -2619,6 +2643,14 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     )
                 )
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAlwaysUseShortDeltas, summary = R.string.always_use_short_avg_summary, title = R.string.always_use_short_avg))
+                addPreference(
+                    AdaptiveSwitchPreference(
+                        ctx = context,
+                        booleanKey = BooleanKey.ApsBoostPostRescueTightRampTrial,
+                        summary = R.string.boost_postrescue_tight_ramp_trial_summary,
+                        title = R.string.boost_postrescue_tight_ramp_trial
+                    )
+                )
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsMaxDailyMultiplier, dialogMessage = R.string.openapsama_max_daily_safety_multiplier_summary, title = R.string.openapsama_max_daily_safety_multiplier))
                 addPreference(
                     AdaptiveDoublePreference(

@@ -97,6 +97,12 @@ enum class StringKey(
     // falls back to repeating the current cycle.
     ApsBoostMlRingBuffer("boost_ml_ring_buffer", "", defaultedBySM = true),
 
+    // Per-install randomisation seed for pre-registered trials (first written when a trial is
+    // enrolled; never rewritten). Arm assignment is a pure function of (seed, local day index), so
+    // the offline analysis can reproduce every day's arm exactly from this string — no need to
+    // trust a logged flag. Clearing it re-randomises, which would break an in-flight trial.
+    ApsBoostTrialSeed("boost_trial_seed", "", defaultedBySM = true),
+
     // V6 meal-time learner — JSON array of recent V5-CONFIRMED meal-commit timestamps (rolling
     // 60 days). Drives circular-clustered habitual meal-time learning so the anticipatory
     // pre-meal low target can fire ~45-60 min before a learned meal. Empty/corrupt → no learned
