@@ -2,7 +2,7 @@
 
 **Status:** PRE-REGISTERED (analysis plan fixed before any trial data is collected)
 **Registered:** 2026-08-03
-**Version:** 1.0
+**Version:** 1.1  (amended 2026-08-03, before any data collection — see §10)
 **Applies to:** the composed post-rescue rebound guard, `DetermineBasalBoost.postRescueReboundScale`
 and its call site in the SMB block (shipped `51e7663a36`, 2026-07-23).
 
@@ -47,7 +47,9 @@ Two signals survive as *hypothesis-generating* and motivate a trial rather than 
    tim +0.22); B, C, D, E, F and H are all negative. A cohort-wide change would remove six users'
    insulin no better than at random.
 
-This trial therefore tests **one arm, per-user, in the two users the observational data favours**.
+This trial therefore tests **one arm, in one user**. A — the strongest observational signal of the
+eight — is excluded by participant decision (§4, amendment 1.1), so the trial is a single-subject
+crossover on tim alone.
 
 ## 2. The intervention
 
@@ -83,12 +85,20 @@ Within-user **day-level randomised crossover**; each participant is their own co
 
 ## 4. Population
 
-- **Enrol:** users with ≥14 d of stable V6 data whose observational targeting under cap-at-0.60 is
-  favourable — at registration that is **tim** and **A**. Enrolment is a deliberate act
+**Single participant: tim. n = 1 by design** (amendment 1.1, before any data collection).
+
+- **Enrol:** tim only. Enrolment is a deliberate act
   (`BooleanKey.ApsBoostPostRescueTightRampTrial`, default OFF, *not* auto-config managed).
-- **Exclude:** users whose per-user delta is negative (B, C, D, E, F, H). Enrolling them would be
-  removing insulin at random on this evidence.
-- tim is enrolled first. A is invited only after tim completes 4 weeks without a stopping-rule hit.
+- **Exclude:** every other cohort user, including **A**, whose observational targeting under
+  cap-at-0.60 was the most favourable of the eight (+0.64). A is excluded by participant decision,
+  not by evidence — see the amendment log. B, C, D, E, F and H remain excluded on evidence: their
+  per-user deltas are negative, so enrolling them would be removing insulin at random.
+- No expansion path. If the trial is ever widened, that is a new registration, not an amendment.
+
+**Consequence to state plainly:** with n = 1 this is a single-subject crossover. Nothing it produces
+generalises to the cohort — it can support a decision about tim's own configuration and nothing
+more. The heterogeneity in §1 is the reason that limitation is acceptable rather than fatal: a
+cohort-wide answer was never the goal.
 
 ## 5. Endpoints
 
@@ -117,7 +127,8 @@ plausible effect. This is stated up front rather than discovered later.
 What the trial *is* adequately powered for:
 - Secondary 1 (insulin removed) is near-deterministic and will be precise within two weeks.
 - Safety surveillance against the stopping rules, which is the main purpose of running it live.
-- Accumulating paired episodes toward a pooled answer if A also enrols and the trial extends.
+- Accumulating paired episodes toward a longer-run single-subject answer if the trial is extended
+  beyond 8 weeks. There is no pooling route — n = 1 is fixed (§4).
 
 The primary endpoint is therefore reported with its CI and will almost certainly be **unproven**
 either way at 8 weeks. That is an acceptable outcome: the decision this trial informs is whether the
@@ -139,9 +150,12 @@ regardless of attribution, because the floors are absolute.
 
 ## 8. Analysis
 
-- Episode-level; arm as the fixed effect; participant as a cluster when >1 user is enrolled.
-- Primary: difference in proportions with a cluster-bootstrap 95% CI (5000 draws, resampling
-  episodes within participant). Verdict stated explicitly as distinguishable / **unproven**.
+- Episode-level, single participant; arm as the only fixed effect. No clustering term is needed
+  or possible at n = 1.
+- Primary: difference in proportions with a bootstrap 95% CI (5000 draws, resampling episodes).
+  Verdict stated explicitly as distinguishable / **unproven**. Note the resampling unit is the
+  episode, so the CI describes within-tim sampling variation only and carries no cross-user
+  generalisation.
 - Secondaries: same bootstrap; no multiplicity correction, and all secondaries are labelled
   exploratory because of §6.
 - Arm is **re-derived offline** from `ApsBoostTrialSeed` + date, and cross-checked against the
@@ -159,4 +173,4 @@ whether the guard fired, so exposure is countable on days the guard never engage
 
 | date | change | reason |
 |---|---|---|
-| — | — | — |
+| 2026-08-03 | v1.1 — **A excluded entirely**; trial is single-subject (tim, n = 1). Staged-enrolment clause and pooled-analysis route removed; analysis model simplified to a single-participant episode bootstrap. | Participant decision. Recorded **before any data was collected** — the build had not been flashed and no trial cycle had run — so this changes the registered plan rather than revising a design already exposed to data. It narrows scope and drops the only route to a pooled result; arms, endpoints, stopping rules and randomisation are untouched. |
