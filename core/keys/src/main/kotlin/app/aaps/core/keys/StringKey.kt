@@ -128,11 +128,12 @@ enum class StringKey(
     // on the TBR guard, or declined for insufficient history. Display-only; never read for dosing.
     ApsBoostV5AutoConfigSummary("boost_v5_autoconfig_summary", "", defaultedBySM = true),
 
-    // 2026-08-03 periodic re-derivation. JSON map {prefKey: value} of what auto-config itself last
-    // WROTE for each knob. The re-derivation only revisits a knob whose stored value still equals
-    // the value here — i.e. one auto-config owns and the user has not touched since. A user edit
-    // makes stored != applied, and the knob is retired from re-derivation permanently.
-    ApsBoostV5AutoConfigApplied("boost_v5_autoconfig_applied", "", defaultedBySM = true),
+    // 2026-08-03 periodic re-derivation (rev 2). JSON map {prefKey: derivedValue} of where the
+    // DERIVATION sat at the last write. Re-derivation applies the derivation's MOVEMENT since this
+    // baseline to whatever the knob is currently set to, so a user's own value is scaled rather
+    // than overwritten and no notion of knob ownership is needed. Only advanced when a write
+    // actually happens, so movement suppressed by the deadband accumulates instead of being lost.
+    ApsBoostV5RedriveBaseline("boost_v5_redrive_baseline", "", defaultedBySM = true),
 
     // 2026-08-03 re-derivation hysteresis for the QUANTISED knobs (aggression, hypoCaution). JSON
     // map {prefKey: value} of a new value seen ONCE. It is written only if the next cycle derives

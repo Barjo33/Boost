@@ -232,11 +232,26 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         preferences.put(key, JSONObject(m as Map<*, *>).toString())
     }
 
-    private fun appliedLedger() = ledger(StringKey.ApsBoostV5AutoConfigApplied)
-    private fun recordApplied(key: DoubleKey, value: Double) =
-        ledgerPut(StringKey.ApsBoostV5AutoConfigApplied, key.key, value)
-    private fun retireFromRedrive(key: DoubleKey) =
-        ledgerPut(StringKey.ApsBoostV5AutoConfigApplied, key.key, null)
+    /**
+     * Record a re-derivation that did NOT change anything, and why. rev 1 returned silently from two
+     * guards, which is how an inert re-derivation looked identical to one that had never run — the
+     * defect that cost a log hunt. Every exit path now writes the same breadcrumb the successful
+     * path does, so `autordv=` in Nightscout always answers "when did it last run and what did it
+     * decide", including "nothing, because X".
+     */
+    private fun noteRedriveSkip(now: Long, why: BoostV5AutoConfigApply.RedriveSkip, detail: String) {
+        preferences.put(LongNonKey.ApsBoostV5AutoConfigLastRedriveMs, now)
+        preferences.put(
+            StringKey.ApsBoostV5RedriveSummary,
+            "@${dateUtil.toISOString(now)},win=${BoostV5AutoConfig.REDRIVE_LOOKBACK_DAYS}d,skip=$why" +
+                if (detail.isNotEmpty()) ",$detail" else ""
+        )
+        aapsLogger.info(LTag.APS, "BoostV5 re-derivation skipped: $why ($detail)")
+    }
+
+    private fun redriveBaselines() = ledger(StringKey.ApsBoostV5RedriveBaseline)
+    private fun setRedriveBaseline(key: DoubleKey, value: Double) =
+        ledgerPut(StringKey.ApsBoostV5RedriveBaseline, key.key, value)
 
     /**
      * Scheduled re-derivation. Runs at most every [BoostV5AutoConfig.REDRIVE_INTERVAL_DAYS] days on
@@ -253,13 +268,16 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         val now = dateUtil.now()
         val last = preferences.get(LongNonKey.ApsBoostV5AutoConfigLastRedriveMs)
         val intervalMs = BoostV5AutoConfig.REDRIVE_INTERVAL_DAYS * 24L * 60 * 60 * 1000
-        if (last != 0L && now - last < intervalMs) return
+        if (last != 0L && now - last < intervalMs) return                   // not due; silent by design
         // Don't run alongside onboarding: if any managed knob is still unresolved the first
         // derivation has not finished, and that path owns the settings until it has.
         val allKeys = BoostV5AutoConfigApply.managedDoubleKeys.map { it.key } + BooleanKey.ApsBoostV5FastCarbConfirm.key
-        if (!allKeys.all { isResolved(it) }) return
-        if (appliedLedger().isEmpty()) {                 // nothing auto-config owns → nothing to do
-            preferences.put(LongNonKey.ApsBoostV5AutoConfigLastRedriveMs, now)
+        if (!allKeys.all { isResolved(it) }) {
+            // Onboarding still owns the settings. Say so — rev 1 returned silently here and from a
+            // second guard, which made an inert re-derivation indistinguishable from one that never
+            // ran. Every exit now leaves a log line and a breadcrumb.
+            noteRedriveSkip(now, BoostV5AutoConfigApply.RedriveSkip.ONBOARDING_INCOMPLETE,
+                            allKeys.filterNot { isResolved(it) }.joinToString("|"))
             return
         }
 
@@ -268,21 +286,21 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         // Stamp the run either way, so a data-thin fortnight doesn't retry every cycle.
         preferences.put(LongNonKey.ApsBoostV5AutoConfigLastRedriveMs, now)
         if (suggestion == null) {
-            aapsLogger.info(LTag.APS, "BoostV5 re-derivation: insufficient history (days=${g.daysWithData}, bg=${g.bgCount}) — skipped")
+            noteRedriveSkip(now, BoostV5AutoConfigApply.RedriveSkip.INSUFFICIENT_HISTORY,
+                            "days=${g.daysWithData},bg=${g.bgCount}")
             return
         }
 
-        val owned = appliedLedger()
+        val baselines = redriveBaselines()
         val pending = ledger(StringKey.ApsBoostV5AutoConfigPending)
         val res = BoostV5AutoConfigApply.redrive(
             suggestion, tbrBelow70Pct = g.tbr70, timeBelow54Pct = g.sev54,
             storedValue = { preferences.getIfExists(it) },
-            appliedValue = { owned[it.key] },
+            baselineValue = { baselines[it.key] },
             pendingValue = { pending[it.key] },
             put = { key, value -> preferences.put(key, value) },
-            setApplied = { key, value -> recordApplied(key, value) },
-            setPending = { key, value -> ledgerPut(StringKey.ApsBoostV5AutoConfigPending, key.key, value) },
-            retire = { retireFromRedrive(it) }
+            setBaseline = { key, value -> setRedriveBaseline(key, value) },
+            setPending = { key, value -> ledgerPut(StringKey.ApsBoostV5AutoConfigPending, key.key, value) }
         )
         res.forEach { aapsLogger.info(LTag.APS, "BoostV5 re-derivation: ${it.key.key} → ${it.reason}") }
 
@@ -459,7 +477,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             timeBelow54Pct = sev54,
             isResolved = { isResolved(it.key) },
             storedValue = { preferences.getIfExists(it) },
-            put = { key, value -> preferences.put(key, value); recordApplied(key, value) },
+            put = { key, value -> preferences.put(key, value) },
             markResolved = { markResolved(it.key) }
         )
         // Log every classification verbatim so field diagnosis never needs inference.
