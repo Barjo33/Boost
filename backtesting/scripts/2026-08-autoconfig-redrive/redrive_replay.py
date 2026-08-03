@@ -23,8 +23,10 @@ WHAT THIS MEASURES (all on real telemetry; no counterfactual BG is claimed):
                    operative cap (the precondition for a ratchet). Measured against
                    the per-cycle logged caps, not an assumed one.
   2. RATCHET     — the knob trajectory under repeated re-derivation, per user, with
-                   the V1->V6 regime change marked (pre-migration windows read the
-                   previous algorithm's doses and are NOT self-referential).
+                   the V1->V6 regime change marked. NB (corrected 2026-08-03): the
+                   pre-V6 windows are NOT an exogenous baseline — V1 IS Boost, so those
+                   SMBs are also Boost's own output under V1's own dose ceilings. The
+                   censoring concern spans the whole record. See v1_migration_check.py.
   3. BIAS PER STEP — delivered-sourced vs desired-sourced (pre-cap) caps on the same
                    window, where the dose-chain telemetry exists to reconstruct the
                    uncapped shot (budget x actionMult x velocityFactor, logged from

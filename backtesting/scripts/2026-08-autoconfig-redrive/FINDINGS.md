@@ -23,8 +23,16 @@ derivation would therefore ratchet the caps monotonically down, with no restorin
 
 Δ`committedCap` correlates **0.996** with Δ TDD. Δ`confirmedCap` correlates **0.93** with Δ manual-bolus
 p90. Repeated re-derivation is a TDD tracker and a meal-bolus-habit tracker — both exogenous, neither
-censored by Boost's caps. This holds specifically in the six windows that are genuinely Boost-era
-(`boostv5_active` share > 0.7), which is where the self-reference would have to bite.
+censored by Boost's caps. It holds in the V6-era windows (`boostv5_active` share > 0.7) as well as
+across the record.
+
+> **Correction (same day).** An earlier version of this section treated the pre-V6 windows as an
+> exogenous baseline because they predate the migration. That is wrong: **V1 is Boost**, so every
+> window here is Boost's own output under some generation's dose ceilings, and the censoring concern
+> spans the whole history rather than only the last window per user. It does not change the
+> binding-term measurement — which term binds is independent of what generated the SMBs — but it
+> removes the "clean baseline" reading and raises a separate migration question, answered in the
+> second addendum.
 
 The ratchet claim was **SOLID as algebra and wrong as a prediction about this cohort.** It stays on
 the record as the failure mode to re-check whenever an anchor weakens (below), not as a reason not
@@ -207,6 +215,58 @@ a wide margin. That guard is load-bearing for this proposal, not incidental to i
 **Confidence: PROVISIONAL.** n = 8 users, one era, CIs wide and several overlapping 1. The
 censoring stratification rests on two users. Nothing here is a reason to change a shipped
 cap without a pre-registered within-user trial.
+
+---
+
+# Second addendum — what the migration actually inherits from V1
+
+Every user in this cohort was already running Boost before V6. So the question is not "how does
+auto-config read a foreign algorithm's history" but "how does it read an **earlier Boost
+generation's** history". Study: `v1_migration_check.py` → `V1_MIGRATION_REPORT.md`.
+
+## V1's meal doses are not hiding from the percentile
+
+V1 tiers its meal response in telemetry (`UAM_BOOST`, `UAM_HIGH_BOOST`, `PERCENT_SCALE`,
+`ACCELERATION` vs plain `REGULAR_OREF1`), so the obvious worry is that `p95(all SMBs)` blurs them
+away. It does not:
+
+**p90(V1 meal-tier shots) ÷ p95(all V1 shots) = 1.04** (range 0.88–1.67, CI 0.99–1.29).
+
+V1's meal shots are the same size as its ordinary ones. There is nothing for a tier-aware percentile
+to recover, because V1 did not concentrate a meal into a large shot in the first place.
+
+## The defect is architectural, not statistical
+
+V1 spreads a meal response across many moderate SMBs; V6 concentrates it into one CONFIRMED shot plus
+holds. Same meal, different shape:
+
+| | median | range | CI |
+|---|---|---|---|
+| p90(V6 CONFIRMED shot) ÷ p95(all V1 shots) | 2.12 | 0.80–3.33 | 1.69–2.71 |
+| p90(V6 **desired** confirm shot) ÷ p95(all V1 shots) | **4.64** | 2.37–7.63 | 3.59–6.15 |
+| p90(V6 meal-episode total) ÷ p90(V1 meal-episode total) | **0.88** | 0.67–1.22 | 0.77–1.00 |
+
+The first row is censored by V6's own cap, so the second is the honest figure: **V6 wants a single
+shot roughly 4.6× the size of V1's 95th-percentile shot.** And the third row is the control that
+makes it safe to say so — **a meal costs the same or slightly less under V6** (0.88, CI upper bound
+touching 1). The insulin is not increasing; it is being redistributed from many shots into one plus
+holds.
+
+So `confirmedCap = max(p90 manual, p95 all SMBs)` sizes a V6 per-shot cap from a V1 per-shot
+distribution, and under-sizes it several-fold — for **every** migrating user, not only hands-free
+ones. That is a third independent argument against the current anchor, arriving from the migration
+side rather than the hands-free side.
+
+## It also strengthens the TDD proposal
+
+TDD/10 ÷ p90(V6 desired confirm shot) = **0.60**, range 0.46–0.67, CI 0.53–0.64 — the tightest
+cross-user ratio measured anywhere in this work. A TDD anchor sits at a stable fraction of what the
+engine wants across all eight users, which is exactly the property a migration default needs. The
+divisor is then a policy choice about how far below the engine's own appetite the cap should sit:
+TDD/10 sits at ~60% of it; TDD/6 would sit on it.
+
+**Confidence: PROVISIONAL.** n = 8. The V6 episode totals are themselves capped, so 0.88 is a lower
+bound; the direction (V6 does not cost more per meal) is what the row is being used for.
 
 ---
 
