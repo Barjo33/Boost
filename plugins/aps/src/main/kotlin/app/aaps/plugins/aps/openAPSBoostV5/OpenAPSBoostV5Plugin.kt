@@ -43,6 +43,9 @@ import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
 import app.aaps.core.validators.preferences.AdaptiveUnitPreference
 import app.aaps.plugins.aps.OpenAPSFragment
 import app.aaps.plugins.aps.R
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import org.json.JSONObject
 import java.time.LocalTime
 import java.time.ZoneId
@@ -142,18 +145,52 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
      * override the SMB. Selecting plain "Boost" runs the same engine with v5Active=false.
      */
     override fun invoke(initiator: String, tempBasalFallback: Boolean) {
-        // First-activation: seed the V5 knobs from the user's own V1 history (before the first dose
-        // this cycle, so the engine picks up the values immediately). One-shot, guarded, never
-        // overrides a knob the user already tuned.
-        runCatching { maybeAutoConfigure() }
-            .onFailure { aapsLogger.error(LTag.APS, "BoostV5 auto-config failed (non-fatal)", it) }
-        // Periodic re-derivation (2026-08-03) — every 7 days on a 28-day window, deadband-gated.
-        // Separately wrapped: it must never be able to stop the onboarding path or the dose path.
-        runCatching { maybeRedrive() }
-            .onFailure { aapsLogger.error(LTag.APS, "BoostV5 re-derivation failed (non-fatal)", it) }
-        // Run the shared engine with the V5 override active. lastAPSResult/lastAPSRun delegate to
-        // the engine (see above), so the result is exposed the instant runEngine sets it.
-        openAPSBoostEngine.get().runEngine(initiator, tempBasalFallback, v5Active = true)
+        // Auto-config work is OFF the dose path (2026-08-04). It reads 14-28 days of TDD, boluses
+        // and CGM, and running that synchronously here put a multi-second database sweep in front of
+        // a dose decision — runCatching protects against an exception, but nothing protected against
+        // latency. This only ENQUEUES the work and returns immediately.
+        scheduleConfigEvaluation()
+        // The writes it eventually makes still cannot land mid-cycle: they take the same lock the
+        // engine holds, so a cycle never sees some knobs updated and others not. Moving the work off
+        // the dose path without this would have traded a latency problem for a consistency one.
+        synchronized(configLock) {
+            openAPSBoostEngine.get().runEngine(initiator, tempBasalFallback, v5Active = true)
+        }
+    }
+
+    /** Serialises auto-config writes against an engine run. Held briefly at each end. */
+    private val configLock = Any()
+
+    /** One background worker; a second evaluation is never queued behind a running one. */
+    private val configExecutor: ExecutorService =
+        Executors.newSingleThreadExecutor { r -> Thread(r, "BoostV5-autoconfig").apply { isDaemon = true } }
+    private val configEvaluationRunning = AtomicBoolean(false)
+
+    /**
+     * Cheap preference-only test for whether there is any auto-config work to do, so the common
+     * cycle costs two reads and spawns nothing.
+     */
+    private fun configEvaluationDue(): Boolean {
+        val allKeys = BoostV5AutoConfigApply.managedDoubleKeys.map { it.key } + BooleanKey.ApsBoostV5FastCarbConfirm.key
+        if (!allKeys.all { isResolved(it) }) return true                  // onboarding unfinished
+        val last = preferences.get(LongNonKey.ApsBoostV5AutoConfigLastRedriveMs)
+        val intervalMs = BoostV5AutoConfig.REDRIVE_INTERVAL_DAYS * 24L * 60 * 60 * 1000
+        return last == 0L || dateUtil.now() - last >= intervalMs
+    }
+
+    private fun scheduleConfigEvaluation() {
+        if (!runCatching { configEvaluationDue() }.getOrDefault(false)) return
+        if (!configEvaluationRunning.compareAndSet(false, true)) return   // one at a time
+        configExecutor.execute {
+            try {
+                runCatching { maybeAutoConfigure() }
+                    .onFailure { aapsLogger.error(LTag.APS, "BoostV5 auto-config failed (non-fatal)", it) }
+                runCatching { maybeRedrive() }
+                    .onFailure { aapsLogger.error(LTag.APS, "BoostV5 re-derivation failed (non-fatal)", it) }
+            } finally {
+                configEvaluationRunning.set(false)
+            }
+        }
     }
 
     /** Per-knob auto-config resolution marks (argument = the managed preference's key string). */
@@ -293,7 +330,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
 
         val baselines = redriveBaselines()
         val pending = ledger(StringKey.ApsBoostV5AutoConfigPending)
-        val res = BoostV5AutoConfigApply.redrive(
+        val res = synchronized(configLock) { BoostV5AutoConfigApply.redrive(
             suggestion, tbrBelow70Pct = g.tbr70, timeBelow54Pct = g.sev54,
             storedValue = { preferences.getIfExists(it) },
             baselineValue = { baselines[it.key] },
@@ -301,7 +338,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             put = { key, value -> preferences.put(key, value) },
             setBaseline = { key, value -> setRedriveBaseline(key, value) },
             setPending = { key, value -> ledgerPut(StringKey.ApsBoostV5AutoConfigPending, key.key, value) }
-        )
+        ) }
         res.forEach { aapsLogger.info(LTag.APS, "BoostV5 re-derivation: ${it.key.key} → ${it.reason}") }
 
         fun shortName(k: DoubleKey) = k.name.removePrefix("ApsBoostV5").removePrefix("ApsBoost")
@@ -471,7 +508,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         // suggested-not-applied) exactly once (see BoostV5AutoConfigApply, unit-tested). Dose-cap
         // RAISES are held back (suggestion-only) when TBR<70 exceeds the guard threshold; the
         // cumulative cap is recomputed inside from the final operative per-shot caps.
-        val resolutions = BoostV5AutoConfigApply.applyAutoConfig(
+        val resolutions = synchronized(configLock) { BoostV5AutoConfigApply.applyAutoConfig(
             suggestion,
             tbrBelow70Pct = tbr70,
             timeBelow54Pct = sev54,
@@ -479,7 +516,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             storedValue = { preferences.getIfExists(it) },
             put = { key, value -> preferences.put(key, value) },
             markResolved = { markResolved(it.key) }
-        )
+        ) }
         // Log every classification verbatim so field diagnosis never needs inference.
         fun shortName(key: DoubleKey) = key.name.removePrefix("ApsBoostV5").removePrefix("ApsBoost")
         resolutions.forEach { aapsLogger.info(LTag.APS, "BoostV5 auto-config: ${it.key.key} → ${it.reason}") }
