@@ -190,8 +190,20 @@ internal object BoostV5AutoConfigApply {
      *
      * The baseline is the DERIVED value at the last write, and is only advanced WHEN we write, so
      * movement suppressed by the deadband or held by the raise-guard accumulates rather than being
-     * lost. On the very first evaluation there is no baseline, so nothing is written — the run just
-     * records where the derivation currently sits, and tracking begins from the next one.
+     * lost. On the very first evaluation there is no baseline, so no TRACKED knob is written — the
+     * run records where the derivation currently sits and tracking begins from the next one.
+     *
+     * The COMPUTED knobs are the exception and CAN be written on that first run: they are not
+     * tracked, they are recomputed from the operative caps every time, so if the stored cumulative
+     * cap has drifted out of step with `confirmedCap + 2 x committedCap` it is corrected
+     * immediately. Observed in the field on 2026-08-04: a first run reported ch=2, both of them
+     * computed knobs. That is intended — a budget sized from a cap that no longer applies is the
+     * incoherence the 2026-07-06 migration backtest found — but "the first run changes nothing" is
+     * NOT true, and was stated as such when this shipped.
+     *
+     * Note also that cumulative60 passes through the raise-guard when it increases and primerCap
+     * does NOT, matching the onboarding path: the primer's safety is its delivery routing rather
+     * than a cap.
      */
     val REDRIVE_RATIO_KEYS: List<DoubleKey> = listOf(
         DoubleKey.ApsBoostV5CommittedCapU,
