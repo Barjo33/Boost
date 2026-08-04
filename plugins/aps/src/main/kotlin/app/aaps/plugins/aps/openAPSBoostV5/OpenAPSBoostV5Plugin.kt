@@ -49,6 +49,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import org.json.JSONObject
 import java.time.LocalTime
 import java.time.ZoneId
+import dagger.Lazy
 import javax.inject.Inject
 import javax.inject.Provider
 import javax.inject.Singleton
@@ -96,7 +97,12 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
     private val preferences: Preferences,
     private val determineBasalBoostV5: DetermineBasalBoostV5,
     // Provider breaks the DI cycle (OpenAPSBoostPlugin injects Provider<OpenAPSBoostV5Plugin> for runShadow).
-    private val openAPSBoostEngine: Provider<OpenAPSBoostPlugin>,
+    // dagger.Lazy, NOT Provider: Lazy caches the instance at THIS injection point, so invoke() and
+    // the lastAPSResult/lastAPSRun getters below can never resolve to different engine objects even
+    // if the engine's own scoping regresses again. Provider.get() on an unscoped binding constructs
+    // a new instance per call, which is exactly how the 2026-07-30 annotation drift turned into
+    // five days of a loop that computed results and enacted none of them.
+    private val openAPSBoostEngine: Lazy<OpenAPSBoostPlugin>,
     // Auto-config from V1 history on first activation (2026-06-26).
     private val persistenceLayer: PersistenceLayer,
     private val tddCalculator: TddCalculator,

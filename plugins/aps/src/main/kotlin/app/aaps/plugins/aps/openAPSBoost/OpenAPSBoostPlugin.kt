@@ -97,7 +97,6 @@ import kotlin.math.max
 import kotlin.math.min
 import app.aaps.plugins.aps.openAPSBoostV5.MealHypothesis
 
-@Singleton
 /**
  * 2026-07-30 implausible-TDD guard for dynamic ISF. Minimum blended TDD, as a fraction of the TDD the
  * user's own profile ISF implies via the 1800 rule (profileISF ~= 1800/TDD). Below this the insulin
@@ -123,6 +122,13 @@ internal fun tddImplausibleForProfile(tdd: Double, profileSens: Double): Boolean
     return tdd < impliedTdd * DYNISF_MIN_TDD_FRACTION
 }
 
+// @Singleton MUST stay adjacent to this declaration. 2026-07-30..08-04: a KDoc, a constant and a
+// helper function were inserted between the two, which silently moved the annotation onto the
+// constant and left the engine UNSCOPED. OpenAPSBoostV5Plugin injects it and reads lastAPSResult
+// back through the same reference, so every cycle built its result on one instance and the loop
+// read null from another — "NO APS SELECTED OR PROVIDED RESULT", nothing enacted, for five days.
+// Verified in the generated component: the binding had no DoubleCheck wrapper.
+@Singleton
 open class OpenAPSBoostPlugin @Inject constructor(
     aapsLogger: AAPSLogger,
     private val aapsSchedulers: AapsSchedulers,
