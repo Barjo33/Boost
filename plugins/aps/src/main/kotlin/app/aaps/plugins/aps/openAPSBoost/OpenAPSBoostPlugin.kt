@@ -1728,14 +1728,30 @@ open class OpenAPSBoostPlugin @Inject constructor(
             // priced on-device before it ever doses. Belt-and-braces runCatching — never breaks a cycle.
             runCatching {
                 val plateauNudgeU = 0.10
+                // Lower bound on "flat or falling". Set at -3 mg/dL/5min: the sticky-plateau
+                // episodes this targets ran -0.6 to -2.9 (live, 2026-08-02 14:36-15:31 at BG
+                // 226-249), while the descents to exclude ran -6 to -25. Provisional — the band
+                // should be re-derived from banked data once that data is trustworthy again.
+                val PLATEAU_MIN_TREND = -3.0
                 val bgMgdl = glucoseStatus.glucose
                 val trend = glucoseStatus.shortAvgDelta                       // mg/dL per 5 min
                 val iobNow = iobArray.firstOrNull()?.iob ?: 0.0
                 val committedCap = preferences.get(DoubleKey.ApsBoostV5CommittedCapU)
                 val maxIob = oapsProfile.max_iob
-                // oref1's forward-low guard, parsed from the reason built so far (mmol → mg/dL)
-                val mgRaw = Regex("minGuardBG ([0-9.]+)").find(it.reason.toString())?.groupValues?.getOrNull(1)?.toDoubleOrNull()
-                val minGuardMgdl = mgRaw?.let { m -> if (m < 30.0) m * 18.0 else m }
+                // oref1's forward-low guard. Read the TYPED value the engine already publishes
+                // (DetermineBasalBoost sets rT.minGuardBG in mg/dL) rather than scraping the
+                // formatted reason string.
+                //
+                // 2026-08-04 defect: the previous `Regex("minGuardBG ([0-9.]+)")` could not match a
+                // NEGATIVE value — the character class has no minus sign — so on a deep forward-low
+                // forecast the match failed, minGuardMgdl was null, and the veto below
+                // short-circuited to false. The floor whose entire job is "never nudge into a low"
+                // failed OPEN exactly when the forecast was worst. Verified on 4 live cycles
+                // (2026-08-02 16:26-16:41, minGuardBG -25.1..-18.6 mmol, the live path HARD-blocking
+                // on min_guard_bg while this shadow reported floor="ok"); that descent ended at
+                // 55 mg/dL. The magnitude-based mmol heuristic it used is gone with it: it would
+                // have multiplied a genuine sub-30 mg/dL value by 18.
+                val minGuardMgdl = it.minGuardBG
                 // trigger: post-meal plateau — above tight range, flat/falling, insulin on board.
                 // SHADOW band widened past the spec's 200 ceiling (2026-07-25): a live stuck-high at
                 // 219-247 with IOB ~2 showed insulinReq≈0 above 200 too (eventualBG≈target — the
@@ -1750,7 +1766,15 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     recentLowBG45Min < 75.0                       -> "recent-low"
                     inPostRescueWindow                            -> "post-rescue"
                     cumulativeCapReached                          -> "cum-cap"
-                    minGuardMgdl != null && minGuardMgdl < 85.0   -> "minguard"
+                    // FAIL CLOSED: an absent forecast vetoes. A floor that only vetoes when it can
+                    // read a value is not a floor.
+                    minGuardMgdl == null                          -> "minguard-unknown"
+                    minGuardMgdl < 85.0                           -> "minguard"
+                    // A steep descent is not a plateau. The trigger's `trend <= 1.7` is unbounded
+                    // below, so a -25 mg/dL/5min freefall satisfied it; 8 of 26 live triggers in a
+                    // 36-hour sample were on trends steeper than -5, five of them inside the descent
+                    // that ended at 55 mg/dL.
+                    trend < PLATEAU_MIN_TREND                     -> "falling"
                     v5Asleep || !activityResult.boostActive       -> "not-active"
                     nudgeRaw <= 0.0                               -> "no-headroom"
                     else                                          -> "ok"
