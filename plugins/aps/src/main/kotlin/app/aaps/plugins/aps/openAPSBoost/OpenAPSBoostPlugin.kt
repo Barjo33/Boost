@@ -97,7 +97,6 @@ import kotlin.math.max
 import kotlin.math.min
 import app.aaps.plugins.aps.openAPSBoostV5.MealHypothesis
 
-@Singleton
 /**
  * 2026-07-30 implausible-TDD guard for dynamic ISF. Minimum blended TDD, as a fraction of the TDD the
  * user's own profile ISF implies via the 1800 rule (profileISF ~= 1800/TDD). Below this the insulin
@@ -123,6 +122,11 @@ internal fun tddImplausibleForProfile(tdd: Double, profileSens: Double): Boolean
     return tdd < impliedTdd * DYNISF_MIN_TDD_FRACTION
 }
 
+// @Singleton MUST stay adjacent to this declaration. A KDoc, a constant and a helper inserted
+// between the two silently moved the annotation onto the constant, leaving the engine UNSCOPED —
+// OpenAPSBoostV5Plugin then computed each cycle on one instance and read lastAPSResult back as null
+// from another, so the loop enacted nothing for five days with no error anywhere.
+@Singleton
 open class OpenAPSBoostPlugin @Inject constructor(
     aapsLogger: AAPSLogger,
     private val aapsSchedulers: AapsSchedulers,
@@ -1808,8 +1812,14 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 val committedCap = preferences.get(DoubleKey.ApsBoostV5CommittedCapU)
                 val maxIob = oapsProfile.max_iob
                 // oref1's forward-low guard, parsed from the reason built so far (mmol → mg/dL)
-                val mgRaw = Regex("minGuardBG ([0-9.]+)").find(it.reason.toString())?.groupValues?.getOrNull(1)?.toDoubleOrNull()
-                val minGuardMgdl = mgRaw?.let { m -> if (m < 30.0) m * 18.0 else m }
+                // Read the TYPED value the engine publishes (rT.minGuardBG, mg/dL) rather than
+                // scraping the formatted reason. The previous Regex("minGuardBG ([0-9.]+)") could
+                // not match a NEGATIVE value — no minus sign in the class — so on a deep
+                // forward-low forecast the match failed, the value was null, and the veto below
+                // short-circuited to false: the floor whose job is "never nudge into a low" failed
+                // OPEN exactly when the forecast was worst. The mmol magnitude heuristic goes with
+                // it; it would have multiplied a genuine sub-30 mg/dL value by 18.
+                val minGuardMgdl = it.minGuardBG
                 // trigger: post-meal plateau — above tight range, flat/falling, insulin on board.
                 // SHADOW band widened past the spec's 200 ceiling (2026-07-25): a live stuck-high at
                 // 219-247 with IOB ~2 showed insulinReq≈0 above 200 too (eventualBG≈target — the
@@ -1824,7 +1834,10 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     recentLowBG45Min < 75.0                       -> "recent-low"
                     inPostRescueWindow                            -> "post-rescue"
                     cumulativeCapReached                          -> "cum-cap"
-                    minGuardMgdl != null && minGuardMgdl < 85.0   -> "minguard"
+                    // FAIL CLOSED: an absent forecast vetoes. A floor that only vetoes when it
+                    // can read a value is not a floor.
+                    minGuardMgdl == null                          -> "minguard-unknown"
+                    minGuardMgdl < 85.0                           -> "minguard"
                     v5Asleep || !activityResult.boostActive       -> "not-active"
                     nudgeRaw <= 0.0                               -> "no-headroom"
                     else                                          -> "ok"

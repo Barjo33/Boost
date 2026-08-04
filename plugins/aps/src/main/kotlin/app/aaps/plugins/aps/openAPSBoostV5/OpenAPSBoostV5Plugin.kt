@@ -46,6 +46,7 @@ import app.aaps.plugins.aps.R
 import org.json.JSONObject
 import java.time.LocalTime
 import java.time.ZoneId
+import dagger.Lazy
 import javax.inject.Inject
 import javax.inject.Provider
 import javax.inject.Singleton
@@ -93,7 +94,10 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
     private val preferences: Preferences,
     private val determineBasalBoostV5: DetermineBasalBoostV5,
     // Provider breaks the DI cycle (OpenAPSBoostPlugin injects Provider<OpenAPSBoostV5Plugin> for runShadow).
-    private val openAPSBoostEngine: Provider<OpenAPSBoostPlugin>,
+    // dagger.Lazy, NOT Provider: Lazy caches at THIS injection point, so invoke() and the
+    // lastAPSResult/lastAPSRun getters can never resolve to different engine instances even if the
+    // engine's scoping regresses again.
+    private val openAPSBoostEngine: Lazy<OpenAPSBoostPlugin>,
     // Auto-config from V1 history on first activation (2026-06-26).
     private val persistenceLayer: PersistenceLayer,
     private val tddCalculator: TddCalculator,
