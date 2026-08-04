@@ -177,6 +177,16 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
      * cycle costs two reads and spawns nothing.
      */
     private fun configEvaluationDue(): Boolean {
+        // One-time migration. rev 1's re-derivation stamped the last-run clock and returned from a
+        // path that could never do anything (it keyed on an ownership ledger only the onboarding
+        // path could fill, and onboarding had long since run). rev 2 honours that stamp, so every
+        // existing install would have sat dormant for a further 7 days after upgrading. Clear the
+        // stamp once, stamp the schema, and let the normal cadence resume from the next evaluation.
+        if (preferences.get(IntNonKey.BoostV5RedriveSchemaVersion) < BoostV5AutoConfig.REDRIVE_SCHEMA_VERSION) {
+            preferences.put(LongNonKey.ApsBoostV5AutoConfigLastRedriveMs, 0L)
+            preferences.put(IntNonKey.BoostV5RedriveSchemaVersion, BoostV5AutoConfig.REDRIVE_SCHEMA_VERSION)
+            aapsLogger.info(LTag.APS, "BoostV5 re-derivation: schema < ${BoostV5AutoConfig.REDRIVE_SCHEMA_VERSION}, last-run clock cleared so tracking can start now")
+        }
         val allKeys = BoostV5AutoConfigApply.managedDoubleKeys.map { it.key } + BooleanKey.ApsBoostV5FastCarbConfirm.key
         if (!allKeys.all { isResolved(it) }) return true                  // onboarding unfinished
         val last = preferences.get(LongNonKey.ApsBoostV5AutoConfigLastRedriveMs)

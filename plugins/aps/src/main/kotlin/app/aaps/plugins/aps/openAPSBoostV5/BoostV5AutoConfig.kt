@@ -69,6 +69,13 @@ object BoostV5AutoConfig {
      * write. Effective lag is W/2 + S/2 ~ 17.5 d, which is immaterial against what is being
      * tracked: TDD drift, whose 5-month drift-to-noise ratio is only 2.72 [1.15, 4.59].
      */
+    /**
+     * Re-derivation persistence schema version. 2 = movement tracking with baselines (rev 2).
+     * A stored version below this means the last-run clock was written by a build whose
+     * re-derivation could never do anything, so it must not gate this one.
+     */
+    const val REDRIVE_SCHEMA_VERSION = 2
+
     const val REDRIVE_INTERVAL_DAYS = 7L
     const val REDRIVE_LOOKBACK_DAYS = 28L
     private const val SEV54_TARGET = 1.0      // % time <54 mg/dL

@@ -188,6 +188,13 @@ class BoostV5RedriveTest {
         }
     }
 
+    @Test fun `the schema version is bumped so rev 1's dead stamp cannot gate rev 2`() {
+        // rev 1 stamped the last-run clock from a code path that could never act. If this constant
+        // is not ahead of what rev 1 shipped (0), every existing install stays dormant for a
+        // further 7 days after upgrading.
+        assertThat(BoostV5AutoConfig.REDRIVE_SCHEMA_VERSION).isGreaterThan(0)
+    }
+
     @Test fun `cadence and window are the values the grid selected`() {
         assertThat(BoostV5AutoConfig.REDRIVE_INTERVAL_DAYS).isEqualTo(7L)
         assertThat(BoostV5AutoConfig.REDRIVE_LOOKBACK_DAYS).isEqualTo(28L)
