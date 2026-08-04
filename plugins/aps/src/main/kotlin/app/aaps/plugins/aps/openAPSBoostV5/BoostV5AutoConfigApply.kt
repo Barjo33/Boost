@@ -221,8 +221,9 @@ internal object BoostV5AutoConfigApply {
     /**
      * Largest single-step change, as a ratio of the current value. Bounds one evaluation's move
      * when a driver jumps — a pump-site change or a fortnight of illness can shift median TDD
-     * sharply, and a 28-day window carries that in as a step. Suppressed movement is not lost: the
-     * baseline only advances on a write, so the remainder arrives over subsequent evaluations.
+     * sharply, and a 28-day window carries that in as a step. Clipped movement is NOT lost: on a
+     * write the baseline advances only by the movement actually applied, so the remainder arrives
+     * over subsequent evaluations until the knob reaches its target.
      */
     const val REDRIVE_MAX_STEP_RATIO = 0.25
 
@@ -331,7 +332,18 @@ internal object BoostV5AutoConfigApply {
             }
 
             put(key, proposed)
-            setBaseline(key, derivedNow)        // advance ONLY on a write
+            // Advance the baseline by the movement ACTUALLY APPLIED, not by the movement derived.
+            // When the step cap clips a large move, advancing to derivedNow here would DISCARD the
+            // remainder and strand the knob permanently short of its target — e.g. an insulin
+            // concentration change that doubles TDD-in-units would move a cap by +25% once and then
+            // stop, ~40% below where it belongs. Advancing proportionally leaves the residual in
+            // place, so it arrives over subsequent evaluations. Unclipped moves are unaffected:
+            // proposed/current == derivedNow/baseline, so this reduces to derivedNow exactly.
+            val appliedBaseline =
+                if (key in REDRIVE_RATIO_KEYS) {
+                    if (abs(current) > DEFAULT_EPS) baseline * (proposed / current) else derivedNow
+                } else baseline + (proposed - current)
+            setBaseline(key, appliedBaseline)
             setPending(key, null)
             operative[key] = proposed
             out += Resolution(key, Outcome.REDRIVEN, proposed, proposed,

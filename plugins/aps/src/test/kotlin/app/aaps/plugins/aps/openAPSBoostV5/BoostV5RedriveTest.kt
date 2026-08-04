@@ -111,6 +111,28 @@ class BoostV5RedriveTest {
         assertThat(st.stored[CCAP]!!).isWithin(1e-6).of(1.25)   // capped at +25% in one step
     }
 
+    @Test fun `a clipped step keeps its remainder and converges over later runs`() {
+        // The 2026-08-04 concentration-change case: diluting U200 to U100 roughly DOUBLES
+        // TDD-in-units, so the derived committedCap doubles in one step. The step cap allows only
+        // +25% per evaluation; if the baseline advanced to the full derived value the remainder
+        // would be discarded and the cap would stall ~40% short of target forever.
+        val st = freshStore()
+        st.run(suggestionForTdd(40.0))                       // baseline: derived ccap 1.0
+        val target = 2.0                                     // TDD 80 -> derived ccap 2.0
+        val path = (1..6).map { st.run(suggestionForTdd(80.0)); st.stored[CCAP]!! }
+        // each step is bounded to +25%...
+        assertThat(path[0]).isWithin(1e-6).of(1.25)
+        // ...and it keeps climbing rather than stalling at the first clipped step
+        assertThat(path[1]).isGreaterThan(path[0])
+        assertThat(path[2]).isGreaterThan(path[1])
+        // It settles once the residual falls INSIDE the deadband, which is the correct stopping
+        // point — the last 0.05 U is below the measured noise floor for this knob, so writing it
+        // would be noise-chasing. What matters is that it got there instead of stranding at 1.25.
+        val band = BoostV5AutoConfigApply.REDRIVE_DEADBAND[CCAP]!!
+        assertThat(target - path.last()).isAtMost(band)
+        assertThat(path.last()).isGreaterThan(1.9)
+    }
+
     @Test fun `values are clamped to the preference range`() {
         val st = freshStore()
         st.stored[CCAP] = CCAP.max
