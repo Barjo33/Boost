@@ -45,6 +45,10 @@ minute view cannot be taken from the same sensor at the same time. It is a contr
 contrast. A against B differs in sensor, in sensor site, in handset and in cadence at once, so a
 difference between them cannot be attributed to any one of those, and certainly not to cadence.
 
+A runs for the whole study alongside the others and is included in every reporting period, not
+sampled or run briefly at the start. A noise floor estimated on part of the record would leave the
+remaining comparisons uninterpretable over the rest of it.
+
 The reason to run it anyway is that it measures the noise floor. Two sensors on one body disagree
 for reasons that have nothing to do with the algorithm: different calibration, different sites,
 different lag, different noise. A against B quantifies how much decision divergence arises from
@@ -136,6 +140,12 @@ decision, which is the closest this design comes to a like for like comparison.
 
 The A against B difference on every measure above, reported alongside the others as the noise floor.
 No difference between B, C and D is interpreted without it.
+
+The noise floor is computed over the same windows as the comparison it qualifies, rather than pooled
+once across the study. Sensor to sensor disagreement is not constant: it changes with sensor age, with
+site, and across the warm-up of each new sensor. A floor averaged over the whole period would
+understate it early in a sensor's life and overstate it later, and either error would be applied to
+the wrong comparison.
 
 ## 6. Analysis
 
