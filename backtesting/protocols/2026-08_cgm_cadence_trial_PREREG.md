@@ -2,7 +2,7 @@
 
 **Status:** PRE-REGISTERED (analysis plan fixed before data collection)
 **Registered:** 2026-08-09
-**Version:** 1.0
+**Version:** 1.1
 **Applies to:** `v7-shadow-1m-test` @ `c625390d5a` (one-minute arms) and `Boost-V7-shadow` @ `cf8a77ad09`.
 
 > Pre-registration discipline: the hypotheses, arms, endpoints, sample size, stopping rules and
@@ -129,20 +129,39 @@ Absolute floors bind regardless of any statistic, and can only tighten:
 - Any single event below 54 mg/dL lasting > 30 min attributable to a dosing decision → pause,
   review the cycle logs before resuming.
 
-**⚠ The baseline already breaches the TBR<70 floor.** Measured over the last 28 / 90 / 180 days,
-TBR<70 is **4.4% / 4.3% / 4.7%** and TBR<54 is **0.8% / 0.9% / 1.0%**. The stopping rule above will
-therefore trigger on the participant's ordinary control, in either arm, for reasons that have nothing
-to do with cadence. Three consequences, all of which must be settled before day 1:
+**Baseline status — amended 2026-08-09 (v1.1).** Version 1.0 recorded that TBR<70 breached the
+4% floor (4.4 / 4.3 / 4.7% over 28 / 90 / 180 days) and that the trial should not start until it was
+brought under. That breach is now attributed to the change of insulin preparation: the same analogue
+was diluted from U200 to U100 strength on 2026-08-05, so the same mass is recorded as twice the
+units and the TDD-derived scaling had to re-settle. The record supports the attribution rather than
+merely permitting it — recorded units per day roughly doubled (12.2 -> 15.4) and the transition day
+itself carried **TBR<54 of 4.2%**, four times the floor, against 0.0% on the two days that followed.
 
-1. Starting the trial in this state means an arm is likely to be stopped by a condition that predates
-   the trial, wasting the phase and producing an uninterpretable result.
-2. The correct order of work is to bring TBR<70 under the floor **first**, and only then run a
-   cadence experiment on top of a compliant baseline.
-3. If the trial is nevertheless run now, the pre-registered position must be that these thresholds
-   are **not** trial stopping rules but standing safety limits already in force, and a separate,
-   explicitly relative deterioration rule is added: an arm stops if its rolling 14-day TBR<70 exceeds
-   the pre-trial baseline by more than 1.5 pp. This is recorded as an addition to, never a
-   replacement for, the absolutes.
+Post-stabilisation the picture is much better, but it is not yet demonstrated:
+
+| period | complete days | TIR | TBR<70 | TBR<54 |
+|---|---|---|---|---|
+| pre-switch | 89 | 84.5% | 4.1% | 0.8% |
+| transition (05–06 Aug) | 2 | 85.4% | 4.9% | 2.4% |
+| stabilised (from 07 Aug) | 2 | 92.1% | **1.9%** | **0.0%** |
+
+**Two complete days cannot establish that a floor is met.** The between-day SD of TBR<70 is 3.7 pp,
+so a two-day mean carries a 95% interval of roughly +/-5 pp — it spans the floor from either side.
+Separating an observed 1.9% from a 4.0% floor at 95% confidence needs about **12 complete days** at
+this variability. A lower point estimate is not a demonstrated rate, and the stopping rule is
+written against a demonstrated rate.
+
+Trial day 1 is therefore deferred until **12 consecutive complete stabilised days** put the upper
+bound of the TBR<70 interval below 4%. That period is not dead time: it doubles as the pre-trial
+baseline the relative rule below is measured against, and it confirms the TDD scaling has held.
+
+Partial days are excluded from all of the above. The day a report is generated is in progress, and
+a half day of good control reads as a perfect one — on first run, a 130-reading part-day scored
+100% TIR and pulled the stabilised mean down with it.
+
+In addition to the absolutes, which stand unchanged and can only tighten: an arm stops if its
+rolling 14-day TBR<70 exceeds the established pre-trial baseline by more than 1.5 pp. This is an
+addition to the absolute floors, never a replacement for them.
 
 ## 8. Data capture
 
@@ -195,3 +214,4 @@ hardware and calendar (§4), and a baseline that does not currently meet the saf
 | date | version | change | reason |
 |---|---|---|---|
 | 2026-08-09 | 1.0 | Initial registration | — |
+| 2026-08-09 | 1.1 | Baseline breach in §7 attributed to the U200->U100 change; day 1 deferred until 12 complete stabilised days demonstrate the floor is met | Transition dated 05 Aug; units/day roughly doubled and the transition day carried TBR<54 4.2%. Two stabilised days show 1.9% / 0.0% but cannot demonstrate compliance |
