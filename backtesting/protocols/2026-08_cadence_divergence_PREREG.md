@@ -1,6 +1,6 @@
 # Dosing decisions under four sensing and delivery cadences: a pre-registered parallel instance study
 
-Registered 2026-08-09. Version 1.3. The arms, measures and analysis set out below were fixed before
+Registered 2026-08-09. Version 1.4. The arms, measures and analysis set out below were fixed before
 any data were collected.
 
 Applies to the Boost fork of AndroidAPS, branch `v7-shadow-1m-test`, build `c0eaae13fe`, installed as the
@@ -152,6 +152,29 @@ without proposing more in total.
 
 Agreement on direction at the five minute grid points where all four instances have taken a
 decision, which is the closest this design comes to a like for like comparison.
+
+Predicted glucose, from two independent sources. The loop publishes its own forward projection on
+every cycle, and a shadow forecaster runs alongside it and publishes a thirty and a sixty minute
+forecast. Both are recorded for every instance, so both can be compared across arms and tracked
+across the life of the study rather than pooled into a single figure.
+
+Two cautions govern how those are read. The first is that the loop's eventual glucose figure is not
+a forecast. Earlier work in this programme established that it is an artefact of the control
+calculation and does not behave as a prediction, while the insulin projection at thirty minutes
+does. Eventual glucose is therefore reported as a divergence measure between arms and is not scored
+for accuracy; the insulin projection and the shadow forecaster are scored.
+
+The second is that a virtual instance's prediction is conditioned on insulin it did not deliver.
+Scoring it against the glucose that actually occurred therefore penalises it for the counterfactual
+rather than for its cadence, by an amount that scales with the insulin on board offset from section
+3. That offset is reported alongside every accuracy figure, and any accuracy comparison is
+additionally reported restricted to cycles where the offset is small, so the reader can see whether
+the ranking survives.
+
+Accuracy is scored against the glucose observed thirty and sixty minutes later, with the assumption
+of no change as the reference. A forecaster that cannot beat that assumption is adding nothing, and
+on a recent cohort the shadow forecaster beat it by about one milligram per decilitre, which is
+consistent but too small to act on. The question here is whether a faster feed changes that margin.
 
 The A against B difference on every measure above, reported alongside the others as the noise floor.
 No difference between B, C and D is interpreted without it.
