@@ -16,7 +16,7 @@ class ConfigImpl @Inject constructor(
 ) : Config {
 
     private companion object {
-        val FULL_FLAVORS = setOf("full", "fullb", "fullc")
+        val FULL_FLAVORS = setOf("full", "fullb", "fullc", "fulld")
     }
 
 

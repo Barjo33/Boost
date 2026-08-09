@@ -151,6 +151,14 @@ android {
             manifestPlaceholders["appIcon"] = "@mipmap/ic_blueowl"
             manifestPlaceholders["appIconRound"] = "@mipmap/ic_blueowl"
         }
+        create("fulld") {
+            applicationId = "info.nightscout.androidaps.d"
+            dimension = "standard"
+            resValue("string", "app_name", "AAPS D")
+            versionName = Versions.appVersion + "-d"
+            manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher"
+            manifestPlaceholders["appIconRound"] = "@mipmap/ic_launcher_round"
+        }
         create("pumpcontrol") {
             applicationId = "info.nightscout.aapspumpcontrol"
             dimension = "standard"

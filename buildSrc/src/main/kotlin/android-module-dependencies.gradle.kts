@@ -61,6 +61,9 @@ android {
         create("fullc") {
             dimension = "standard"
         }
+        create("fulld") {
+            dimension = "standard"
+        }
         create("pumpcontrol") {
             dimension = "standard"
         }
