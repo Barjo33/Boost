@@ -103,6 +103,17 @@ Protocols, reports and papers are written as though for submission to a journal,
 and read as if a person wrote them rather than a machine. The rules below are not preferences to be
 balanced against others; they are how the output is expected to look.
 
+Every document is a new draft, always. A revised protocol, report or article is rewritten as though
+it were the first version and contains no trace of what it used to say. Never write "an earlier
+version assumed", "that was wrong", "this supersedes", "previously specified" or an amendment log.
+State the current position and nothing else.
+
+This holds even when the change came from correcting a real mistake, and it holds most strongly then,
+because the temptation to show the working is greatest. The reasoning for a change belongs in the
+commit message, where the people who need it will find it, not in the document, where it is noise to
+every reader who was not present for the earlier version. A reader of the current draft should be
+unable to tell that there was one.
+
 Write continuous prose. A bulleted list is a way of avoiding the work of connecting ideas, and it
 belongs in a repository README rather than in a document making an argument. Tables are permitted
 where the content is genuinely tabular, such as an arm configuration or a set of measured values,

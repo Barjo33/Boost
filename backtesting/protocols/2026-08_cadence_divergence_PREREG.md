@@ -1,6 +1,6 @@
 # Dosing decisions under four sensing and delivery cadences: a pre-registered parallel instance study
 
-Registered 2026-08-09. Version 1.4. The arms, measures and analysis set out below were fixed before
+Registered 2026-08-09. The arms, measures and analysis set out below were fixed before
 any data were collected.
 
 Applies to the Boost fork of AndroidAPS, branch `v7-shadow-1m-test`, build `c0eaae13fe`, installed as the
@@ -89,11 +89,10 @@ observe is real, and it responds to the insulin the pumping instance delivered, 
 they believe they delivered. Their state is therefore internally consistent but externally
 counterfactual.
 
-An earlier version of this protocol assumed that discrepancy grew without limit and specified a
-daily re-anchoring to contain it. That was wrong, and the instances are not re-anchored. Insulin
-decays, so the difference in insulin on board between an instance and reality is a steady state
-rather than an accumulation, and it settles at approximately the difference in dosing rate
-multiplied by the mean residence time of a unit. Under this participant's configured curve that
+The instances are not re-anchored to the pumping instance, because the discrepancy is bounded rather
+than cumulative. Insulin decays, so the difference in insulin on board between an instance and
+reality is a steady state rather than an accumulation, settling at approximately the difference in
+dosing rate multiplied by the mean residence time of a unit. Under this participant's configured curve that
 residence time is about seventy five minutes, so an instance dosing ten per cent more than reality
 carries roughly 0.05 U of insulin on board that does not exist, against the 1.6 U it typically
 carries. An instance dosing fifty per cent more carries about 0.25 U. Those are modest offsets and
