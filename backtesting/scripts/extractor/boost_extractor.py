@@ -59,6 +59,16 @@ TRIO_TAG_RE = re.compile(
 
 TWIN_RE = re.compile(r"twin=([-\d.,]+)")
 PLATEAU_RE = re.compile(r"plateau=([^;]+);")
+# 2026-08-03 auto-config breadcrumbs, both replayed EVERY cycle so the DB always carries the
+# CURRENT state rather than the single cycle on which the derivation ran.
+#   autocfg=  onboarding derivation outcome
+#   autordv=  last periodic re-derivation: @ISO,win=28d,ev=N,ch=M[,<knob>:<value>][,held-…][,retired-…]
+AUTOCFG_RE = re.compile(r"autocfg=([^;]+);")
+AUTORDV_RE = re.compile(r"autordv=([^;]+);")
+# 2026-08-03 post-rescue tight-ramp TRIAL: "prTrial=<enrolled 0|1>,<control|tight>,<cap>;"
+# emitted every cycle (not only when the guard fired), so exposure is countable on days the
+# guard never engaged. Pre-reg: backtesting/protocols/2026-08_postrescue_tight_ramp_PREREG.md
+PRTRIAL_RE = re.compile(r"prTrial=([^;]+);")
 ANTBACKOUT_RE = re.compile(r"antBackout=([^;]+);")
 ANTICIP_RE = re.compile(r"anticip=([^;]+);")
 
@@ -114,6 +124,56 @@ def _plat(reason: str, i: int, cast=float):
         return cast(parts[i])
     except (ValueError, TypeError):
         return None
+
+
+def _prtrial(reason: str, i: int, cast=float):
+    """Post-rescue tight-ramp trial tag: enrolled(0/1), arm(control|tight), cap(U)."""
+    m = PRTRIAL_RE.search(reason or "")
+    if not m:
+        return None
+    parts = m.group(1).split(",")
+    if i >= len(parts):
+        return None
+    try:
+        return cast(parts[i])
+    except (ValueError, TypeError):
+        return None
+
+
+def _autordv(reason: str, field: str):
+    """Pull one field out of the periodic re-derivation breadcrumb.
+
+    field: 'raw' | 'at' | 'window_d' | 'evaluated' | 'changed' | 'changes'
+    'changes' returns the comma-joined knob:value list, i.e. what actually moved.
+    """
+    m = AUTORDV_RE.search(reason or "")
+    if not m:
+        return None
+    raw = m.group(1)
+    if field == "raw":
+        return raw
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    try:
+        if field == "at":
+            return parts[0].lstrip("@") if parts and parts[0].startswith("@") else None
+        if field == "window_d":
+            v = next((p for p in parts if p.startswith("win=")), None)
+            return int(v[4:].rstrip("d")) if v else None
+        if field == "evaluated":
+            v = next((p for p in parts if p.startswith("ev=")), None)
+            return int(v[3:]) if v else None
+        if field == "changed":
+            v = next((p for p in parts if p.startswith("ch=")), None)
+            return int(v[3:]) if v else None
+        if field == "changes":
+            # the leading @ISO timestamp also contains colons — exclude it and the
+            # held-/retired- markers, leaving only knob:value pairs that actually moved
+            ch = [p for p in parts
+                  if ":" in p and not p.startswith(("@", "held-", "retired-", "win=", "ev=", "ch="))]
+            return ",".join(ch) or None
+    except (ValueError, IndexError):
+        return None
+    return None
 
 
 def _twin(reason: str, i: int) -> Optional[float]:
@@ -539,6 +599,15 @@ def build_row(rec: dict, user_id: str) -> Optional[dict]:
         "boostv5_plateau_trend": _plat(reason, 3),
         "boostv5_plateau_iob": _plat(reason, 4),
         "boostv5_plateau_floor": _plat(reason, 6, str),
+        "autocfg_summary": (lambda m: m.group(1) if m else None)(AUTOCFG_RE.search(reason or "")),
+        "autordv_at": _autordv(reason, "at"),
+        "autordv_window_d": _autordv(reason, "window_d"),
+        "autordv_evaluated": _autordv(reason, "evaluated"),
+        "autordv_changed": _autordv(reason, "changed"),
+        "autordv_changes": _autordv(reason, "changes"),
+        "prtrial_enrolled": _prtrial(reason, 0, int),
+        "prtrial_arm": _prtrial(reason, 1, str),
+        "prtrial_cap": _prtrial(reason, 2),
         # 2026-07-20 anticipatory back-out controller SHADOW (read-only; BACKOUT_CONTROLLER_SPEC.md).
         "antbackout_state": _antb(reason, 0, str),
         "antbackout_ra0": _antb(reason, 1), "antbackout_ranow": _antb(reason, 2),
@@ -770,6 +839,15 @@ ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boostv5_plateau_bg         double p
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boostv5_plateau_trend      double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boostv5_plateau_iob        double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS boostv5_plateau_floor      text;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS autocfg_summary            text;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS autordv_at                 text;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS autordv_window_d           integer;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS autordv_evaluated          integer;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS autordv_changed            integer;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS autordv_changes            text;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS prtrial_enrolled           integer;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS prtrial_arm                text;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS prtrial_cap                double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_state           text;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_ra0             double precision;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS antbackout_ranow           double precision;

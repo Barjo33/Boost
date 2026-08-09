@@ -122,10 +122,12 @@ internal fun tddImplausibleForProfile(tdd: Double, profileSens: Double): Boolean
     return tdd < impliedTdd * DYNISF_MIN_TDD_FRACTION
 }
 
-// @Singleton MUST stay adjacent to this declaration. A KDoc, a constant and a helper inserted
-// between the two silently moved the annotation onto the constant, leaving the engine UNSCOPED —
-// OpenAPSBoostV5Plugin then computed each cycle on one instance and read lastAPSResult back as null
-// from another, so the loop enacted nothing for five days with no error anywhere.
+// @Singleton MUST stay adjacent to this declaration. 2026-07-30..08-04: a KDoc, a constant and a
+// helper function were inserted between the two, which silently moved the annotation onto the
+// constant and left the engine UNSCOPED. OpenAPSBoostV5Plugin injects it and reads lastAPSResult
+// back through the same reference, so every cycle built its result on one instance and the loop
+// read null from another — "NO APS SELECTED OR PROVIDED RESULT", nothing enacted, for five days.
+// Verified in the generated component: the binding had no DoubleCheck wrapper.
 @Singleton
 open class OpenAPSBoostPlugin @Inject constructor(
     aapsLogger: AAPSLogger,
@@ -1469,6 +1471,24 @@ open class OpenAPSBoostPlugin @Inject constructor(
         // (zero-imputed) for the first ~6 cycles. No-op after the first cycle.
         determineBasalBoost.loadMlRingBufferOnce(preferences.getBoostDosing(StringKey.ApsBoostMlRingBuffer))
 
+        // ── Post-rescue TIGHT-RAMP trial arm (2026-08-03, pre-registered crossover) ──
+        // Enrolment is an explicit per-user preference; the arm is a pure function of a
+        // once-generated install seed and the LOCAL day index, so the offline analysis can
+        // reproduce every day's assignment from the seed alone. Treatment days cap the
+        // post-rescue scale at 0.60 and apply it across the whole window; control days run the
+        // shipped guard untouched. Neither arm can dose above today's behaviour.
+        val tightRampCap: Double? = if (preferences.getBoostDosing(BooleanKey.ApsBoostPostRescueTightRampTrial)) {
+            var seed = preferences.getBoostDosing(StringKey.ApsBoostTrialSeed)
+            if (seed.isEmpty()) {                       // first cycle after enrolment
+                seed = java.util.UUID.randomUUID().toString()
+                preferences.put(StringKey.ApsBoostTrialSeed, seed)
+                aapsLogger.info(LTag.APS, "Post-rescue tight-ramp trial: seed generated, enrolled")
+            }
+            val dayIndex = java.time.Instant.ofEpochMilli(now)
+                .atZone(java.time.ZoneId.systemDefault()).toLocalDate().toEpochDay()
+            if (DetermineBasalBoost.tightRampArm(seed, dayIndex)) DetermineBasalBoost.TIGHT_RAMP_CAP else null
+        } else null
+
         determineBasalBoost.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -1486,8 +1506,14 @@ open class OpenAPSBoostPlugin @Inject constructor(
             recentSmbVolume60Min = recentSmbVolume60Min,
             cumulativeSmbCap60Min = cumulativeSmbCap60Min,
             recentLowBG45Min = recentLowBG45Min,
-            timeSinceLastSmbMin = timeSinceLastSmbMin
+            timeSinceLastSmbMin = timeSinceLastSmbMin,
+            postRescueTightRampCap = tightRampCap
         ).also {
+            // Trial arm tag, every cycle (not only when the guard fires), so the analysis can
+            // count exposure on days the guard never engaged. enrolled,arm,cap.
+            it.reason.append(
+                "prTrial=${if (preferences.getBoostDosing(BooleanKey.ApsBoostPostRescueTightRampTrial)) 1 else 0}," +
+                    "${if (tightRampCap != null) "tight" else "control"},${tightRampCap ?: 0.0}; ")
             // ISF shadow telemetry — V1's actual variable_sens used the instantaneous
             // ratio = tdd24/tdd7; V4.4.2 would use an EMA(τ=3h) of the same. Compute
             // the implied shadow values for direct comparison:
@@ -1806,19 +1832,29 @@ open class OpenAPSBoostPlugin @Inject constructor(
             // priced on-device before it ever doses. Belt-and-braces runCatching — never breaks a cycle.
             runCatching {
                 val plateauNudgeU = 0.10
+                // Lower bound on "flat or falling". Set at -3 mg/dL/5min: the sticky-plateau
+                // episodes this targets ran -0.6 to -2.9 (live, 2026-08-02 14:36-15:31 at BG
+                // 226-249), while the descents to exclude ran -6 to -25. Provisional — the band
+                // should be re-derived from banked data once that data is trustworthy again.
+                val PLATEAU_MIN_TREND = -3.0
                 val bgMgdl = glucoseStatus.glucose
                 val trend = glucoseStatus.shortAvgDelta                       // mg/dL per 5 min
                 val iobNow = iobArray.firstOrNull()?.iob ?: 0.0
                 val committedCap = preferences.get(DoubleKey.ApsBoostV5CommittedCapU)
                 val maxIob = oapsProfile.max_iob
-                // oref1's forward-low guard, parsed from the reason built so far (mmol → mg/dL)
-                // Read the TYPED value the engine publishes (rT.minGuardBG, mg/dL) rather than
-                // scraping the formatted reason. The previous Regex("minGuardBG ([0-9.]+)") could
-                // not match a NEGATIVE value — no minus sign in the class — so on a deep
-                // forward-low forecast the match failed, the value was null, and the veto below
-                // short-circuited to false: the floor whose job is "never nudge into a low" failed
-                // OPEN exactly when the forecast was worst. The mmol magnitude heuristic goes with
-                // it; it would have multiplied a genuine sub-30 mg/dL value by 18.
+                // oref1's forward-low guard. Read the TYPED value the engine already publishes
+                // (DetermineBasalBoost sets rT.minGuardBG in mg/dL) rather than scraping the
+                // formatted reason string.
+                //
+                // 2026-08-04 defect: the previous `Regex("minGuardBG ([0-9.]+)")` could not match a
+                // NEGATIVE value — the character class has no minus sign — so on a deep forward-low
+                // forecast the match failed, minGuardMgdl was null, and the veto below
+                // short-circuited to false. The floor whose entire job is "never nudge into a low"
+                // failed OPEN exactly when the forecast was worst. Verified on 4 live cycles
+                // (2026-08-02 16:26-16:41, minGuardBG -25.1..-18.6 mmol, the live path HARD-blocking
+                // on min_guard_bg while this shadow reported floor="ok"); that descent ended at
+                // 55 mg/dL. The magnitude-based mmol heuristic it used is gone with it: it would
+                // have multiplied a genuine sub-30 mg/dL value by 18.
                 val minGuardMgdl = it.minGuardBG
                 // trigger: post-meal plateau — above tight range, flat/falling, insulin on board.
                 // SHADOW band widened past the spec's 200 ceiling (2026-07-25): a live stuck-high at
@@ -1834,10 +1870,15 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     recentLowBG45Min < 75.0                       -> "recent-low"
                     inPostRescueWindow                            -> "post-rescue"
                     cumulativeCapReached                          -> "cum-cap"
-                    // FAIL CLOSED: an absent forecast vetoes. A floor that only vetoes when it
-                    // can read a value is not a floor.
+                    // FAIL CLOSED: an absent forecast vetoes. A floor that only vetoes when it can
+                    // read a value is not a floor.
                     minGuardMgdl == null                          -> "minguard-unknown"
                     minGuardMgdl < 85.0                           -> "minguard"
+                    // A steep descent is not a plateau. The trigger's `trend <= 1.7` is unbounded
+                    // below, so a -25 mg/dL/5min freefall satisfied it; 8 of 26 live triggers in a
+                    // 36-hour sample were on trends steeper than -5, five of them inside the descent
+                    // that ended at 55 mg/dL.
+                    trend < PLATEAU_MIN_TREND                     -> "falling"
                     v5Asleep || !activityResult.boostActive       -> "not-active"
                     nudgeRaw <= 0.0                               -> "no-headroom"
                     else                                          -> "ok"
@@ -2058,6 +2099,13 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 // not reached a decision yet on this install. Display-only, never consulted for dosing.
                 preferences.get(StringKey.ApsBoostV5AutoConfigSummary).let { acs ->
                     if (acs.isNotEmpty()) it.reason.append("autocfg=$acs; ")
+                }
+                // 2026-08-03 periodic re-derivation breadcrumb, same contract: replayed EVERY cycle
+                // so Nightscout and boost_decisions always show the CURRENT auto-config state, not
+                // just the one cycle in seven when the re-derivation actually ran. Written by
+                // OpenAPSBoostV5Plugin.maybeRedrive; display-only, never consulted for dosing.
+                preferences.get(StringKey.ApsBoostV5RedriveSummary).let { rds ->
+                    if (rds.isNotEmpty()) it.reason.append("autordv=$rds; ")
                 }
                 // 2026-07-30 install-time history-gap breadcrumb, same contract (see BoostHistorySync).
                 // Empty = adequate local history, so nothing to say — the common case writes nothing.
@@ -2633,6 +2681,14 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     )
                 )
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAlwaysUseShortDeltas, summary = R.string.always_use_short_avg_summary, title = R.string.always_use_short_avg))
+                addPreference(
+                    AdaptiveSwitchPreference(
+                        ctx = context,
+                        booleanKey = BooleanKey.ApsBoostPostRescueTightRampTrial,
+                        summary = R.string.boost_postrescue_tight_ramp_trial_summary,
+                        title = R.string.boost_postrescue_tight_ramp_trial
+                    )
+                )
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsMaxDailyMultiplier, dialogMessage = R.string.openapsama_max_daily_safety_multiplier_summary, title = R.string.openapsama_max_daily_safety_multiplier))
                 addPreference(
                     AdaptiveDoublePreference(

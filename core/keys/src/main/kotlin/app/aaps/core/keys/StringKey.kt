@@ -97,6 +97,12 @@ enum class StringKey(
     // falls back to repeating the current cycle.
     ApsBoostMlRingBuffer("boost_ml_ring_buffer", "", defaultedBySM = true),
 
+    // Per-install randomisation seed for pre-registered trials (first written when a trial is
+    // enrolled; never rewritten). Arm assignment is a pure function of (seed, local day index), so
+    // the offline analysis can reproduce every day's arm exactly from this string — no need to
+    // trust a logged flag. Clearing it re-randomises, which would break an in-flight trial.
+    ApsBoostTrialSeed("boost_trial_seed", "", defaultedBySM = true),
+
     // V6 meal-time learner — JSON array of recent V5-CONFIRMED meal-commit timestamps (rolling
     // 60 days). Drives circular-clustered habitual meal-time learning so the anticipatory
     // pre-meal low target can fire ~45-60 min before a learned meal. Empty/corrupt → no learned
@@ -121,6 +127,29 @@ enum class StringKey(
     // could see what the settings BECAME but never whether auto-config applied them, held them back
     // on the TBR guard, or declined for insufficient history. Display-only; never read for dosing.
     ApsBoostV5AutoConfigSummary("boost_v5_autoconfig_summary", "", defaultedBySM = true),
+
+    // 2026-08-03 periodic re-derivation (rev 2). JSON map {prefKey: derivedValue} of where the
+    // DERIVATION sat at the last write. Re-derivation applies the derivation's MOVEMENT since this
+    // baseline to whatever the knob is currently set to, so a user's own value is scaled rather
+    // than overwritten and no notion of knob ownership is needed. Only advanced when a write
+    // actually happens, so movement suppressed by the deadband accumulates instead of being lost.
+    ApsBoostV5RedriveBaseline("boost_v5_redrive_baseline", "", defaultedBySM = true),
+
+    // 2026-08-03 re-derivation hysteresis for the QUANTISED knobs (aggression, hypoCaution). JSON
+    // map {prefKey: value} of a new value seen ONCE. It is written only if the next cycle derives
+    // the same value again, which stops boundary flapping across a threshold (cohort user C flipped
+    // aggression 1.0/0.92 across the 4% TBR line by window).
+    ApsBoostV5AutoConfigPending("boost_v5_autoconfig_pending", "", defaultedBySM = true),
+
+    // Breadcrumb for the LAST periodic re-derivation, replayed into the reason every cycle (as
+    // autordv=) so Nightscout and boost_decisions always carry the current state, not just the one
+    // cycle in seven where it ran. Display-only; never consulted for dosing.
+    ApsBoostV5RedriveSummary("boost_v5_redrive_summary", "", defaultedBySM = true),
+
+    // Rolling human-readable log of the last few re-derivation CHANGES (newest first, capped), so
+    // "what has auto-config done to my settings" is answerable in-app after the notification has
+    // been dismissed.
+    ApsBoostV5RedriveHistory("boost_v5_redrive_history", "", defaultedBySM = true),
 
     // 2026-07-30 install-time history-gap OUTCOME breadcrumb, same contract as the auto-config
     // summary above: written by the V6 onboarding path, replayed into [reason] every cycle.
