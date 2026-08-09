@@ -1,10 +1,10 @@
 # Dosing decisions under four sensing and delivery cadences: a pre-registered parallel instance study
 
-Registered 2026-08-09. Version 1.1. The arms, measures and analysis set out below were fixed before
+Registered 2026-08-09. Version 1.2. The arms, measures and analysis set out below were fixed before
 any data were collected.
 
-Applies to the Boost fork of AndroidAPS, branch `v7-shadow-1m-test`, build `c0eaae13fe`, installed
-four times on one handset as the flavours `full`, `fullb`, `fullc` and `fulld`.
+Applies to the Boost fork of AndroidAPS, branch `v7-shadow-1m-test`, build `c0eaae13fe`, installed as the
+flavours `full`, `fullb`, `fullc` and `fulld`, three of them on one handset and one on a second.
 
 ## 1. What this study is for
 
@@ -26,29 +26,43 @@ This study measures decisions. It does not measure outcomes and cannot be read a
 
 ## 2. Design
 
-One participant, one continuous glucose monitor, four instances of the same build running
-concurrently on one handset. Each instance receives glucose from the same sensor and is configured
-to a different combination of sensing cadence, decision cadence and minimum interval between
-automated boluses.
+Four instances of the same build, run concurrently, differing in sensing cadence, decision cadence
+and the minimum interval between automated boluses.
 
-| Instance | Glucose supplied | Decision taken | Minimum interval between automated boluses |
-|---|---|---|---|
-| A | every 5 min | every 5 min | 5 min |
-| B | every 1 min | every 5 min | 5 min |
-| C | every 1 min | every 1 min | 1 min |
-| D | every 1 min | every 1 min | 3 min |
+| Instance | Sensor | Handset | Glucose supplied | Decision taken | Minimum interval between boluses |
+|---|---|---|---|---|---|
+| A | its own, five minute | second handset | every 5 min | every 5 min | 5 min |
+| B | the one minute sensor | first handset | every 1 min | every 5 min | 5 min |
+| C | the same one minute sensor | first handset | every 1 min | every 1 min | 1 min |
+| D | the same one minute sensor | first handset | every 1 min | every 1 min | 3 min |
+
+B, C and D share one sensor and one handset. They see identical glucose, arriving at the same
+instant, and differ only in what the software does with it. Those three comparisons are therefore
+clean, and they carry the study.
+
+A is on a separate handset with a separate five minute sensor, because a five minute view and a one
+minute view cannot be taken from the same sensor at the same time. It is a control rather than a
+contrast. A against B differs in sensor, in sensor site, in handset and in cadence at once, so a
+difference between them cannot be attributed to any one of those, and certainly not to cadence.
+
+The reason to run it anyway is that it measures the noise floor. Two sensors on one body disagree
+for reasons that have nothing to do with the algorithm: different calibration, different sites,
+different lag, different noise. A against B quantifies how much decision divergence arises from
+nothing but wearing a second sensor. Every other comparison in the study has to be read against
+that figure. If B against C is no larger than A against B, then the design cannot resolve the
+question being asked, and the honest conclusion is that this study was not sensitive enough rather
+than that cadence has no effect.
 
 In A and B the decision cycle is five minutes and is therefore the binding constraint on how often
 insulin can be given, whatever the configured minimum. In C and D the decision cycle is one minute,
-so the configured minimum binds instead, at one minute and three minutes respectively.
+so the configured minimum binds instead, at one and three minutes respectively.
 
-The fourth arm exists because C and B differ in two things at once, and without D there is no way to
-tell which of them is responsible for any difference between them. C against D isolates the minimum
-bolus interval with the decision cadence held at one minute, which is the only comparison in the set
-that varies delivery frequency alone.
+D exists because B and C differ in two things at once. C against D holds the decision cadence at one
+minute and moves only the minimum bolus interval, which makes it the only comparison in the set that
+varies delivery frequency alone.
 
 One instance is paired to the pump and delivers insulin. It is the participant's ordinary therapy
-and is not altered for the study. The other three take the virtual pump. They compute and record
+and is not altered for the study. The others take the virtual pump. They compute and record
 decisions and deliver nothing.
 
 Each instance uploads to its own Nightscout site, from which records are extracted into the local
@@ -80,19 +94,23 @@ anchoring is recorded on every cycle and enters the analysis as described in sec
 
 ## 4. Hypotheses
 
-The primary hypothesis is that A and B, which differ only in the cadence of the glucose feeding the
-decision, propose the same insulin over matched intervals.
+The primary hypothesis is that C and D, which differ only in how closely spaced automated boluses may
+be, propose the same insulin over matched intervals. This is the cleanest comparison available, since
+both run on the same sensor and the same handset and differ in one setting.
 
-The second hypothesis is that C and D, which differ only in how closely spaced automated boluses may
-be, propose the same insulin over matched intervals.
+The second hypothesis is that B and C propose the same insulin over matched intervals. These share a
+sensor and a handset but differ in both decision cadence and bolus spacing, so a difference is
+attributed only with reference to the C against D result.
 
-The third hypothesis is that B and C propose the same insulin over matched intervals. These differ
-in both decision cadence and bolus spacing, so a difference here is attributed only with reference
-to the C against D comparison.
+The third is a control rather than a hypothesis about cadence. A and B are expected to produce
+similar results, and the size of the difference between them estimates how much divergence arises
+from wearing a second sensor on a second handset rather than from anything the software does. A
+large difference here invalidates the interpretation of the other two rather than constituting a
+finding of its own.
 
-The expectation, from the offline work summarised in section 1, is that A and B differ very little,
-that C and D differ in the granularity and timing of delivery rather than in total insulin, and that
-any difference between B and C is mostly the delivery frequency rather than the faster decision. A
+The expectation, from the offline work summarised in section 1, is that C and D differ in the
+granularity and timing of delivery rather than in total insulin, that any difference between B and C
+is mostly the delivery frequency, and that A and B agree to within sensor to sensor variation. A
 null on any of these is a useful result.
 
 ## 5. Measures
@@ -115,6 +133,9 @@ without proposing more in total.
 
 Agreement on direction at the five minute grid points where all four instances have taken a
 decision, which is the closest this design comes to a like for like comparison.
+
+The A against B difference on every measure above, reported alongside the others as the noise floor.
+No difference between B, C and D is interpreted without it.
 
 ## 6. Analysis
 
@@ -150,7 +171,8 @@ therapy.
 One participant and one sensor, so nothing here generalises to other people or other sensors. The
 virtual pump instances are counterfactual in the sense set out in section 3. Decisions are not
 outcomes, and no statement about time in range, time below range or any other glycaemic measure can
-be derived from this design. Four instances on one handset share a processor and a battery, and if
+be derived from this design. Arm A introduces a second sensor and a second handset, so nothing about it isolates cadence and it
+is used only to bound the noise. Three instances on the first handset share a processor and a battery, and if
 that degrades the timeliness of any instance it would appear as a difference between arms; cycle
 timing is therefore recorded and checked before the comparisons are made.
 

@@ -40,18 +40,20 @@ This is a specific case of a constraint that governs all of my analysis. I can o
 
 Rather than asking whether a faster sensor produces better outcomes, I am asking first whether it produces different decisions, which can be established exactly and without exposing anyone to an intervention.
 
-Four copies of AndroidAPS run on one phone, fed from a single sensor. One is connected to the pump and is my ordinary therapy, unchanged. The other three use the virtual pump: they run the full algorithm, decide what they would deliver, record it, and deliver nothing.
+Three copies of AndroidAPS run on one phone, fed from a single one minute sensor. A fourth runs on a second phone with its own five minute sensor, because a five minute view and a one minute view cannot be taken from the same sensor at the same time. One instance is connected to the pump and is my ordinary therapy, unchanged. The others use the virtual pump: they run the full algorithm, decide what they would deliver, record it, and deliver nothing.
 
-![Four arms, one sensor, one body](fig3_design.png)
+![B, C and D share a sensor; A is a separate sensor on a second phone](fig3_design.png)
 
-| arm | glucose supplied | decision taken | earliest possible bolus |
-|---|---|---|---|
-| A | every 5 min | every 5 min | 5 min |
-| B | every 1 min | every 5 min | 5 min |
-| C | every 1 min | every 1 min | 1 min |
-| D | every 1 min | every 1 min | 3 min |
+| arm | sensor | glucose supplied | decision taken | earliest possible bolus |
+|---|---|---|---|---|
+| A | its own, on a second phone | every 5 min | every 5 min | 5 min |
+| B | the one minute sensor | every 1 min | every 5 min | 5 min |
+| C | the same one minute sensor | every 1 min | every 1 min | 1 min |
+| D | the same one minute sensor | every 1 min | every 1 min | 3 min |
 
-A and B differ only in the cadence of the glucose reaching the algorithm, since both decide and act on the same schedule, so that comparison addresses the question people usually mean. C and D differ only in how closely spaced automated boluses may be, with both deciding every minute, which separates delivery frequency from decision frequency. Without D there would be no way to attribute a difference between B and C to one or the other, since they vary in both.
+B, C and D see identical glucose arriving at the same instant and differ only in what the software does with it, so those comparisons are clean. C and D differ only in how closely spaced automated boluses may be, with both deciding every minute, which separates delivery frequency from decision frequency. Without D there would be no way to attribute a difference between B and C to one or the other, since they vary in both.
+
+A is a control rather than a contrast. It differs from B in sensor, sensor site, phone and cadence simultaneously, so a difference between them tells me nothing about cadence. What it does tell me is how much the arms diverge for reasons that have nothing to do with software, because two sensors on one body disagree through calibration, site and lag alone. That figure is the noise floor for the whole study. If B and C differ by no more than A and B do, the design is not sensitive enough to answer the question, and that is the conclusion I would have to report.
 
 Each copy runs its own complete loop and accumulates its own insulin on board from its own decisions. That matters because a loop dosing more often builds a different insulin trajectory, and the caps and brakes that respond to insulin on board then engage differently. Restricting the comparison to a single cycle would miss that interaction, which is a large part of what distinguishes the arms.
 
@@ -61,7 +63,7 @@ The glucose those three copies observe responds to the insulin my pump delivered
 
 The study measures decisions and not outcomes. No time in range figure appears anywhere in it. If the four copies agree closely then the outcome question is largely answered by implication, and nobody has been experimented on to learn it. If they disagree, the circumstances of the disagreement indicate where a properly targeted trial should look.
 
-Four instances share one processor and one battery, so cycle timing is recorded and checked before any comparison is made. It is a single participant on a single sensor, and none of it generalises.
+Three instances share one processor and one battery, so cycle timing is recorded and checked before any comparison is made. It is a single participant wearing two sensors, and none of it generalises.
 
 ## What I expect
 

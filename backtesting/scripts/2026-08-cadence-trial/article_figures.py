@@ -173,35 +173,46 @@ def fig_latency(d, path):
 
 
 def fig_design(path):
-    """The four arms, as a diagram."""
+    """The four arms.
+
+    Drawn so the split is obvious: B, C and D share one sensor and one handset, A has its own of
+    each. That separation is the whole reason A cannot be read as a cadence contrast.
+    """
     arms = [
-        ("A", 5, 5, 5, "#64748b"),
-        ("B", 1, 5, 5, "#0f766e"),
-        ("C", 1, 1, 1, ACCENT),
-        ("D", 1, 1, 3, "#7c3aed"),
+        ("A", 5, 5, 5, "#64748b", "own 5 min sensor, second handset"),
+        ("B", 1, 5, 5, "#0f766e", ""),
+        ("C", 1, 1, 1, ACCENT, ""),
+        ("D", 1, 1, 3, "#7c3aed", ""),
     ]
-    fig, ax = plt.subplots(figsize=(8.2, 3.4))
+    fig, ax = plt.subplots(figsize=(8.6, 3.8))
     span = 30
-    for i, (name, sensor, decide, smb, colour) in enumerate(arms):
+    for i, (name, sensor, decide, smb, colour, note) in enumerate(arms):
         y = len(arms) - i
-        ax.text(-3.6, y, f"arm {name}", ha="left", va="center", fontsize=10, color=INK)
+        ax.text(-13.5, y, f"arm {name}", ha="left", va="center", fontsize=10, color=INK)
         for t in np.arange(0, span + 0.001, sensor):
             ax.plot([t], [y + 0.22], marker="|", ms=6, color=MUTED, mew=1.2)
         for t in np.arange(0, span + 0.001, decide):
             ax.plot([t], [y], marker="o", ms=3.4, color=colour)
         for t in np.arange(0, span + 0.001, smb):
             ax.plot([t], [y - 0.24], marker="^", ms=4.2, color=colour)
-    ax.text(-3.6, len(arms) + 0.85, "sensor reading", color=MUTED, fontsize=8.5)
-    ax.text(6.5, len(arms) + 0.85, "decision", color=INK, fontsize=8.5)
-    ax.text(13.5, len(arms) + 0.85, "earliest possible bolus", color=INK, fontsize=8.5)
-    ax.set_xlim(-4, span + 1)
-    ax.set_ylim(0.3, len(arms) + 1.3)
+    # bracket the three arms that share a sensor and a handset
+    ax.plot([-1.6, -1.6], [0.72, 3.28], color=INK, lw=1.1)
+    ax.plot([-1.6, -1.1], [0.72, 0.72], color=INK, lw=1.1)
+    ax.plot([-1.6, -1.1], [3.28, 3.28], color=INK, lw=1.1)
+    ax.text(-2.2, 2.0, "one sensor,\none handset", ha="right", va="center", fontsize=8.5, color=INK)
+    ax.text(-2.2, 4.0, "own sensor,\nsecond handset", ha="right", va="center", fontsize=8.5,
+            color=MUTED)
+    ax.text(0, len(arms) + 0.95, "sensor reading", color=MUTED, fontsize=8.5)
+    ax.text(9, len(arms) + 0.95, "decision", color=INK, fontsize=8.5)
+    ax.text(16.5, len(arms) + 0.95, "earliest possible bolus", color=INK, fontsize=8.5)
+    ax.set_xlim(-14, span + 1)
+    ax.set_ylim(0.3, len(arms) + 1.4)
     ax.set_xlabel("minutes")
     ax.set_yticks([])
     ax.spines["left"].set_visible(False)
     ax.grid(True, axis="x", color=GRID, lw=0.8)
     ax.set_axisbelow(True)
-    ax.set_title("Four arms, one sensor, one body: what differs is when the loop is allowed to think and act")
+    ax.set_title("B, C and D share a sensor and differ only in software. A is a separate sensor, and a control")
     fig.savefig(path)
     plt.close(fig)
 
