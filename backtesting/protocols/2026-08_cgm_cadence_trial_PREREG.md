@@ -2,7 +2,7 @@
 
 **Status:** PRE-REGISTERED (analysis plan fixed before data collection)
 **Registered:** 2026-08-09
-**Version:** 1.2
+**Version:** 1.3
 **Applies to:** `v7-shadow-1m-test` @ `c625390d5a` (one-minute arms) and `Boost-V7-shadow` @ `cf8a77ad09`.
 
 > Pre-registration discipline: the hypotheses, arms, endpoints, sample size, stopping rules and
@@ -64,32 +64,43 @@ at 5 on both arms would be required to separate them, and is out of scope here.
 
 ## 4. Design
 
-Three arms, but **only one contrast is properly identified** and the protocol says so up front.
+Three arms, **one binary**, two switches. All arms run the same APK, so no difference between them
+can come from the build.
 
-| arm | sensor hardware | loop cadence |
-|---|---|---|
-| **A** | one-minute-capable | 1 min |
-| **B** | **the same** one-minute-capable sensor, series used at 5 min | 5 min |
-| **C** | native five-minute sensor | 5 min |
+| arm | sensor | loop | `ApsLoopAtNativeCadence` | `smbinterval` | effective SMB spacing |
+|---|---|---|---|---|---|
+| **A** | 5 min | 5 min | off | 3 | 5 min (loop binds) |
+| **B** | 1 min | 5 min | off | 3 | 5 min (loop binds) |
+| **C** | 1 min | 1 min | **on** | 3 | 3 min (setting binds) |
 
-- **A vs B — PRIMARY.** Same physical sensor, same wear session, same person; differs only in
-  cadence (and the dosing frequency that rides with it, §2). Randomised **day by day inside each
-  sensor session**, so calendar, site, illness and eating pattern are held as close as they can be.
-  This is the contrast the trial is powered and analysed for.
-- **B vs C — SECONDARY.** Same cadence, different hardware. Isolates the sensor, not the cadence.
-  Necessarily period-level, because it requires a different device on the body, so it is confounded
-  with calendar and is **hypothesis-generating only**.
-- **A vs C — REPORTED, NOT INTERPRETED.** Confounded by both hardware and cadence. Included because
-  it is the comparison a reader will ask for; it settles nothing.
+Arm B is what the build does with a one-minute sensor and the switch off: the loop trigger reads the
+five-minute bucketed series, so decisions happen every five minutes, while the decision itself is
+computed from the one-minute native series — deltas, the smoother and the ML features all see
+one-minute data. Arm C moves the trigger onto the native series so a decision happens every minute.
 
-The code supports arm B exactly: on a feed at or above two-minute spacing the native series *is* the
-bucketed series (`cadence >= 2.0 -> bucketedDataNative = bucketedData`), so B is byte-identical in
-behaviour to a native five-minute run of the same build.
+**Contrasts, and what each identifies:**
 
-**Randomisation:** seeded PRNG keyed on `(participantId, date)`, balanced in blocks of 6 days so the
-arms stay even within each week. Not alternating days — that aliases with weekday effects.
+- **A vs B — sensing cadence, alone.** Dosing opportunity is identical (both loop at five minutes,
+  and `smbinterval` at 3 never binds because the loop binds first). The only difference is whether
+  the decision is computed from one-minute or five-minute data. **This is the question the offline
+  programme could not answer.**
+- **B vs C — dosing frequency, alone.** Sensing is identical, one-minute in both. The only
+  difference is how often a decision is taken, and with it whether `smbinterval` binds at 3.
+- **A vs C — both together.** The combination a user would actually run. Reported, and now
+  decomposable into the two contrasts above rather than confounded.
 
-**Blinding:** none, and not achievable. The participant is the developer. Recorded as a limitation.
+This supersedes the compound-intervention position in §2: because arm B exists, sensing and dosing
+frequency are separately identified and neither result has to be reported as a bundle.
+
+**Randomisation.** A and B share hardware only in the sense that both are five-minute loops; A needs
+a five-minute sensor and B and C need a one-minute sensor. B vs C is therefore randomisable day by
+day within a single wear session, by toggling one preference — that contrast is the cleanly
+randomised one. A requires different hardware and so enters at period level, confounded with
+calendar, and A vs B is interpreted with that caveat.
+
+Seeded PRNG keyed on `(participantId, date)`, balanced in blocks of 6 days.
+
+**Blinding:** none, and not achievable. Recorded as a limitation.
 
 ## 5. Population
 
@@ -200,21 +211,14 @@ construction, §2, and is reported as a manipulation check rather than an outcom
   faster feed is worth pursuing for AID. That is a useful result and the programme's offline work
   already points at it.
 
-## 11a. OPEN ITEM — how arm B is built (blocks finalisation)
+## 11a. Resolved — how each arm is built
 
-Loop rate is not a setting: `InvokeLoopWorker` fires once per new BG value with no minimum interval,
-so a one-minute feed produces a one-minute loop and arm A needs no configuration beyond the feed.
-Arm B as "one-minute data, five-minute loop" is **not achievable on the current build**. Two options:
-
-1. **Feed five-minute data for arm B.** No code change. B becomes behaviourally identical to C
-   (`cadence >= 2.0 -> bucketedDataNative = bucketedData`), so B vs C isolates sensor hardware only
-   and A vs B stays compound, as §2 describes.
-2. **Add a minimum loop-interval guard**, preference-gated and default off. A vs B then isolates
-   dosing frequency with the data held identical, and B vs C isolates sensing cadence with dosing
-   held identical — a proper factorial that separates the two effects §2 currently compounds, and
-   which would retire that section.
-
-Option 2 is preferred on identification grounds. Until this is settled §4 and §2 are provisional.
+Closed 2026-08-09. Loop rate is set by which glucose series the trigger reads, not by a setting and
+not by the sensor alone: `InvokeLoopWorker` takes its timestamp from `ads.actualBg()`, which reads
+`bucketedData`, and both bucketing paths step at five minutes whatever the sensor reports. A
+one-minute sensor therefore yields one-minute data at a five-minute loop with no change at all —
+that is arm B. Arm C required an enabler (`ApsLoopAtNativeCadence`, default off) that moves the
+trigger onto the native series. The throttle proposed in v1.2 was unnecessary and was not built.
 
 ## 12. Limitations
 
@@ -230,3 +234,4 @@ hardware and calendar (§4), and a baseline that does not currently meet the saf
 | 2026-08-09 | 1.0 | Initial registration | — |
 | 2026-08-09 | 1.1 | (superseded by 1.2) Baseline breach in §7 attributed to the U200->U100 change; day 1 deferred until 12 complete stabilised days demonstrate the floor is met | Transition dated 05 Aug; units/day roughly doubled and the transition day carried TBR<54 4.2%. Two stabilised days show 1.9% / 0.0% but cannot demonstrate compliance |
 | 2026-08-09 | 1.2 | Pre-trial run-in withdrawn; relative stopping rule re-specified against the concurrent arm rather than a historical baseline | Arms run concurrently under randomisation, so a common time-varying factor such as a settling TDD model cancels in the contrast. A run-in adds nothing to validity and the v1.1 deferral was incorrect. Arm definitions pending a decision on the loop-interval throttle (see OPEN ITEM) |
+| 2026-08-09 | 1.3 | Arms re-specified to A=5min/5min, B=1min sensor/5min loop, C=1min/1min, all on one binary with ApsLoopAtNativeCadence as the switch; OPEN ITEM closed | The loop trigger reads the five-minute bucketed series, so a one-minute sensor alone gives one-minute sensing at a five-minute loop — that is arm B, and it needed no code. Arm C needed an enabler, not the throttle proposed in 1.2. With B present, sensing and dosing frequency are separately identified and §2's compound framing no longer applies |
