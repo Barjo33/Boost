@@ -1,276 +1,215 @@
-# Pre-registered protocol — CGM cadence: one-minute vs five-minute
+# Sensing cadence and dosing cadence in a closed loop: a pre-registered within-participant study
 
-**Status:** PRE-REGISTERED (analysis plan fixed before data collection)
-**Registered:** 2026-08-09
-**Version:** 1.4
-**Applies to:** `v7-shadow-1m-test` @ `c625390d5a` (one-minute arms) and `Boost-V7-shadow` @ `cf8a77ad09`.
+Registered 2026-08-09. Version 1.0. The hypotheses, arms, outcomes, sample size, stopping rules and
+analysis model set out below were fixed before any trial data were collected.
 
-> Pre-registration discipline: the hypotheses, arms, endpoints, sample size, stopping rules and
-> analysis model below are fixed **before** any trial data is collected. Deviations are recorded in
-> the amendment log, dated, with reason.
+Applies to the Boost fork of AndroidAPS, branch `v7-shadow-1m-test`, build `c0eaae13fe`.
 
----
+## 1. Background
 
-## 1. Background & rationale
+Continuous glucose monitors that report every minute are now available, and the assumption in
+common circulation is that a faster feed should improve automated insulin delivery. Earlier
+offline work in this programme gives reason to doubt that, and it is the reason this study is
+modest in what it claims to be able to detect.
 
-The one-minute programme (`backtesting/scripts/2026-07-onemin/`) established what a faster feed does
-and does not buy. It buys **latency, not bandwidth**: interstitial lag is ~3.8 min, which destroys
-most sub-five-minute content, and a real-era comparison found the two cadences differ by a single
-scale factor flat over 5–120 min with no noise floor either side. Prediction gained nothing
-(lift 9.14 vs 9.18). Rate of change was estimated *worse* at one minute. The measured latency gain
-was about **two minutes** — the grid wait — and the programme's conclusion was that this is
-actionable for alarms, not for AID.
+That work found the gain from a one minute feed to be one of latency rather than of information.
+Interstitial lag is approximately 3.8 minutes, which removes most of the content that a faster
+sample might otherwise carry. A comparison of real one minute and five minute eras found the two
+differed by a single scale factor which was flat across lags from five to 120 minutes, with no
+noise floor on either side, and short horizon prediction gained nothing measurable (a lift of 9.14
+against 9.18). Rate of change was in fact estimated less accurately at one minute than at five. The
+measurable benefit was around two minutes of latency, which is the time spent waiting for the next
+sample on a five minute grid.
 
-Against that, one signal survived: faster feeds help **fast falls**, where two minutes of latency is
-a larger share of the time available to react.
+One observation survived that assessment. A faster feed appeared to help during rapid falls, where
+two minutes is a material fraction of the time available to respond. That is a narrow claim, it was
+reached observationally, and the identification constraint that governs this programme means no
+backtest can produce the counterfactual glucose trajectory needed to settle it. An experiment is
+therefore required, and this protocol specifies one.
 
-This trial exists because that conclusion was reached offline, on observational cuts, and the
-identification constraint means no backtest can produce the counterfactual trajectory. The prior is
-therefore a **null on aggregate glycaemia**, and the protocol is written so that a null is a clean,
-reportable result rather than a failure.
+A second consideration motivates the design. On this platform the rate at which the loop takes
+decisions is not a user setting; it follows from the glucose series the loop trigger reads, which
+is bucketed to five minutes irrespective of what the sensor reports. A one minute sensor alone
+therefore yields one minute data feeding a five minute decision cycle. Faster sensing and more
+frequent dosing are consequently separable, and any study that varies only the sensor confounds
+them. The design below separates them deliberately.
 
-## 2. The intervention is compound, by decision
+## 2. Objectives
 
-**The one-minute arm changes two things at once, and this is deliberate.**
+The primary objective is to determine whether computing dosing decisions from one minute glucose
+data, without changing how often those decisions are taken, alters time below range or the depth
+and duration of excursions following a rapid fall.
 
-`ApsMaxSmbFrequency` (`smbinterval`) is left at its default of **3 minutes in every arm** — the
-setting is not touched. But the loop cycles on new CGM data, so the binding constraint differs:
+The secondary objective is to determine whether taking decisions every minute rather than every
+five minutes, with the sensing cadence held constant, has either effect.
 
-| arm | loop cycle | effective minimum SMB spacing |
-|---|---|---|
-| one-minute | 1 min | **3 min** (the setting binds) |
-| five-minute | 5 min | **5 min** (the cadence binds) |
+The null hypothesis in both cases is that there is no within-participant difference. Given the
+offline findings summarised above, a null result is anticipated on aggregate glycaemia and is
+regarded as informative rather than as a failure of the study.
 
-So the one-minute arm has up to 67% more dosing opportunities than the five-minute arm, from cadence
-alone. This was identified before the trial and the decision taken (2026-08-09) is to **treat the
-higher dosing frequency as part of the intervention** rather than to suppress it by raising
-`smbinterval` to 5 on the one-minute arm.
+## 3. Design
 
-The consequence is stated here so it is never mistaken for a cadence-only result: **this trial
-estimates the effect of running a one-minute feed as a user would actually run it**, sensing and
-dosing frequency together. It does **not** identify the sensing contribution alone. Any result,
-positive or null, must be reported as the compound effect. A follow-on trial holding `smbinterval`
-at 5 on both arms would be required to separate them, and is out of scope here.
+This is a within-participant study with three arms, run on a single binary in which sensing cadence
+and decision cadence are set independently. Because all arms run the same build, no difference
+between them can arise from the software under test.
 
-## 3. Hypotheses
+| Arm | Sensor cadence | Decision cadence | Minimum interval between automated boluses |
+|---|---|---|---|
+| A | 5 min | 5 min | 5 min, set by the decision cycle |
+| B | 1 min | 5 min | 5 min, set by the decision cycle |
+| C | 1 min | 1 min | 3 min, set by the configured minimum |
 
-- **H1 (primary, safety-directional):** One-minute does not increase TBR<70 relative to the same
-  sensor run at five minutes.
-- **H2 (primary, mechanism):** One-minute reduces the depth and duration of excursions **following a
-  fast fall**, the one place the offline work left a live signal.
-- **H3 (secondary):** No difference in TIR or TING. Stated as expected-null; see §6, this trial
-  cannot settle TIR either way.
-- **H0:** No within-user difference on any endpoint.
+The configured minimum interval between automated boluses is three minutes in every arm and is not
+altered between them. In arms A and B the decision cycle is the binding constraint, so the
+configured value has no effect and the opportunity to dose is identical. In arm C the decision
+cycle is shorter than the configured minimum, so the configured value becomes binding.
 
-## 4. Design
+Arm B is the platform's behaviour with a one minute sensor and no further configuration. The
+glucose series used for the dosing decision is at one minute resolution, as is the series passed to
+the smoother, while decisions continue to be taken every five minutes. Arm C differs
+only in that the loop trigger is moved onto the native series by a preference, so that a decision
+is taken on each reading.
 
-Three arms, **one binary**, two switches. All arms run the same APK, so no difference between them
-can come from the build.
+The comparison of A with B varies sensing cadence while holding the opportunity to dose constant,
+and is the comparison that addresses the primary objective. The comparison of B with C varies
+decision cadence while holding sensing constant, and addresses the secondary objective. The
+comparison of A with C varies both together and describes the configuration a user would adopt in
+practice; it is reported for completeness and is interpreted only in the light of the other two.
 
-| arm | sensor | loop | `ApsLoopAtNativeCadence` | `smbinterval` | effective SMB spacing |
+## 4. Participant
+
+A single participant, who is also the developer of the fork under test. The population using this
+software is small and self selected, and a within-participant design was chosen in preference to a
+between-participant one because it holds constant the basal profile, insulin sensitivity, sensor
+site, meal pattern and every other fixed characteristic that would otherwise dominate a comparison
+at this scale.
+
+## 5. Randomisation
+
+Arms B and C use the same sensor and differ only by a preference, so they can be alternated within
+a single wear session. Assignment is by day, from a seeded pseudorandom generator keyed on the
+participant identifier and the date, balanced in blocks of six days so that the arms remain even
+within each week. Assignment is not alternated on consecutive days, since that would alias with
+day of week.
+
+Arm A requires a different sensor and therefore enters at the level of the wear period rather than
+the day. The comparison of A with B is consequently confounded with calendar time, and is
+interpreted with that limitation acknowledged rather than treated as equivalent to the randomised
+comparison of B with C.
+
+Blinding is not achievable, since the participant configures the arms. This is recorded as a
+limitation.
+
+## 6. Outcomes
+
+The primary outcome is the daily proportion of time spent below 70 mg/dL. The second primary
+outcome is defined at the level of the event rather than the day: for every descent steeper than
+3 mg/dL per five minutes sustained for at least fifteen minutes, the nadir reached and the number
+of minutes spent below 70 mg/dL in the following two hours. Defining this outcome over events
+rather than days provides considerably more information per unit of observation, which matters
+given the sample size considerations in section 7.
+
+Secondary outcomes are the proportion of time below 54 mg/dL, the proportion of time between 70 and
+180 mg/dL, the proportion of time between 63 and 140 mg/dL, the coefficient of variation of glucose,
+and total daily insulin. The number of automated boluses per day is recorded as a manipulation
+check rather than as an outcome, since it is expected to differ between arms by construction.
+
+## 7. Sample size
+
+The precision of a day randomised within-participant comparison is set by the between-day spread of
+the outcome, which was measured from 178 complete days of the participant's own record rather than
+assumed. A first order autocorrelation inflation was applied, since daily glycaemic outcomes are
+not independent. The figures below assume a two sided test at the 5 per cent level with 80 per cent
+power and equal numbers of days in each arm.
+
+| Outcome | Baseline | Between-day SD | 14 d/arm | 28 d/arm | 56 d/arm |
 |---|---|---|---|---|---|
-| **A** | 5 min | 5 min | off | 3 | 5 min (loop binds) |
-| **B** | 1 min | 5 min | off | 3 | 5 min (loop binds) |
-| **C** | 1 min | 1 min | **on** | 3 | 3 min (setting binds) |
+| Time 70 to 180 mg/dL | 85.2% | 8.7 pp | 10.2 pp | 7.2 pp | 5.1 pp |
+| Time 63 to 140 mg/dL | 68.7% | 12.0 pp | 14.6 pp | 10.4 pp | 7.3 pp |
+| Time below 70 mg/dL | 4.7% | 3.9 pp | 4.9 pp | 3.5 pp | 2.5 pp |
+| Time below 54 mg/dL | 1.0% | 1.4 pp | 1.8 pp | 1.2 pp | 0.9 pp |
 
-Arm B is what the build does with a one-minute sensor and the switch off: the loop trigger reads the
-five-minute bucketed series, so decisions happen every five minutes, while the decision itself is
-computed from the one-minute native series — deltas, the smoother and the ML features all see
-one-minute data. Arm C moves the trigger onto the native series so a decision happens every minute.
+These figures determine what the study can and cannot address. At 28 days per arm the smallest
+detectable difference in time in range is 7.2 percentage points against a baseline of 85.2 per
+cent, an effect which would require time in range to reach 92 per cent. No mechanism proposed for a
+two minute latency gain predicts anything of that magnitude. Time in range is therefore not treated
+as a primary outcome, and a null result on it will be reported as uninformative rather than as
+evidence of no effect.
 
-**Contrasts, and what each identifies:**
+The planned duration is 56 days per arm, at which point a difference in time below 70 mg/dL of
+around half the baseline rate becomes detectable. A shorter period may be adopted, in which case
+the minimum detectable difference will be reported alongside every estimate.
 
-- **A vs B — sensing cadence, alone.** Dosing opportunity is identical (both loop at five minutes,
-  and `smbinterval` at 3 never binds because the loop binds first). The only difference is whether
-  the decision is computed from one-minute or five-minute data. **This is the question the offline
-  programme could not answer.**
-- **B vs C — dosing frequency, alone.** Sensing is identical, one-minute in both. The only
-  difference is how often a decision is taken, and with it whether `smbinterval` binds at 3.
-- **A vs C — both together.** The combination a user would actually run. Reported, and now
-  decomposable into the two contrasts above rather than confounded.
+## 8. Safety and stopping rules
 
-This supersedes the compound-intervention position in §2: because arm B exists, sensing and dosing
-frequency are separately identified and neither result has to be reported as a bundle.
+Two absolute thresholds bind irrespective of any statistical consideration, and may be tightened
+but not relaxed. An arm is stopped immediately if the proportion of time below 54 mg/dL exceeds
+1 per cent over any rolling fourteen day window, or if the proportion of time below 70 mg/dL exceeds
+4 per cent over the same window. Any single excursion below 54 mg/dL lasting more than thirty
+minutes and attributable to a dosing decision triggers a pause pending review of the cycle logs.
 
-**Randomisation.** A and B share hardware only in the sense that both are five-minute loops; A needs
-a five-minute sensor and B and C need a one-minute sensor. B vs C is therefore randomisable day by
-day within a single wear session, by toggling one preference — that contrast is the cleanly
-randomised one. A requires different hardware and so enters at period level, confounded with
-calendar, and A vs B is interpreted with that caveat.
+A relative rule operates in addition to these, never in place of them. An arm is stopped if its
+rolling fourteen day proportion of time below 70 mg/dL exceeds that of the concurrently running arm
+over the same period by more than 1.5 percentage points. The comparator is the concurrent arm rather
+than a historical baseline, because the arms are randomised within the same period and any factor
+that varies with time rather than with assignment therefore affects both equally.
 
-Seeded PRNG keyed on `(participantId, date)`, balanced in blocks of 6 days.
+For context, the participant changed insulin preparation shortly before registration, moving from
+a U200 formulation to the same analogue diluted to U100 strength. Recorded units per day
+approximately doubled, as halving the concentration requires, and the total daily dose scaling
+re-settled over the following two days. Time below 70 mg/dL was 4.1 per cent over the 89 days
+preceding the change and 1.9 per cent over the stabilised days following it, with time below 54
+mg/dL falling from 0.8 per cent to zero. No run-in period is required before the study begins,
+since the randomised design makes each arm its own control against the other; a scaling that is
+still settling affects the arms equally and cancels in the contrast, at some cost to precision but
+none to validity.
 
-**Blinding:** none, and not achievable. Recorded as a limitation.
+## 9. Data capture and quality control
 
-## 5. Population
+Each arm logs every decision cycle to Nightscout, from which the records are extracted into the
+analysis database by the standard extractor. The realised sensor cadence is recorded per cycle and
+the arm is recovered from it rather than from a manual label, so that a day whose realised cadence
+disagrees with its assignment can be identified. Such days are excluded before analysis and their
+number is reported.
 
-Single subject (the developer), within-user. n=1 by design: cross-user cadence comparison would need
-hardware the cohort does not have, and this project's position is that within-subject beats
-between-subject at this scale.
+Days that are incomplete are excluded throughout. A part day of good control is otherwise recorded
+as a perfect one, which biases any summary computed while a day is still in progress.
 
-## 6. Sample size & power — read this before choosing a duration
+## 10. Statistical analysis
 
-Computed from the participant's own 178 complete days (`scripts/2026-08-cadence-trial/cadence_power.py`),
-using between-day SD with a first-order autocorrelation inflation, two-sided α=0.05, 80% power:
+Day level outcomes are compared between arms as a difference of means, with a 95 per cent confidence
+interval obtained by bootstrap resampling of whole days rather than of individual readings, since
+consecutive readings within a day are strongly dependent. Event level outcomes are compared with
+clustering by day and the bootstrap taken over days.
 
-| outcome | baseline | between-day SD | 14 d/arm | 28 d/arm | 56 d/arm |
-|---|---|---|---|---|---|
-| TIR 70–180 | 85.2% | 8.7 pp | 10.2 pp | 7.2 pp | 5.1 pp |
-| TING 63–140 | 68.7% | 12.0 pp | 14.6 pp | 10.4 pp | 7.3 pp |
-| TBR <70 | 4.7% | 3.9 pp | 4.9 pp | 3.5 pp | 2.5 pp |
-| TBR <54 | 1.0% | 1.4 pp | 1.8 pp | 1.2 pp | 0.9 pp |
+Every estimate is reported with its interval and an explicit statement of whether it is
+distinguishable from no effect. Where an interval covers zero the result is reported as unproven,
+and the minimum detectable difference from section 7 is quoted alongside it so that a genuine null
+can be told apart from an underpowered comparison. No subgroup analysis is specified in advance,
+and any conducted subsequently will be identified as exploratory.
 
-**TIR cannot be settled by this trial.** At 28 days per arm the smallest detectable difference is
-7.2 pp on an 85.2% baseline — an effect that would take TIR to 92%, which no one expects from a
-two-minute latency gain. Reporting "no significant TIR difference" from this design would be
-uninformative, so TIR is **demoted to a secondary, expected-null endpoint** and the primary
-endpoints are the safety and mechanism ones, where the per-day event count is higher than one
-number per day.
-
-**Planned duration: 56 days per arm** (a 112-day A/B phase), which is the point at which TBR<70 is
-detectable at about half the baseline rate. Shorter phases are permitted but the analysis must
-report the MDE alongside the estimate and must not claim a null.
-
-## 7. Safety & stopping rules (pre-specified)
-
-Absolute floors bind regardless of any statistic, and can only tighten:
-
-- **TBR<54 > 1%** over any rolling 14 days on an arm → that arm stops immediately.
-- **TBR<70 > 4%** over any rolling 14 days on an arm → that arm stops immediately.
-- Any single event below 54 mg/dL lasting > 30 min attributable to a dosing decision → pause,
-  review the cycle logs before resuming.
-
-**Baseline status — amended 2026-08-09 (v1.2).** Version 1.0 recorded a TBR<70 breach and deferred
-the trial until a clean pre-trial baseline was demonstrated. **That deferral was wrong and is
-withdrawn.** The arms run concurrently under day-randomisation, so each arm's comparator is the other
-arm in the same period, not a historical window. A still-settling TDD scaling is common to all three
-arms — same person, same profile, same derivation — and randomisation cancels any factor that varies
-with time rather than with assignment. A run-in period therefore buys nothing for the comparison,
-and the earlier claim that it was "the thing that makes the relative rule work" was simply incorrect.
-
-What a still-moving TDD model does cost is **precision, not validity**: it inflates between-day
-variance and so widens the minimum detectable difference in §6. Block randomisation in blocks of 6
-protects against a trend aliasing with assignment. The only pre-trial requirement retained is a
-check that the TDD scaling has settled, which the record already supports — the derived ratio has
-held at 1.00 across the transition and since.
-
-For context rather than as a gate, the switch from U200 to the same analogue at U100 strength on
-2026-08-05 accounts for the breach recorded in v1.0. Recorded units per day roughly doubled, as
-diluting to half strength requires, and the transition day itself carried TBR<54 of 4.2% against
-0.0% on each of the days since:
-
-| period | complete days | TIR | TBR<70 | TBR<54 |
-|---|---|---|---|---|
-| pre-switch | 89 | 84.5% | 4.1% | 0.8% |
-| transition (05–06 Aug) | 2 | 85.4% | 4.9% | 2.4% |
-| stabilised (from 07 Aug) | 2 | 92.1% | 1.9% | 0.0% |
-
-Partial days are excluded throughout: an in-progress day of good control reads as a perfect one.
-
-**Stopping rules, corrected.** The absolute floors above stand unchanged and bind on their own
-terms. The relative rule is measured **between concurrent arms, not against a historical baseline**:
-an arm stops if its rolling 14-day TBR<70 exceeds the *other arm's same-period* rate by more than
-1.5 pp. This is an addition to the absolute floors, never a replacement for them.
-
-## 8. Data capture
-
-- Both builds log per-cycle to Nightscout and are extracted into `boost_decisions` by the standard
-  extractor; the arm is recovered from the detected cadence, not from a manual label.
-- Arm assignment, sensor serial and phase are recorded per day in the trial registry.
-- `detectedCadenceMinutes` is logged per cycle so the realised cadence can be checked against the
-  intended arm. **Any day whose realised median cadence disagrees with its assignment is excluded
-  before analysis**, and the count of such days is reported.
-
-## 9. Endpoints
-
-**Primary**
-1. TBR<70, per day, arm A vs arm B.
-2. Fast-fall recovery: for every descent steeper than −3 mg/dL/5min sustained 15 min, the nadir
-   reached and the minutes spent below 70 in the following 2 h. Event-level, so n is events not days.
-
-**Secondary** — TBR<54; TIR; TING; CV; total daily insulin; SMB count per day (this will differ by
-construction, §2, and is reported as a manipulation check rather than an outcome).
-
-## 10. Analysis plan (fixed)
-
-- Day-level outcomes, arm A vs arm B, difference of means with a **bootstrap 95% CI resampling whole
-  days** (days, not readings — consecutive readings are not independent).
-- Event-level endpoints: mixed comparison clustered by day, bootstrap over days.
-- Every effect size reported with its CI and an explicit "distinguishable from baseline?" verdict.
-  Where the interval covers zero the result is reported as **unproven**, with the MDE from §6 quoted
-  alongside so the reader can tell "no effect" from "no power".
-- Confidence tier labelled on every claim (SOLID / PROVISIONAL / SPECULATIVE).
-- No subgroup analysis is pre-specified. Any that is run post hoc is labelled exploratory.
+No adjustment for multiplicity is made and none would render these comparisons confirmatory. The study is
+descriptive rather than confirmatory, and the analysis is framed accordingly.
 
 ## 11. Decision rule
 
-- **Adopt one-minute** only if TBR<70 is non-inferior *and* the fast-fall endpoint improves, both
-  with intervals excluding the null, at the planned duration.
-- **Reject** if TBR<70 worsens beyond the §7 rule.
-- **Null** — the expected outcome — is written up as such, and closes the question of whether a
-  faster feed is worth pursuing for AID. That is a useful result and the programme's offline work
-  already points at it.
-
-## 11a. Resolved — how each arm is built
-
-Closed 2026-08-09. Loop rate is set by which glucose series the trigger reads, not by a setting and
-not by the sensor alone: `InvokeLoopWorker` takes its timestamp from `ads.actualBg()`, which reads
-`bucketedData`, and both bucketing paths step at five minutes whatever the sensor reports. A
-one-minute sensor therefore yields one-minute data at a five-minute loop with no change at all —
-that is arm B. Arm C required an enabler (`ApsLoopAtNativeCadence`, default off) that moves the
-trigger onto the native series. The throttle proposed in v1.2 was unnecessary and was not built.
+The one minute configuration will be adopted only if time below 70 mg/dL is no worse and the rapid
+fall outcome improves, with both intervals excluding no effect at the planned duration. It will be
+rejected if time below range worsens beyond the threshold in section 8. A null result closes the
+question of whether a faster sensor is worth pursuing for automated insulin delivery on this
+platform, which is a useful outcome and the one the earlier offline work anticipates.
 
 ## 12. Limitations
 
-Single subject, unblinded, compound intervention (§2), TIR underpowered (§6), arm C confounded with
-hardware and calendar (§4), and a baseline that does not currently meet the safety floor (§7).
+The study has a single participant and cannot be blinded. Arm A enters at the level of the wear
+period rather than the day, so the comparison that addresses the primary objective is confounded
+with calendar time in a way that the secondary comparison is not. Time in range is underpowered at
+any duration the study is likely to run for, as section 7 sets out. Sensor lag is not corrected
+anywhere in the analysis. The findings apply to one implementation on one platform and should not
+be read as a general statement about sampling cadence in automated insulin delivery.
 
+## 13. Planned extension
 
-## 13. Candidate follow-on — asymmetric cadence (NOT part of this registration)
-
-Proposed 2026-08-09, recorded here so it is not lost and so this trial's arms are chosen with it in
-mind. **Not registered, not powered, and no data is collected against it under this protocol.**
-
-The idea is to run decisions at one minute while holding SMB spacing at five, so the loop can
-withdraw insulin sooner — cutting or cancelling a temp basal on the next minute rather than up to
-five minutes later — without adding insulin any more often than it does today. That is deliberately
-asymmetric, and it targets the only place the offline programme left a signal: fast falls, where two
-minutes of latency is a large share of the time available to react.
-
-**It needs no code.** It is arm C's binary with `smbinterval` set to 5 instead of 3. The SMB guard
-is wall-clock, so at a one-minute loop a setting of 5 binds before the loop does.
-
-Adding it as arm D completes a factorial over the two rates that were previously entangled:
-
-| arm | sensing | decision / TBR rate | SMB spacing |
-|---|---|---|---|
-| A | 5 min | 5 min | 5 min |
-| B | 1 min | 5 min | 5 min |
-| C | 1 min | 1 min | 3 min |
-| **D** | 1 min | 1 min | **5 min** |
-
-- **A vs B** — sensing alone.
-- **B vs D** — decision and temp-basal rate alone, SMB opportunity held equal. This is the cleanest
-  available test of the latency hypothesis, and the one that isolates the WITHDRAWAL channel.
-- **D vs C** — SMB frequency alone, decision rate held at one minute.
-- **B vs C** — both together, as registered in §4.
-
-If the follow-on is run, B vs D is the contrast to power for, and it should be randomised day by day
-within a wear session in the same way as B vs C, since it is also a preference toggle on one binary.
-
-One practical note carried over from the arm C review: `applyTBRRequest` already suppresses a pump
-command when the running temp basal matches the request within `basalStep` and has more than five
-minutes left, so a one-minute loop does not re-issue an unchanged rate. Pump traffic rises only when
-the rate actually moves, which is the behaviour this arm is trying to exploit.
-
----
-
-## Amendment log
-
-| date | version | change | reason |
-|---|---|---|---|
-| 2026-08-09 | 1.0 | Initial registration | — |
-| 2026-08-09 | 1.1 | (superseded by 1.2) Baseline breach in §7 attributed to the U200->U100 change; day 1 deferred until 12 complete stabilised days demonstrate the floor is met | Transition dated 05 Aug; units/day roughly doubled and the transition day carried TBR<54 4.2%. Two stabilised days show 1.9% / 0.0% but cannot demonstrate compliance |
-| 2026-08-09 | 1.2 | Pre-trial run-in withdrawn; relative stopping rule re-specified against the concurrent arm rather than a historical baseline | Arms run concurrently under randomisation, so a common time-varying factor such as a settling TDD model cancels in the contrast. A run-in adds nothing to validity and the v1.1 deferral was incorrect. Arm definitions pending a decision on the loop-interval throttle (see OPEN ITEM) |
-| 2026-08-09 | 1.3 | Arms re-specified to A=5min/5min, B=1min sensor/5min loop, C=1min/1min, all on one binary with ApsLoopAtNativeCadence as the switch; OPEN ITEM closed | The loop trigger reads the five-minute bucketed series, so a one-minute sensor alone gives one-minute sensing at a five-minute loop — that is arm B, and it needed no code. Arm C needed an enabler, not the throttle proposed in 1.2. With B present, sensing and dosing frequency are separately identified and §2's compound framing no longer applies |
-| 2026-08-09 | 1.4 | Record an unregistered candidate follow-on: one-minute decisions with SMB spacing held at five, as arm D | Completes a factorial over decision rate and SMB rate. B vs D would isolate the temp-basal withdrawal channel with SMB opportunity held equal, which is the cleanest test of the latency hypothesis. Needs no code — smbinterval 5 on arm C's binary |
+A further arm, in which decisions are taken every minute while the minimum interval between
+automated boluses is held at five, would separate the effect of responding sooner from the effect
+of dosing more often. It requires no change to the software and will be registered separately.
