@@ -1,6 +1,6 @@
 # Dosing decisions under four sensing and delivery cadences: a pre-registered parallel instance study
 
-Registered 2026-08-09. Version 1.2. The arms, measures and analysis set out below were fixed before
+Registered 2026-08-09. Version 1.3. The arms, measures and analysis set out below were fixed before
 any data were collected.
 
 Applies to the Boost fork of AndroidAPS, branch `v7-shadow-1m-test`, build `c0eaae13fe`, installed as the
@@ -87,14 +87,29 @@ interesting question.
 The limitation that follows is stated here rather than in a footnote. The glucose these instances
 observe is real, and it responds to the insulin the pumping instance delivered, not to the insulin
 they believe they delivered. Their state is therefore internally consistent but externally
-counterfactual, and the discrepancy compounds the longer an instance runs without correction. Early
-in a run the comparison is close to a like for like one; late in a long run it is a comparison of
-divergent parallel worlds. Nothing in the design removes this, and the measures in section 5 are
-chosen so the decay is visible in the results rather than assumed away.
+counterfactual.
 
-To bound it, the virtual pump instances are re-anchored to the pumping instance daily, by restoring
-their treatment history to the record of what was actually delivered. Elapsed time since the last
-anchoring is recorded on every cycle and enters the analysis as described in section 6.
+An earlier version of this protocol assumed that discrepancy grew without limit and specified a
+daily re-anchoring to contain it. That was wrong, and the instances are not re-anchored. Insulin
+decays, so the difference in insulin on board between an instance and reality is a steady state
+rather than an accumulation, and it settles at approximately the difference in dosing rate
+multiplied by the mean residence time of a unit. Under this participant's configured curve that
+residence time is about seventy five minutes, so an instance dosing ten per cent more than reality
+carries roughly 0.05 U of insulin on board that does not exist, against the 1.6 U it typically
+carries. An instance dosing fifty per cent more carries about 0.25 U. Those are modest offsets and
+they do not grow with the length of the run.
+
+What does persist is a standing difference rather than a growing one. An instance whose insulin
+never moves glucose will keep seeing glucose that has not responded, and will therefore keep dosing
+somewhat differently from reality for as long as it runs, bounded by its own caps and its maximum
+insulin on board. Every instance is subject to this equally and all of them see identical glucose,
+so the comparison between them remains sound. What cannot be claimed is that any single instance
+behaves as it would have done in reality, since in reality its insulin would have moved the glucose
+it is looking at.
+
+The difference in insulin on board between each instance and the pumping instance is recorded on
+every cycle and reported, so that the size of the offset is visible in the results rather than
+assumed from the argument above.
 
 ## 4. Hypotheses
 
@@ -129,7 +144,7 @@ The distribution of individual dose sizes and of the intervals between doses, wh
 faster decision cycle is expected to show itself even if totals agree.
 
 The separation between instances of insulin on board, expressed as the difference from the pumping
-instance, and its behaviour as time since anchoring increases.
+instance, and whether it settles or grows as the run continues.
 
 The proportion of cycles on which each instance's dose was limited by a cap or a brake rather than
 by the sizing calculation, since a cadence that proposes more often may be restrained more often
@@ -152,11 +167,12 @@ the wrong comparison.
 Differences are summarised over intervals, with confidence intervals from a bootstrap that resamples
 whole days rather than intervals, since intervals within a day are strongly dependent.
 
-Every comparison is additionally reported stratified by time since the last anchoring, in bands of
-under six hours, six to twelve, and twelve to twenty four. If the differences grow materially across
-those bands then the later bands are measuring accumulated divergence rather than cadence, and only
-the first band supports a claim about cadence. This stratification is specified in advance precisely
-so that a growing difference cannot be presented as a large effect.
+Every comparison is additionally reported against elapsed time since the run began, and alongside
+the insulin on board offset described in section 3. The reasoning there says that offset should
+reach a steady state within a few hours and stay there. If instead it grows with time, that
+reasoning is wrong and the later part of the record is measuring accumulated divergence rather than
+cadence, in which case only the early period supports a claim. Specifying the check in advance means
+a growing difference cannot be presented afterwards as a large effect.
 
 Days on which any instance received fewer than ninety per cent of expected glucose readings are
 excluded from all instances together, not from the affected instance alone, so that the arms always
