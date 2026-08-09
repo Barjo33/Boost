@@ -6,39 +6,52 @@
 
 One minute continuous glucose monitors have arrived, and with them an assumption so obvious that nobody bothers to state it. More data must be better. Five times as many readings, five times as much to go on, so of course the loop should do a better job.
 
-I've spent a fair while trying to work out whether that's true, and I've come round to doubting it. Not because I've measured it and found nothing, but because of what the physiology implies and because of what I can measure about how much my own control varies day to day, which turns out to set a hard limit on what any straightforward trial could detect. What I want to do here is set out the reasoning, say where I think the faster feed genuinely might help, and describe the experiment I'm about to run, which is deliberately not the obvious one.
+I've spent a fair while trying to work out whether that's true, and I've come round to doubting it. Some of that doubt comes from analysis I've been able to do on a one minute dataset, which I'll describe but can't illustrate, because the data isn't mine to publish. Some of it comes from something much more mundane that anyone can check for themselves in the source code. What I want to do here is set out both, say where I think the faster feed genuinely might help, and describe the experiment I'm about to run, which is deliberately not the obvious one.
 
-## What I think the extra readings contain, and why I can't yet show you
+## What the extra readings contain
 
-I have to be straight about something before going further, because it changes what this piece can
-claim. I do not yet have any one minute data. It arrives on Thursday, and it will be twenty four
-hours of it. Everything below is therefore an argument and a plan, not a result, and the figures
-that would settle it are not drawn yet.
+I should be clear about whose data this is. I have had access to one minute data from another person
+running this system, and the analysis below comes from it. It isn't mine to publish, so there are no
+charts of it here. My own one minute sensor arrives on Thursday and will give me a single day, which
+is not enough to draw the picture I'd want to show you either.
 
-I mention this because I nearly published a version of this article with a chart in it captioned as
-six hours of a real one minute sensor. It was not. It was a five minute feed with duplicated
-entries, and it looked convincing enough to fool me: most consecutive gaps were a minute apart. What
-gave it away was that the readings all landed on the same second of the minute, a third of them
-repeated the previous value exactly, and the gaps went back to five minutes wherever the duplication
-stopped. A real sensor jitters. Backfill does not.
+What that dataset says is consistent, and it says less than you'd hope. Comparing a real five minute
+era against a real one minute era, the two differ by a single scale factor, flat across every lag
+from five minutes out to two hours. Not a different shape, not additional detail at short range. One
+number. Short horizon forecasting gained essentially nothing from the faster feed, and the rate of
+change came out marginally worse at one minute than at five, because a shorter baseline makes the
+estimate noisier and noise is what you then differentiate.
 
-So here is the argument as it stands, with the evidence I actually have.
+The reason is physiological rather than technical. Interstitial fluid lags blood by around four
+minutes, and that lag acts as a filter. By the time glucose reaches the sensor it has been smoothed,
+and sampling the smoothed version more often does not recover what the smoothing removed.
 
-The reason I doubt the extra readings contain much is physiological rather than technical.
-Interstitial fluid lags blood by something like four minutes, and that lag acts as a filter. By the
-time glucose reaches the sensor it has already been smoothed, and sampling the smoothed version more
-often does not recover what the smoothing removed. If that is right, a one minute trace laid over a
-five minute one should look like the same curve with more dots on it, and not like a curve with
-structure the five minute view was missing.
+## The thing anyone can check for themselves
 
-That is the first thing Thursday's data will test, and it is a test that can fail. If there is
-genuine sub-five-minute structure in a real one minute feed, it will show up immediately as
-departures between the two, and I will have been wrong.
+Here is the part I find most persuasive, and it has nothing to do with physiology. If you are running
+ordinary oref, whether that's AndroidAPS or Trio, a one minute sensor cannot help you, because the
+algorithm throws the extra readings away before it looks at them.
+
+Glucose arriving at the loop goes into a bucketing step first. There are two code paths through it
+and both advance in five minute steps regardless of what the sensor reported. Whatever comes in, what
+comes out is a five minute series. The loop then takes its cue from the newest entry in that series,
+so on a one minute sensor the timestamp it triggers on only moves every five minutes, and a guard
+skips any cycle whose glucose it has already looped on.
+
+The practical consequence is worth stating plainly. Put a one minute sensor on a stock oref loop and
+you get one minute data feeding a five minute decision, made from a five minute view. Not a faster
+loop. Not a more detailed one. The same loop, with four fifths of the readings discarded on the way
+in.
+
+That is not a criticism of oref, which was designed around the sensors that existed. It does mean
+that anyone expecting a benefit purely from swapping the sensor is going to be disappointed, and that
+getting any value at all requires changing the algorithm rather than the hardware. Which is exactly
+what my experiment has to do before it can ask the question.
 
 ## The one place I expect it to earn its keep
 
-If the shape turns out to be the same, is there anything at all? I think so, and it is worth being
-precise, because it would not be more information. It would be less waiting.
+If the shape is the same and prediction gains nothing, is there anything at all? I think so, and it
+is worth being precise, because it would not be more information. It would be less waiting.
 
 On a five minute grid a reading arrives and then nothing happens for five minutes. If glucose starts
 dropping thirty seconds after a reading, your loop finds out four and a half minutes later. A one
