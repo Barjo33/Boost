@@ -42,7 +42,16 @@ plt.rcParams.update({
 })
 
 
-def load_day(day):
+def load_day(day, require_one_minute=True):
+    """Load a day, and refuse it unless it is genuinely a one minute feed.
+
+    This guard exists because the first version of these figures was built on two days that LOOKED
+    like one minute data, in that most consecutive gaps were a minute, and were nothing of the sort.
+    They were a five minute feed with duplicated entries: readings landing on the same second of the
+    minute, hundreds of values repeating the one before, and five minute spacing wherever the
+    duplication stopped. A figure captioned "a real one minute sensor" was drawn from it and the
+    caption was believed. So the test is not "are the gaps short" but all of the following.
+    """
     conn = psycopg2.connect(DSN)
     conn.autocommit = True
     d = pd.read_sql(
@@ -50,7 +59,31 @@ def load_day(day):
            WHERE user_id = 'tim' AND ts_utc::date = %s AND cgm_mgdl BETWEEN 40 AND 400
            ORDER BY ts_utc""", conn, params=(day,))
     conn.close()
+    if d.empty:
+        return d
     d["t"] = pd.to_datetime(d.ts_utc, utc=True)
+    if not require_one_minute:
+        return d
+
+    gaps = (d.t.diff().dt.total_seconds() / 60.0).dropna()
+    one_min_share = float((gaps.round(1) == 1.0).mean()) if len(gaps) else 0.0
+    repeats = float((d.cgm_mgdl.diff() == 0).mean())
+    distinct_seconds = int(d.t.dt.second.nunique())
+    problems = []
+    if len(d) < 1000:
+        problems.append(f"only {len(d)} readings, a full one minute day is about 1440")
+    if one_min_share < 0.9:
+        problems.append(f"only {100 * one_min_share:.0f}% of gaps are one minute")
+    if repeats > 0.10:
+        problems.append(f"{100 * repeats:.0f}% of readings repeat the previous value, "
+                        f"which is what duplication or backfill looks like")
+    if distinct_seconds < 30:
+        problems.append(f"readings land on only {distinct_seconds} distinct seconds of the minute; "
+                        f"a real sensor jitters across all of them")
+    if problems:
+        raise SystemExit("This day is not a one minute feed, so the figures would misrepresent it:\n"
+                         + "\n".join("  " + p for p in problems)
+                         + "\n\nPass --allow-any to draw it anyway, and change the captions.")
     return d
 
 
@@ -177,8 +210,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--day", default="2025-11-25")
     ap.add_argument("--out-dir", default=HERE)
+    ap.add_argument("--allow-any", action="store_true",
+                    help="draw the figures from a day that is not a one minute feed. The captions "
+                         "then have to say what the data actually is.")
     a = ap.parse_args()
-    d = load_day(a.day)
+    d = load_day(a.day, require_one_minute=not a.allow_any)
     if d.empty:
         print("no data for that day"); return
     os.makedirs(a.out_dir, exist_ok=True)

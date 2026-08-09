@@ -6,31 +6,54 @@
 
 One minute continuous glucose monitors have arrived, and with them an assumption so obvious that nobody bothers to state it. More data must be better. Five times as many readings, five times as much to go on, so of course the loop should do a better job.
 
-I've spent a fair while trying to find that improvement, and I can't. Not in the sense of having looked casually and shrugged, but in the sense of having gone at it with a variogram and an out-of-sample forecast comparison across a couple of months of real one minute data, and come away with nothing I'd be willing to defend. What I want to do here is show you why, explain the one place where the faster feed does seem to buy something, and describe the experiment I'm about to run to settle it, because I've reached the limit of what I can learn from data I already have.
+I've spent a fair while trying to work out whether that's true, and I've come round to doubting it. Not because I've measured it and found nothing, but because of what the physiology implies and because of what I can measure about how much my own control varies day to day, which turns out to set a hard limit on what any straightforward trial could detect. What I want to do here is set out the reasoning, say where I think the faster feed genuinely might help, and describe the experiment I'm about to run, which is deliberately not the obvious one.
 
-## What the extra readings actually contain
+## What I think the extra readings contain, and why I can't yet show you
 
-Here is six hours of my own glucose from a one minute sensor. The line is every reading. The dots are the same day sampled every five minutes, which is what an ordinary loop sees.
+I have to be straight about something before going further, because it changes what this piece can
+claim. I do not yet have any one minute data. It arrives on Thursday, and it will be twenty four
+hours of it. Everything below is therefore an argument and a plan, not a result, and the figures
+that would settle it are not drawn yet.
 
-![Six hours of a real one minute sensor with the five minute samples marked](fig1_trace.png)
+I mention this because I nearly published a version of this article with a chart in it captioned as
+six hours of a real one minute sensor. It was not. It was a five minute feed with duplicated
+entries, and it looked convincing enough to fool me: most consecutive gaps were a minute apart. What
+gave it away was that the readings all landed on the same second of the minute, a third of them
+repeated the previous value exactly, and the gaps went back to five minutes wherever the duplication
+stopped. A real sensor jitters. Backfill does not.
 
-That figure is the problem in one picture. The dots sit on the line. There's no hidden structure between them, no signal the five minute view is missing, nothing that would change your mind about what's happening. That includes the interesting parts, the climb from 100 to 250 and the fall off the top, where you'd most expect the extra readings to earn their keep.
+So here is the argument as it stands, with the evidence I actually have.
 
-The reason is physiological rather than technical. Interstitial fluid lags blood by something like four minutes, and that lag acts as a filter. By the time glucose reaches the sensor it has already been smoothed, and sampling the smoothed version more often doesn't recover what the smoothing removed. When I compared a real five minute era against a real one minute era properly, the two differed by a single scale factor, flat across every lag from five minutes out to two hours. Not a different shape. Not more detail at short range. One number.
+The reason I doubt the extra readings contain much is physiological rather than technical.
+Interstitial fluid lags blood by something like four minutes, and that lag acts as a filter. By the
+time glucose reaches the sensor it has already been smoothed, and sampling the smoothed version more
+often does not recover what the smoothing removed. If that is right, a one minute trace laid over a
+five minute one should look like the same curve with more dots on it, and not like a curve with
+structure the five minute view was missing.
 
-I also checked whether the extra readings help prediction, since that's where you'd expect a benefit if there were one. Forecast lift at thirty minutes went from 9.14 to 9.18, which is nothing. More awkwardly, rate of change came out slightly worse at one minute than at five, because a shorter baseline makes the estimate noisier and noise is exactly what you're then differentiating.
+That is the first thing Thursday's data will test, and it is a test that can fail. If there is
+genuine sub-five-minute structure in a real one minute feed, it will show up immediately as
+departures between the two, and I will have been wrong.
 
-## The one place it does earn its keep
+## The one place I expect it to earn its keep
 
-If the shape is the same and prediction gains nothing, is there anything at all? Yes, and it's worth being precise, because it isn't more information. It's less waiting.
+If the shape turns out to be the same, is there anything at all? I think so, and it is worth being
+precise, because it would not be more information. It would be less waiting.
 
-On a five minute grid a reading arrives and then nothing happens for five minutes. If glucose starts dropping thirty seconds after a reading, your loop finds out four and a half minutes later. The one minute feed doesn't tell you anything the five minute feed wouldn't have told you eventually. It tells you sooner.
+On a five minute grid a reading arrives and then nothing happens for five minutes. If glucose starts
+dropping thirty seconds after a reading, your loop finds out four and a half minutes later. A one
+minute feed does not tell you anything the five minute feed would not have told you eventually. It
+tells you sooner, by an average of two minutes.
 
-![How far behind the five minute view is, by how fast glucose is moving](fig2_latency.png)
+Two minutes is nothing at all when glucose is drifting, which is most of the day. It is not nothing
+during a fast fall, where it is a meaningful share of the time you have to react, and where being
+two minutes late can be the difference between easing off in time and not. So my expectation is that
+any benefit is confined to the fast bits, and is invisible in an average day precisely because the
+average day is flat.
 
-The left panel is the argument in one chart. When glucose is drifting at under 2 mg/dL per five minutes, which is most of the time, the five minute view is exactly right and the extra readings tell you nothing whatsoever. When it's moving faster than 25 mg/dL per five minutes, the held five minute value is typically 13 mg/dL adrift, and on the bad tail of that distribution nearly 60. The right panel shows how the day splits overall: across the whole six hours the median difference is 1 mg/dL.
-
-That's a narrow but real benefit, and it points somewhere specific. It isn't going to improve your average day, because your average day is the flat bit where nothing is gained. It might help during a fast fall, where two minutes is a meaningful share of the time you have to react, and where being two minutes late is the difference between easing off in time and not.
+Thursday's twenty four hours will let me put numbers on that: how far behind a held five minute
+value actually runs, split by how fast glucose is moving at the time. I will add that chart when I
+have it rather than describe it now.
 
 ## Why I can't answer this by staring at more data
 
