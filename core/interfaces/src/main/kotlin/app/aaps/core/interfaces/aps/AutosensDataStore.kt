@@ -46,6 +46,20 @@ interface AutosensDataStore {
      * @return InMemoryGlucoseValue or null
      */
     fun actualBg(): InMemoryGlucoseValue?
+
+    /**
+     * Last NATIVE-cadence InMemoryGlucoseValue within the last 9 minutes, or null.
+     *
+     * [actualBg] reads the five-minute bucketed series, so on a faster sensor its timestamp only
+     * advances every five minutes. That is what decides how often the loop runs: InvokeLoopWorker
+     * skips a cycle whose glucose timestamp it has already looped on, so a one-minute feed still
+     * produces a five-minute loop. This accessor exists so the loop can be driven at the sensor's
+     * own cadence instead, and is used only where that is explicitly enabled.
+     *
+     * On a five-minute feed the native series IS the bucketed series, so this returns exactly what
+     * [actualBg] does. (2026-08-09)
+     */
+    fun actualBgNative(): InMemoryGlucoseValue?
     fun lastDataTime(dateUtil: DateUtil): String
     fun clone(): AutosensDataStore
     fun getBgReadingsDataTableCopy(): List<GV>

@@ -49,6 +49,15 @@ enum class BooleanKey(
     ApsUseDynamicSensitivity("use_dynamic_sensitivity", false),
     ApsUseAutosens("openapsama_useautosens", true, defaultedBySM = true, negativeDependency = ApsUseDynamicSensitivity), // change from default false
     ApsUseSmb("use_smb", true, defaultedBySM = true), // change from default false
+    /**
+     * Run the loop at the sensor's own cadence instead of once per five-minute bucket.
+     *
+     * OFF by default, and a no-op on a five-minute sensor, where the native series and the
+     * bucketed series are the same object. On a one-minute sensor it is the difference between a
+     * five-minute loop that happens to be reading one-minute data, and a loop that actually runs
+     * every minute. Those are separate interventions and this is what separates them. (2026-08-09)
+     */
+    ApsLoopAtNativeCadence("loop_at_native_cadence", false),
     ApsUseSmbWithHighTt("enableSMB_with_high_temptarget", false, defaultedBySM = true, dependency = ApsUseSmb),
     ApsUseSmbAlways("enableSMB_always", true, defaultedBySM = true, dependency = ApsUseSmb), // change from default false
     ApsUseSmbWithCob("enableSMB_with_COB", true, defaultedBySM = true, dependency = ApsUseSmb), // change from default false

@@ -7,6 +7,8 @@ import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.rx.events.Event
 import app.aaps.core.interfaces.rx.events.EventNewBG
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.core.utils.receivers.DataWorkerStorage
 import kotlinx.coroutines.Dispatchers
@@ -20,6 +22,7 @@ class InvokeLoopWorker(
     @Inject lateinit var dataWorkerStorage: DataWorkerStorage
     @Inject lateinit var iobCobCalculator: IobCobCalculator
     @Inject lateinit var loop: Loop
+    @Inject lateinit var preferences: Preferences
 
     class InvokeLoopData(
         val cause: Event?
@@ -38,7 +41,21 @@ class InvokeLoopWorker(
             ?: return Result.failure(workDataOf("Error" to "missing input data"))
 
         if (data.cause !is EventNewBG) return Result.success(workDataOf("Result" to "no calculation needed"))
-        val glucoseValue = iobCobCalculator.ads.actualBg() ?: return Result.success(workDataOf("Result" to "bg outdated"))
+        // Which series decides how OFTEN the loop runs.
+        //
+        // actualBg() reads the five-minute bucketed series, and both bucketing paths step at
+        // T.mins(5) whatever the sensor does, so its timestamp advances only every five minutes.
+        // The guard below then rejects every intervening cycle and a one-minute sensor still
+        // produces a five-minute loop — the data is one-minute, the DECISION RATE is not.
+        //
+        // With ApsLoopAtNativeCadence the trigger reads the native series instead, so the loop
+        // runs once per reading. On a five-minute feed the two series are the same object and this
+        // is exactly the previous behaviour, which is why the switch is safe to leave on for a
+        // participant whose sensor later changes.
+        val glucoseValue = (
+            if (preferences.get(BooleanKey.ApsLoopAtNativeCadence)) iobCobCalculator.ads.actualBgNative()
+            else iobCobCalculator.ads.actualBg()
+            ) ?: return Result.success(workDataOf("Result" to "bg outdated"))
         if (glucoseValue.timestamp <= loop.lastBgTriggeredRun) return Result.success(workDataOf("Result" to "already looped with that value"))
         loop.lastBgTriggeredRun = glucoseValue.timestamp
         loop.invoke("Calculation for $glucoseValue", true)

@@ -6,6 +6,7 @@ import app.aaps.core.data.model.SourceSensor
 import app.aaps.core.data.model.TrendArrow
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.aps.AutosensData
+import app.aaps.core.data.iob.InMemoryGlucoseValue
 import app.aaps.implementation.iob.AutosensDataObject
 import app.aaps.plugins.main.iob.iobCobCalculator.data.AutosensDataStoreObject
 import app.aaps.shared.tests.TestBaseWithProfile
@@ -1589,5 +1590,43 @@ class AutosensDataStoreTest : TestBaseWithProfile() {
         store.bgReadings = (0 until 20).map { gv(base - it * 300_000L, 100.0 + it) }.toMutableList()
         store.createBucketedData(aapsLogger, dateUtil)
         assertThat(store.bucketedDataNative).isSameInstanceAs(store.bucketedData)
+    }
+
+    @Test
+    fun actualBgNativeFollowsTheNativeSeriesNotTheFiveMinuteBucket() {
+        // The decision RATE is set by whichever series the loop trigger reads. On a one-minute
+        // feed the bucketed series still advances only every five minutes, so a trigger reading it
+        // cannot loop faster than that however fresh the data is.
+        val now = System.currentTimeMillis()
+        val native = mutableListOf(
+            InMemoryGlucoseValue(now, 100.0),
+            InMemoryGlucoseValue(now - 60_000, 101.0),
+            InMemoryGlucoseValue(now - 120_000, 102.0)
+        )
+        val bucketed = mutableListOf(
+            InMemoryGlucoseValue(now - 240_000, 105.0),
+            InMemoryGlucoseValue(now - 540_000, 106.0)
+        )
+        autosensDataStore.bucketedData = bucketed
+        autosensDataStore.bucketedDataNative = native
+
+        assertThat(autosensDataStore.actualBg()!!.timestamp).isEqualTo(now - 240_000)
+        assertThat(autosensDataStore.actualBgNative()!!.timestamp).isEqualTo(now)
+    }
+
+    @Test
+    fun actualBgNativeIsTheSameAsActualBgOnAFiveMinuteFeed() {
+        // On a five-minute feed createBucketedDataNative shares the object rather than copying,
+        // so enabling native-cadence looping must be an exact no-op there.
+        val now = System.currentTimeMillis()
+        val bucketed = mutableListOf(
+            InMemoryGlucoseValue(now - 60_000, 100.0),
+            InMemoryGlucoseValue(now - 360_000, 101.0)
+        )
+        autosensDataStore.bucketedData = bucketed
+        autosensDataStore.bucketedDataNative = bucketed
+
+        assertThat(autosensDataStore.actualBgNative()!!.timestamp)
+            .isEqualTo(autosensDataStore.actualBg()!!.timestamp)
     }
 }

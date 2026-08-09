@@ -13,6 +13,8 @@
     <string name="openaps_smb_dynamic_isf">Dynamic ISF</string>
     <string name="openaps_auto_isf">Auto ISF</string>
     <string name="smb_interval_summary">How frequently SMBs will be given in min</string>
+    <string name="loop_native_cadence_title">Loop at sensor cadence</string>
+    <string name="loop_native_cadence_summary">Run the loop on every sensor reading rather than once per five minutes. No effect on a five-minute sensor. On a one-minute sensor this makes the loop run every minute, which also allows more frequent SMBs.</string>
     <string name="resistance_lowers_target_title">Resistance lowers target</string>
     <string name="resistance_lowers_target_summary">When resistance is detected, lower the target glucose</string>
     <string name="sensitivity_raises_target_title">Sensitivity raises target</string>

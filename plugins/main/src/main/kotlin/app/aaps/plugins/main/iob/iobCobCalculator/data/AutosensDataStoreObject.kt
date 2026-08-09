@@ -105,6 +105,13 @@ class AutosensDataStoreObject : AutosensDataStore {
         return if (lastBg.timestamp > System.currentTimeMillis() - T.mins(9).msecs()) lastBg else null
     }
 
+    override fun actualBgNative(): InMemoryGlucoseValue? {
+        val last = synchronized(dataLock) {
+            bucketedDataNative?.firstOrNull() ?: bucketedData?.firstOrNull()
+        } ?: return null
+        return if (last.timestamp > System.currentTimeMillis() - T.mins(9).msecs()) last else null
+    }
+
     override fun lastDataTime(dateUtil: DateUtil): String =
         synchronized(dataLock) {
             if (autosensDataTable.size() > 0) dateUtil.dateAndTimeAndSecondsString(autosensDataTable.valueAt(autosensDataTable.size() - 1).time)
