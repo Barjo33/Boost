@@ -2,7 +2,7 @@
 
 **Status:** PRE-REGISTERED (analysis plan fixed before data collection)
 **Registered:** 2026-08-09
-**Version:** 1.3
+**Version:** 1.4
 **Applies to:** `v7-shadow-1m-test` @ `c625390d5a` (one-minute arms) and `Boost-V7-shadow` @ `cf8a77ad09`.
 
 > Pre-registration discipline: the hypotheses, arms, endpoints, sample size, stopping rules and
@@ -225,6 +225,44 @@ trigger onto the native series. The throttle proposed in v1.2 was unnecessary an
 Single subject, unblinded, compound intervention (§2), TIR underpowered (§6), arm C confounded with
 hardware and calendar (§4), and a baseline that does not currently meet the safety floor (§7).
 
+
+## 13. Candidate follow-on — asymmetric cadence (NOT part of this registration)
+
+Proposed 2026-08-09, recorded here so it is not lost and so this trial's arms are chosen with it in
+mind. **Not registered, not powered, and no data is collected against it under this protocol.**
+
+The idea is to run decisions at one minute while holding SMB spacing at five, so the loop can
+withdraw insulin sooner — cutting or cancelling a temp basal on the next minute rather than up to
+five minutes later — without adding insulin any more often than it does today. That is deliberately
+asymmetric, and it targets the only place the offline programme left a signal: fast falls, where two
+minutes of latency is a large share of the time available to react.
+
+**It needs no code.** It is arm C's binary with `smbinterval` set to 5 instead of 3. The SMB guard
+is wall-clock, so at a one-minute loop a setting of 5 binds before the loop does.
+
+Adding it as arm D completes a factorial over the two rates that were previously entangled:
+
+| arm | sensing | decision / TBR rate | SMB spacing |
+|---|---|---|---|
+| A | 5 min | 5 min | 5 min |
+| B | 1 min | 5 min | 5 min |
+| C | 1 min | 1 min | 3 min |
+| **D** | 1 min | 1 min | **5 min** |
+
+- **A vs B** — sensing alone.
+- **B vs D** — decision and temp-basal rate alone, SMB opportunity held equal. This is the cleanest
+  available test of the latency hypothesis, and the one that isolates the WITHDRAWAL channel.
+- **D vs C** — SMB frequency alone, decision rate held at one minute.
+- **B vs C** — both together, as registered in §4.
+
+If the follow-on is run, B vs D is the contrast to power for, and it should be randomised day by day
+within a wear session in the same way as B vs C, since it is also a preference toggle on one binary.
+
+One practical note carried over from the arm C review: `applyTBRRequest` already suppresses a pump
+command when the running temp basal matches the request within `basalStep` and has more than five
+minutes left, so a one-minute loop does not re-issue an unchanged rate. Pump traffic rises only when
+the rate actually moves, which is the behaviour this arm is trying to exploit.
+
 ---
 
 ## Amendment log
@@ -235,3 +273,4 @@ hardware and calendar (§4), and a baseline that does not currently meet the saf
 | 2026-08-09 | 1.1 | (superseded by 1.2) Baseline breach in §7 attributed to the U200->U100 change; day 1 deferred until 12 complete stabilised days demonstrate the floor is met | Transition dated 05 Aug; units/day roughly doubled and the transition day carried TBR<54 4.2%. Two stabilised days show 1.9% / 0.0% but cannot demonstrate compliance |
 | 2026-08-09 | 1.2 | Pre-trial run-in withdrawn; relative stopping rule re-specified against the concurrent arm rather than a historical baseline | Arms run concurrently under randomisation, so a common time-varying factor such as a settling TDD model cancels in the contrast. A run-in adds nothing to validity and the v1.1 deferral was incorrect. Arm definitions pending a decision on the loop-interval throttle (see OPEN ITEM) |
 | 2026-08-09 | 1.3 | Arms re-specified to A=5min/5min, B=1min sensor/5min loop, C=1min/1min, all on one binary with ApsLoopAtNativeCadence as the switch; OPEN ITEM closed | The loop trigger reads the five-minute bucketed series, so a one-minute sensor alone gives one-minute sensing at a five-minute loop — that is arm B, and it needed no code. Arm C needed an enabler, not the throttle proposed in 1.2. With B present, sensing and dosing frequency are separately identified and §2's compound framing no longer applies |
+| 2026-08-09 | 1.4 | Record an unregistered candidate follow-on: one-minute decisions with SMB spacing held at five, as arm D | Completes a factorial over decision rate and SMB rate. B vs D would isolate the temp-basal withdrawal channel with SMB opportunity held equal, which is the cleanest test of the latency hypothesis. Needs no code — smbinterval 5 on arm C's binary |
