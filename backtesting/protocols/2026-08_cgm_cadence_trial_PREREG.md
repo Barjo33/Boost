@@ -2,7 +2,7 @@
 
 **Status:** PRE-REGISTERED (analysis plan fixed before data collection)
 **Registered:** 2026-08-09
-**Version:** 1.1
+**Version:** 1.2
 **Applies to:** `v7-shadow-1m-test` @ `c625390d5a` (one-minute arms) and `Boost-V7-shadow` @ `cf8a77ad09`.
 
 > Pre-registration discipline: the hypotheses, arms, endpoints, sample size, stopping rules and
@@ -129,39 +129,37 @@ Absolute floors bind regardless of any statistic, and can only tighten:
 - Any single event below 54 mg/dL lasting > 30 min attributable to a dosing decision → pause,
   review the cycle logs before resuming.
 
-**Baseline status — amended 2026-08-09 (v1.1).** Version 1.0 recorded that TBR<70 breached the
-4% floor (4.4 / 4.3 / 4.7% over 28 / 90 / 180 days) and that the trial should not start until it was
-brought under. That breach is now attributed to the change of insulin preparation: the same analogue
-was diluted from U200 to U100 strength on 2026-08-05, so the same mass is recorded as twice the
-units and the TDD-derived scaling had to re-settle. The record supports the attribution rather than
-merely permitting it — recorded units per day roughly doubled (12.2 -> 15.4) and the transition day
-itself carried **TBR<54 of 4.2%**, four times the floor, against 0.0% on the two days that followed.
+**Baseline status — amended 2026-08-09 (v1.2).** Version 1.0 recorded a TBR<70 breach and deferred
+the trial until a clean pre-trial baseline was demonstrated. **That deferral was wrong and is
+withdrawn.** The arms run concurrently under day-randomisation, so each arm's comparator is the other
+arm in the same period, not a historical window. A still-settling TDD scaling is common to all three
+arms — same person, same profile, same derivation — and randomisation cancels any factor that varies
+with time rather than with assignment. A run-in period therefore buys nothing for the comparison,
+and the earlier claim that it was "the thing that makes the relative rule work" was simply incorrect.
 
-Post-stabilisation the picture is much better, but it is not yet demonstrated:
+What a still-moving TDD model does cost is **precision, not validity**: it inflates between-day
+variance and so widens the minimum detectable difference in §6. Block randomisation in blocks of 6
+protects against a trend aliasing with assignment. The only pre-trial requirement retained is a
+check that the TDD scaling has settled, which the record already supports — the derived ratio has
+held at 1.00 across the transition and since.
+
+For context rather than as a gate, the switch from U200 to the same analogue at U100 strength on
+2026-08-05 accounts for the breach recorded in v1.0. Recorded units per day roughly doubled, as
+diluting to half strength requires, and the transition day itself carried TBR<54 of 4.2% against
+0.0% on each of the days since:
 
 | period | complete days | TIR | TBR<70 | TBR<54 |
 |---|---|---|---|---|
 | pre-switch | 89 | 84.5% | 4.1% | 0.8% |
 | transition (05–06 Aug) | 2 | 85.4% | 4.9% | 2.4% |
-| stabilised (from 07 Aug) | 2 | 92.1% | **1.9%** | **0.0%** |
+| stabilised (from 07 Aug) | 2 | 92.1% | 1.9% | 0.0% |
 
-**Two complete days cannot establish that a floor is met.** The between-day SD of TBR<70 is 3.7 pp,
-so a two-day mean carries a 95% interval of roughly +/-5 pp — it spans the floor from either side.
-Separating an observed 1.9% from a 4.0% floor at 95% confidence needs about **12 complete days** at
-this variability. A lower point estimate is not a demonstrated rate, and the stopping rule is
-written against a demonstrated rate.
+Partial days are excluded throughout: an in-progress day of good control reads as a perfect one.
 
-Trial day 1 is therefore deferred until **12 consecutive complete stabilised days** put the upper
-bound of the TBR<70 interval below 4%. That period is not dead time: it doubles as the pre-trial
-baseline the relative rule below is measured against, and it confirms the TDD scaling has held.
-
-Partial days are excluded from all of the above. The day a report is generated is in progress, and
-a half day of good control reads as a perfect one — on first run, a 130-reading part-day scored
-100% TIR and pulled the stabilised mean down with it.
-
-In addition to the absolutes, which stand unchanged and can only tighten: an arm stops if its
-rolling 14-day TBR<70 exceeds the established pre-trial baseline by more than 1.5 pp. This is an
-addition to the absolute floors, never a replacement for them.
+**Stopping rules, corrected.** The absolute floors above stand unchanged and bind on their own
+terms. The relative rule is measured **between concurrent arms, not against a historical baseline**:
+an arm stops if its rolling 14-day TBR<70 exceeds the *other arm's same-period* rate by more than
+1.5 pp. This is an addition to the absolute floors, never a replacement for them.
 
 ## 8. Data capture
 
@@ -202,6 +200,22 @@ construction, §2, and is reported as a manipulation check rather than an outcom
   faster feed is worth pursuing for AID. That is a useful result and the programme's offline work
   already points at it.
 
+## 11a. OPEN ITEM — how arm B is built (blocks finalisation)
+
+Loop rate is not a setting: `InvokeLoopWorker` fires once per new BG value with no minimum interval,
+so a one-minute feed produces a one-minute loop and arm A needs no configuration beyond the feed.
+Arm B as "one-minute data, five-minute loop" is **not achievable on the current build**. Two options:
+
+1. **Feed five-minute data for arm B.** No code change. B becomes behaviourally identical to C
+   (`cadence >= 2.0 -> bucketedDataNative = bucketedData`), so B vs C isolates sensor hardware only
+   and A vs B stays compound, as §2 describes.
+2. **Add a minimum loop-interval guard**, preference-gated and default off. A vs B then isolates
+   dosing frequency with the data held identical, and B vs C isolates sensing cadence with dosing
+   held identical — a proper factorial that separates the two effects §2 currently compounds, and
+   which would retire that section.
+
+Option 2 is preferred on identification grounds. Until this is settled §4 and §2 are provisional.
+
 ## 12. Limitations
 
 Single subject, unblinded, compound intervention (§2), TIR underpowered (§6), arm C confounded with
@@ -214,4 +228,5 @@ hardware and calendar (§4), and a baseline that does not currently meet the saf
 | date | version | change | reason |
 |---|---|---|---|
 | 2026-08-09 | 1.0 | Initial registration | — |
-| 2026-08-09 | 1.1 | Baseline breach in §7 attributed to the U200->U100 change; day 1 deferred until 12 complete stabilised days demonstrate the floor is met | Transition dated 05 Aug; units/day roughly doubled and the transition day carried TBR<54 4.2%. Two stabilised days show 1.9% / 0.0% but cannot demonstrate compliance |
+| 2026-08-09 | 1.1 | (superseded by 1.2) Baseline breach in §7 attributed to the U200->U100 change; day 1 deferred until 12 complete stabilised days demonstrate the floor is met | Transition dated 05 Aug; units/day roughly doubled and the transition day carried TBR<54 4.2%. Two stabilised days show 1.9% / 0.0% but cannot demonstrate compliance |
+| 2026-08-09 | 1.2 | Pre-trial run-in withdrawn; relative stopping rule re-specified against the concurrent arm rather than a historical baseline | Arms run concurrently under randomisation, so a common time-varying factor such as a settling TDD model cancels in the contrast. A run-in adds nothing to validity and the v1.1 deferral was incorrect. Arm definitions pending a decision on the loop-interval throttle (see OPEN ITEM) |
