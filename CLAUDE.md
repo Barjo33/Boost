@@ -97,6 +97,36 @@ What doses is deterministic (state machine, multipliers, caps, composed brake-fl
 - Prefers plain, understated writing over emphasis and salesmanship.
 - Is the domain expert and the developer of this fork; corrections from the user override prior analysis.
 
+## Writing style for documents
+
+Protocols, reports and papers are written as though for submission to a journal, in British English,
+and read as if a person wrote them rather than a machine. The rules below are not preferences to be
+balanced against others; they are how the output is expected to look.
+
+Write continuous prose. A bulleted list is a way of avoiding the work of connecting ideas, and it
+belongs in a repository README rather than in a document making an argument. Tables are permitted
+where the content is genuinely tabular, such as an arm configuration or a set of measured values,
+and nowhere else.
+
+Do not use em dashes or en dashes in prose. A comma, a semicolon, a colon or a full stop will do the
+work, and the sentence is usually better for the rewrite. Write numeric ranges with the word "to".
+
+Do not use bold for emphasis. Emphasis in a scientific document comes from where a claim is placed
+and how plainly it is stated, not from the typography. Reserve any formatting for headings and for
+the occasional defined term.
+
+Avoid the rhetorical triplet. Three parallel clauses in a row is the most recognisable tic of
+machine-written prose, and once noticed it is seen everywhere. Two clauses, or four, or a sentence
+restructured entirely, will read as human. A genuine list of three things is a matter of fact and is
+fine; it is the rhythm used for effect that is not.
+
+State limitations plainly, once, in the place where they belong, and then continue. Do not dwell on
+a limitation as though the admission were itself a virtue, and do not restate a caveat that has
+already been made. Prefer the understated formulation throughout: "cannot be settled by this study"
+rather than "it is critically important to note that this study is fundamentally unable to settle".
+
+The same register applies to commit messages, which are read by the same people.
+
 ## Key reference docs (in `backtesting/`)
 
 - `RELATIONSHIPS_REGISTER.md` — what's been tested: used, discarded, unproven. Read before proposing a lever.
