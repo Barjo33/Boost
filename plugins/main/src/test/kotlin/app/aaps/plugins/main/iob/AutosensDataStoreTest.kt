@@ -1629,4 +1629,47 @@ class AutosensDataStoreTest : TestBaseWithProfile() {
         assertThat(autosensDataStore.actualBgNative()!!.timestamp)
             .isEqualTo(autosensDataStore.actualBg()!!.timestamp)
     }
+
+
+    @Test
+    fun anUnanchoredStoreStillTakesItsAnchorFromTheFirstReading() {
+        // The -1 case is deliberate and must survive: a store that has never bucketed anything
+        // anchors on what it is first given. Only the copying of an EXISTING anchor was missing.
+        assertThat(AutosensDataStoreObject().referenceTime).isEqualTo(-1L)
+        val copy = autosensDataStore.clone() as AutosensDataStoreObject
+        assertThat(copy.referenceTime).isEqualTo(-1L)
+    }
+
+    @Test
+    fun theBucketedSeriesAdvancesOnEveryReadingAsThePhaseDrifts() {
+        // The grid anchor must keep following the sensor.
+        //
+        // A sensor's period is never exactly five minutes, so the arrival phase creeps against a
+        // fixed grid. Once it creeps past the two and a half minute rounding boundary,
+        // adjustToReferenceTime rounds a reading up to the next grid point and the line after it
+        // maps that back a whole step, so the head of the bucketed series stops advancing. The loop
+        // trigger compares against that head, so the loop stops running.
+        //
+        // Readings exactly five minutes apart never change phase and would pass whatever the anchor
+        // does, which is why this walks the phase instead of holding it.
+        val base = 1_700_000_000_000L
+        val period = T.mins(5).msecs() + 3000L        // three seconds fast, so the phase creeps
+        val store = AutosensDataStoreObject()
+        var previous = 0L
+        for (step in 0 until 120) {                   // 6 minutes of creep, well past the boundary
+            val newest = base + step * period
+            store.bgReadings = (0..40).map { gv(newest - it * period, 100.0 + it) }
+            store.createBucketedData(aapsLogger, dateUtil)
+            val head = store.bucketedData!![0].timestamp
+            if (step > 0) {
+                assertThat(head).isGreaterThan(previous)
+            }
+            previous = head
+            // what the workers do between cycles: copy, work on the copy, install the copy
+            val copy = store.clone() as AutosensDataStoreObject
+            store.bgReadings = copy.bgReadings
+            store.bucketedData = copy.bucketedData
+            store.referenceTime = copy.referenceTime
+        }
+    }
 }
