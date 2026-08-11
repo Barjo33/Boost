@@ -51,6 +51,16 @@ class AutosensDataStoreObject : AutosensDataStore {
                 it.bucketedData = this.bucketedData?.toMutableList()
                 it.bucketedDataNative = this.bucketedDataNative?.toMutableList()
                 it.detectedCadenceMinutes = this.detectedCadenceMinutes
+                // The grid anchor travels with the copy. IobCobOref1Worker and IobCobOrefWorker both
+                // clone the store, work on the copy, and assign it back over the live one, so a clone
+                // that starts at -1 re-anchors the grid to the newest reading on the next bucketing
+                // pass. At five minutes that is invisible, because re-anchoring to the newest reading
+                // IS a five-minute grid. Below five minutes it means bucketedData[0].timestamp
+                // advances once per reading, actualBg() advances with it, and InvokeLoopWorker's
+                // already-looped guard stops rejecting anything: the loop then runs at sensor cadence
+                // whatever ApsLoopAtNativeCadence is set to, which is not a decision this class gets
+                // to make.
+                it.referenceTime = this.referenceTime
             }
         }
 

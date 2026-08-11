@@ -1629,4 +1629,45 @@ class AutosensDataStoreTest : TestBaseWithProfile() {
         assertThat(autosensDataStore.actualBgNative()!!.timestamp)
             .isEqualTo(autosensDataStore.actualBg()!!.timestamp)
     }
+
+    @Test
+    fun cloneCarriesTheGridAnchor() {
+        // Both IOB/COB workers clone the store, work on the copy and assign it back over the live
+        // one. A clone that starts at -1 therefore replaces a store that had an anchor with one
+        // that has none, every calculation.
+        autosensDataStore.referenceTime = 1_700_000_000_000L
+        val copy = autosensDataStore.clone() as AutosensDataStoreObject
+        assertThat(copy.referenceTime).isEqualTo(1_700_000_000_000L)
+    }
+
+    @Test
+    fun anUnanchoredStoreStillTakesItsAnchorFromTheFirstReading() {
+        // The -1 case is deliberate and must survive: a store that has never bucketed anything
+        // anchors on what it is first given. Only the copying of an EXISTING anchor was missing.
+        assertThat(AutosensDataStoreObject().referenceTime).isEqualTo(-1L)
+        val copy = autosensDataStore.clone() as AutosensDataStoreObject
+        assertThat(copy.referenceTime).isEqualTo(-1L)
+    }
+
+    @Test
+    fun aOneMinuteFeedKeepsTheFiveMinuteSeriesOnItsGridAcrossClones() {
+        // The defect this pins: on a one-minute feed, re-bucketing through a clone that had lost the
+        // anchor re-anchored the grid to the newest reading, so bucketedData[0] advanced once per
+        // reading instead of once per five minutes. actualBg() advances with it, and the loop
+        // trigger's already-looped guard then rejects nothing.
+        val base = 1_700_000_000_000L
+        val store = autosensDataStore
+        store.bgReadings = (0 until 40).map { gv(base - it * 60_000L, 100.0 + it) }.toMutableList()
+        store.createBucketedData(aapsLogger, dateUtil)
+        val anchored = store.bucketedData!![0].timestamp
+
+        // One further minute of data arrives, via a clone as the workers do it.
+        val next = store.clone()
+        next.bgReadings = (0 until 41).map { gv(base + 60_000L - it * 60_000L, 100.0 + it) }.toMutableList()
+        next.createBucketedData(aapsLogger, dateUtil)
+
+        // The newest bucket must not have moved by a minute; the grid holds.
+        val moved = next.bucketedData!![0].timestamp - anchored
+        assertThat(moved % T.mins(5).msecs()).isEqualTo(0L)
+    }
 }
