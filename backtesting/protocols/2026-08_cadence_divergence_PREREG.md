@@ -1,11 +1,22 @@
 # Dosing decisions under four sensing and delivery cadences: a pre-registered parallel instance study
 
 Registered 2026-08-09. The arms, measures and analysis set out below were fixed before any data were
-collected. Data collection begins at 00:00 local on 2026-08-12.
+collected. Data collection begins at 00:00 local on 2026-08-13.
 
-Applies to the Boost fork of AndroidAPS, branch `v7-shadow-1m-test`, build `d6960ba286`, installed as
-the flavours `full`, `fullb`, `fullc` and `fulld` under distinct application identifiers so that they
-run side by side without sharing preferences.
+Applies to the Boost fork of AndroidAPS, branch `v7-shadow-1m-test`, installed as the flavours
+`full`, `fullb`, `fullc` and `fulld` under distinct application identifiers so that they run side by
+side without sharing preferences. Arm A runs build `3fa3eef279` and arms B, C and D run
+`c995222eb5`. The arms are therefore not on one build, and the difference is recorded rather than
+described as uniform: `c995222eb5` adds the one-minute work and holds the five-minute decision
+interval in the loop trigger rather than inheriting it from the bucketing grid. Arm A is the
+participant's ordinary therapy and is left on the build it was already running.
+
+Cadence and bolus spacing are confirmed from the record rather than from the settings screens. Over
+the three hours to registration the median decision interval was 5.00, 5.00, 1.00 and 1.01 minutes
+for A, B, C and D, and the shortest observed interval between automated boluses was 5.27, 1.04 and
+3.19 minutes for B, C and D against their specified floors of five, one and three. B, C and D report
+identical glucose at identical timestamps, and A does not, which is the shared-sensor property the
+design rests on.
 
 ## 1. What this study is for
 
@@ -252,10 +263,17 @@ One participant and one sensor, so nothing here generalises to other people or o
 virtual pump instances are counterfactual in the sense set out in section 4. Decisions are not
 outcomes, and no statement about time in range, time below range or any other glycaemic measure can be
 derived from this design. Arm A introduces a second sensor and a second handset, so nothing about it
-isolates cadence and it is used only to bound the noise. Three instances on the first handset share a
-processor and a battery, and if that degrades the timeliness of any instance it would appear as a
-difference between arms; cycle timing is therefore recorded and checked before the comparisons are
-made.
+isolates cadence and it is used only to bound the noise.
+
+Three instances on the first handset share a processor and a battery, and this is known to cost
+decisions rather than merely suspected of it. Over the six hours before the run began, arms C and D
+produced a decision on 0.91 and 0.92 of the readings they received, the shortfall appearing as
+occasional intervals of two to three minutes where one was expected. The cause is contention in the
+calculation chain rather than anything in the algorithm, it falls evenly on the two arms so the C
+against D comparison is not biased by it, but a one minute arm deciding on eleven readings in twelve
+is not quite the arm the table in section 2 describes. Cycle timing is recorded on every cycle and
+checked before any comparison is made, and the shortfall is reported alongside the results rather
+than left to be found in them.
 
 ## 10. What follows
 
