@@ -1,62 +1,94 @@
-# Overnight behaviour, sleep detection, and where the advantage sits
+# Where a more aggressive algorithm earns its advantage, and the gate that switches it off
 
-## Hypothesis
+The overnight and daytime performance of an amplifying dosing algorithm against its predecessor, and
+whether a learned bedtime is worth learning.
 
-Comparing the Boost generation against the oref behaviour it replaced showed an aggregate advantage,
-and the question was where in the day it came from. The hypothesis was that it would be distributed,
-since the algorithm does not distinguish night from day except through a gate.
+## Abstract
 
-A second hypothesis concerned that gate. Boost amplifies dosing relative to its predecessor, and the
-night-mode gate suppresses the amplification while the participant is asleep. The question was
-whether this was doing useful work or merely reducing the algorithm to its predecessor overnight.
+Decomposing the aggregate advantage of the Boost generation over the oref-derived behaviour it
+replaced by time of day shows it is not distributed. The advantage is overnight, at approximately
+13.3 percentage points, and reverses between roughly nine in the morning and one in the afternoon,
+where the predecessor leads by four to seven points. The algorithm is therefore better at night and
+worse after breakfast, which localises the daytime problem to meal sizing and timing rather than to
+aggression in general. The gate suppressing amplification during sleep removes about 47 per cent of
+the amplifications the algorithm would otherwise apply over its predecessor, all of them nocturnal
+and all on cycles with no meal entered. A learned bedtime prior does not beat a fixed clock: sleep
+onset has a standard deviation of about 92 minutes across the cohort and the learned quantity
+converges to something indistinguishable from a constant. The overnight advantage is associational
+and the figure should be read against a separate cohort comparison in which an unadjusted thirteen
+point advantage falls to 1.2 points after adjustment for selection and basal differences.
 
-## Investigation
+## Introduction
 
-The advantage was decomposed by time of day across the migration cohort. The gate was investigated by
-counting the amplifications it suppresses and characterising when they occur. Sleep detection itself
-was investigated separately, since the gate depends on knowing when the participant is asleep, and
-two candidate detectors were compared: a learned bedtime prior and a rule-based detector driven by
-heart rate and movement.
+An algorithm that amplifies dosing relative to a predecessor can earn its advantage anywhere in the
+day, and where it earns it determines what to do next. A uniform advantage would suggest the
+amplification is simply correct. An advantage concentrated in one period, with a deficit in another,
+localises both the mechanism and the remaining problem.
+
+The gate that suppresses amplification during sleep raises a second question. If the gate removes
+most of what distinguishes the algorithm from its predecessor overnight, then the overnight advantage
+cannot be attributed to amplification, and the gate is either doing useful safety work or reducing
+the algorithm to its predecessor at the very hours it appears to lead.
+
+Sleep detection sits underneath the gate. It can be learned from a participant's own history or
+detected from physiological and movement signals, and the choice matters only if the learned quantity
+carries information a clock does not.
+
+## Methods
+
+The advantage was decomposed by hour of day across the migration cohort, comparing each participant
+against their own earlier generation where possible.
+
+The gate was assessed by counting the amplifications it suppresses relative to the predecessor
+behaviour and characterising when they occur and whether a meal had been entered.
+
+Two candidate sleep detectors were compared: a learned bedtime prior fitted per participant, and a
+rule-based detector driven by heart rate and movement. The learned prior was scored against a fixed
+clock, since a prior that cannot beat a constant is a constant.
+
+The resting heart rate baseline uses a robust order statistic and the onset and wake times a circular
+mean, both chosen because the underlying quantities are heavy-tailed or periodic rather than by
+search over estimators.
 
 ## Results
 
-The advantage is overnight and is anti-phase with the predecessor. Boost runs about 13.3 percentage
-points ahead overnight. Between roughly nine in the morning and one in the afternoon the predecessor
-is ahead by four to seven points. The algorithm is therefore not uniformly better; it is better at
-night and worse after breakfast, which localises the daytime problem to meal sizing and timing.
+The advantage is overnight and anti-phase with the predecessor. The algorithm runs approximately 13.3
+percentage points ahead overnight, and the predecessor leads by four to seven points between roughly
+nine in the morning and one in the afternoon.
 
-The night gate suppresses about 47 per cent of Boost's amplifications over its predecessor. All of
-the suppressed amplifications occur at night and all are unannounced, meaning no meal was entered.
-The gate is doing substantial work and was shipped.
+The night gate suppresses about 47 per cent of the algorithm's amplifications over its predecessor.
+All of the suppressed amplifications are nocturnal and all occur on cycles with no meal entered.
 
-Learned bedtime does not beat a fixed clock. The standard deviation of sleep onset across the cohort
-is about 92 minutes, and the learned prior converges to something indistinguishable from a fixed
-time. It works for one very regular sleeper and not for anyone else.
+Learned bedtime does not beat a fixed clock. Sleep onset has a standard deviation of about 92 minutes
+across the cohort, and the learned prior converges to a quantity indistinguishable from a fixed time.
+It separates from a clock for one unusually regular sleeper and for nobody else.
 
-The historical failure mode that motivated the architecture is recorded from two incidents in May
-2026, in which the previous generation fired a cascade of microboluses on the rebound out of a hard
-overnight streak, reaching nadirs of 51 and 48 mg/dL.
+The failure mode motivating the architecture is recorded from two incidents in May 2026, in which the
+previous generation fired a cascade of microboluses on the rebound out of a hard overnight streak,
+reaching nadirs of 51 and 48 mg/dL.
 
 ## Discussion
 
-The overnight result is the strongest aggregate claim in the programme and also the least
-identified. The regime split is suggestive, and a pre-registered within-participant A/B is the test
-that would settle it. That test has not been run, and until it is, the overnight advantage is
-associational: participants who chose this algorithm may differ overnight for reasons unrelated to
-it, and the basal settings they run differ too.
+The regime split is the most useful part of the result, because it converts a single aggregate number
+into two separate problems. The overnight period is close to solved and the post-breakfast period is
+not, which is consistent with the forecasting work showing overnight to be the regime where
+prediction error is smallest and meal onset the regime where it is largest. Effort belongs after
+breakfast.
 
-The 13.3 point figure should also be read against the cohort correction recorded elsewhere in this
-series. A separate cohort comparison reporting an advantage of thirteen points fell to 1.2 once
-selection and basal differences were adjusted for, with a permutation p of about 0.27. The two
-figures are not the same analysis, but the correction is a caution about how much of an
-unadjusted between-generation difference survives adjustment.
+The overnight advantage is the strongest aggregate claim in the programme and the least identified.
+Participants who chose this algorithm may differ overnight for reasons unrelated to it, and the basal
+profiles they run differ as well. A pre-registered within-participant comparison is the test that
+would settle it and has not been run. The magnitude should be read alongside the cohort analysis in
+which a thirteen point unadjusted advantage falls to 1.2 points after adjustment, with a permutation
+p of about 0.27. The two are not the same analysis, but they bound how much of an unadjusted
+between-generation difference is likely to survive adjustment.
 
-The sleep detection result is a small negative with a useful shape. A learned parameter that
+The sleep detection result is a small negative with a transferable shape. A learned parameter that
 converges to a constant is not learning; it is an expensive way of writing down a constant, and the
-honest response is to write down the constant. The runtime detector retained is rule-based, using a
-robust order statistic for the resting heart rate baseline and a circular mean for onset and wake
-times, both of which are chosen because the underlying quantities are periodic or heavy-tailed rather
-than because they performed best in a search.
+appropriate response is to write down the constant. That reasoning recurs in the work on
+per-participant configuration, where several online estimators converge to what a deterministic
+derivation already produces.
 
-One operational note is recorded because it was mistaken for a fault. The daytime heart rate baseline
-populates only after about seven nights, showing a default until then, which is expected behaviour.
+The gate's 47 per cent is worth stating as a proportion of amplification rather than of dosing. It
+does not switch the algorithm off overnight; it removes the additional aggression on cycles where no
+meal was entered, which is the population that produced the two incidents above.

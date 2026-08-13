@@ -1,76 +1,95 @@
-# Anticipation: acting before the event rather than after
+# Making a weak predictor safe by making the action retractable
 
-## Hypothesis
+Where anticipation transfers between people and where it does not, and why a detector that is wrong a
+third of the time is usable when the dose can be withdrawn.
 
-Every lever examined up to this point is reactive: the algorithm sees glucose move and responds. The
-identification work had shown that the reactive problem is close to exhausted, in that glucose
-trajectory and dose magnitude carry essentially all the short-horizon signal available. If further
-improvement exists, it lies in acting before the event, which requires predicting the event rather
-than the glucose.
+## Abstract
 
-The hypothesis was that meals and exercise are habitual enough to be anticipated from a person's own
-history, and that a weak, early signal could be acted on safely if the action were retractable.
+Reactive dosing is close to exhausted in this cohort, since glucose trajectory and dose magnitude
+carry essentially all the available short-horizon signal, so further improvement requires acting
+before an event rather than after it. Anticipation transfers in opposite directions for the two
+events that matter. Per-participant temporal prediction of exercise onset at forty five minutes
+reaches an area under the curve of 0.78, with all eight participants between 0.72 and 0.83, against
+0.67 for the cross-participant model. Meal onset reverses this, at 0.72 cross-participant against
+0.68 per participant, with the per-participant form collapsing where data is thin. Habitual structure
+is strong enough to arm on: time of day and day of week predict activity at 0.73 to 0.85, roughly 30
+per cent of activity falls in a participant's top three hours, and a habit prior pre-arms 55 per cent
+of episodes about 55 minutes ahead at 0.85 with precision 0.63. A precision of 0.63 is unusable when
+the committed insulin cannot be recovered and usable when arming commits a small retractable quantity
+that unwinds on failure to confirm, which moves the safety argument from accuracy to design.
+Confirmation after arming reaches 0.83 to 0.87 on the crux participant with a false back-out rate of
+about 11 per cent.
 
-## Investigation
+## Introduction
 
-Anticipation was investigated separately for exercise and for meals, and separately per participant
-and across participants, because the two events have different regularity and the transferability
-question has a different answer for each.
+Every lever examined elsewhere in this series is reactive: the algorithm observes glucose move and
+responds. The forecasting work establishes that the reactive problem has little headroom left,
+because the trajectory and the quantity of insulin already present account for nearly all the signal
+recoverable at short horizon.
 
-The safety question was investigated by designing and shadowing a state machine that arms on a weak
-signal, then either confirms it or unwinds, so that a false positive costs a retraction rather than a
-dose.
+What remains is to act before the event, which requires predicting the event rather than the glucose.
+That is a different problem with a different data requirement, and a negative result on the reactive
+cross-participant question does not bound it.
+
+Two obstacles stand in the way. The first is whether events are regular enough to anticipate, which
+may differ between meals and exercise and between people. The second is that any early predictor will
+be imprecise, and committing insulin on an imprecise signal is exactly the behaviour the rest of the
+programme exists to prevent.
 
 ## Methods
 
 Recorded under `backtesting/scripts/2026-07-peruser-anticipation/` and
-`2026-07-anticipation-backout/`. Prediction was scored temporally, so a model is tested on a
-participant's later data having been fitted on their earlier data, and cross-participant models were
-scored with participants held out.
+`backtesting/scripts/2026-07-anticipation-backout/`.
+
+Prediction was scored temporally for the per-participant models, so each is fitted on a participant's
+earlier data and tested on their later data, and with participants held out for the cross-participant
+models. The two scoring schemes answer different questions and are not comparable except in the
+direction reported here, where the same event is scored both ways on the same participants.
+
+The safety question was addressed by designing a state machine that arms on the weak signal, requires
+confirmation within a bounded window from a signal independent of the one that armed it, and unwinds
+if confirmation does not arrive. That design was shadow-logged rather than allowed to dose.
 
 ## Results
 
-Exercise is anticipable and the signal is idiosyncratic. Per-participant temporal prediction of
-exercise onset at forty five minutes reaches an area under the curve of 0.78, with all eight
-participants between 0.72 and 0.83. The cross-participant equivalent reaches 0.67. Per-participant is
-decisively better, which follows from exercise timing being personal.
+Exercise is anticipable and idiosyncratic. Per-participant prediction of onset at forty five minutes
+reaches 0.78, with all eight participants between 0.72 and 0.83, against 0.67 cross-participant.
 
-Meals are the other way round. Cross-participant prediction of meal onset reaches 0.72 against 0.68
-per participant, because meal times are semi-universal. Per-participant wins only for participants
-with a lot of data and collapses where data is thin.
+Meals reverse the ordering. Cross-participant prediction of meal onset reaches 0.72 against 0.68 per
+participant, the latter winning only for participants with substantial data and collapsing where data
+is thin.
 
-Habitual structure is strong enough to arm on. Time of day and day of week predict activity at 0.73
-to 0.85, with about 30 per cent of activity falling in a participant's top three hours. A habit prior
-pre-arms 55 per cent of episodes about 55 minutes ahead, at an area under the curve of 0.85 and
-precision of 0.63.
+Habitual structure is strong. Time of day and day of week predict activity at 0.73 to 0.85, about 30
+per cent of activity falls in a participant's top three hours, and a habit prior pre-arms 55 per cent
+of episodes about 55 minutes ahead at 0.85 with precision 0.63.
 
-The retractable design validates. On the crux participant, confirmation after arming reaches 0.83 to
-0.87, with a false back-out rate of about 11 per cent that is benign by construction, since backing
-out withdraws insulin that had only just been committed.
+The retractable design validates on the crux participant. Confirmation after arming reaches 0.83 to
+0.87, with a false back-out rate of about 11 per cent.
 
 Meal-time anticipation in the aggregate, as distinct from the per-participant and hybrid forms, is
-close to chance, with onsets roughly uniform. Learned bedtime is too variable to lead sleep
-detection, at an onset standard deviation of about 92 minutes.
+close to chance, with onsets roughly uniform.
 
 ## Discussion
 
-The central result is that the earlier conclusion of no signal, reached from cross-participant
-reactive analysis, does not bound the anticipation question. Those are different questions asked of
-different data, and the per-participant temporal answer for exercise is clearly positive where the
-cross-participant reactive answer was negative. Conflating them would have closed a line that is
-open.
+The transferability result determines the architecture rather than merely describing the data.
+Exercise anticipation belongs per participant because exercise timing is personal; meal anticipation
+belongs in a hybrid form, with a cross-participant prior adapted per person, because meal times are
+semi-universal and per-participant data is thin. Neither choice is a modelling preference and both
+follow from where the transfer sits.
 
-The design consequence is that exercise anticipation should be per participant and meal anticipation
-should be hybrid, with a cross-participant prior adapted per person. That is not a modelling
-preference; it follows directly from where the transferability sits for each event.
+The consequence for safety is the more general one. Accuracy and safety are usually treated as the
+same axis, so that a detector must be accurate enough to be safe to act on. Retractability separates
+them. If arming commits a small quantity, confirmation is required from an independent signal within
+a bounded window, and failure to confirm withdraws it, then the cost of a false positive falls from a
+delivered dose to a brief and reversed one. The accuracy bar drops to what the data can meet, and the
+safety argument moves into the design of the action.
 
-The more important consequence is about safety, and it changes what accuracy is needed. A detector at
-0.63 precision commits insulin wrongly more than a third of the time, which is unusable if the
-insulin cannot be recovered. The same detector is usable if arming commits a small retractable
-amount, confirmation is required within a bounded window from an independent signal, and failure to
-confirm unwinds it. Safety then comes from retractability rather than from accuracy, and the
-accuracy bar falls to something the data can actually meet.
+The false back-out rate of 11 per cent is benign for the same reason and should not be read as an
+error rate in the usual sense. Backing out withdraws insulin that had only just been committed, so
+the failure mode is a small quantity of insulin briefly present, which is the condition the
+participant was already in before arming.
 
-This is why the shipped components in this area are shadow-logging rather than dosing. The detection
-is validated; the dosing benefit is not, and the register records it as needing the shadow log before
-any claim. Nothing here has yet been shown to improve an outcome.
+Nothing in this area doses. The detection is validated and the dosing benefit is not, and the
+components in the engine are shadow-logging. The distinction matters because a validated detector is
+routinely mistaken for a validated intervention, and the identification constraint means the second
+requires a design the first does not.

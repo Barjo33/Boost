@@ -1,6 +1,27 @@
-# Forecasting glucose, and the ceiling the data imposes
+# The signal available to a glucose forecaster is nearly exhausted
 
-## Hypothesis
+What the physiological state adds to a momentum model, and why the best forecaster available is the
+worst possible controller substrate.
+
+## Abstract
+
+If an algorithm knew where glucose was going it could dose for that rather than for where glucose is,
+and two claims follow: that a forecast improves materially when given more of what the system already
+records, and that a better forecast makes a better controller. A gradient-boosted regressor over nine
+participants and roughly 220,000 samples, validated with participants held out, reaches a root mean
+squared error of 21.7 mg/dL at thirty minutes from trajectory, insulin state and time of day alone.
+Adding feature blocks in turn, only curvature helps, at minus 0.164 with an interval from minus 0.179
+to minus 0.150, while the physiological insulin decomposition costs plus 0.111 and the sensitivity and
+dose regime plus 0.173. Error concentrates in regimes driven by unrecorded inputs, at 31.9 for rising
+and 16.9 overnight. Extending the horizon to two hours does not rescue the slow signals, which hurt
+more at plus 0.48. Curvature also detects a meal about five minutes before the reactive trigger, with
+an interval from 5.0 to 9.8, whereas heart rate appears to lead by fifteen minutes and false-alarms on
+83 to 100 per cent of crossings. Against the physiological state estimator on 308,000 identical rows
+the database forecaster wins by 2.05 mg/dL with an interval from minus 2.11 to minus 1.99 and the
+estimator adds 0.05 on top of it. Asked what dose response it implies on elevated cycles, the
+forecaster answers approximately zero against a sensitivity in force of around 36.
+
+## Introduction
 
 The reasoning behind a forecaster is short enough to state in one line: if the algorithm knew where
 glucose was going, it could dose for that rather than for where glucose is. Every model-predictive
@@ -17,8 +38,6 @@ forecast should improve when it is added. And if the forecast improves, the dose
 
 The first claim turned out to be almost entirely false, and the second turned out to be false in a
 way that was worth more than the first being true.
-
-## Investigation
 
 The forecaster was a gradient-boosted regressor over the decision database predicting glucose 30
 minutes ahead, trained across the full history of nine users and roughly 220,000 samples, and

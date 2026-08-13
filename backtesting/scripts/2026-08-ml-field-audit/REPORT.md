@@ -35,140 +35,144 @@ reasoning about the wrong quantity.
 
 ## Coverage and how often the thresholds bite
 
-Scores populate 7.7 to 25.0 per cent of decision rows per user, the remainder being cycles from
-engine eras before the models were wired or where the model had not loaded.
+Current model era only. Scores populate 21.5 to 93.7 per cent of decision rows per user, the
+remainder being cycles where the model had not loaded.
 
 | user | cycles | scored | risk > 0.30 | risk > 0.60 | meal > 0.50 |
 |---|---|---|---|---|---|
-| A | 103,828 | 8,857 | 33.7% | 0.58% | 18.0% |
-| B | 60,347 | 11,068 | 37.4% | 1.36% | 23.3% |
-| C | 26,571 | 6,462 | 47.2% | 2.14% | 42.6% |
-| D | 95,695 | 7,389 | 50.7% | 5.26% | 30.5% |
-| E | 60,935 | 10,976 | 44.7% | 1.42% | 23.9% |
-| F | 93,383 | 9,609 | 27.0% | 0.52% | 23.5% |
-| G | 33,493 | 8,375 | 5.7% | 2.26% | 24.5% |
-| H | 26,324 | 2,799 | 0.93% | 0.07% | 15.9% |
+| A | 11,967 | 5,055 | 2.63% | 0.10% | 16.8% |
+| B | 12,046 | 6,433 | 4.46% | 0.22% | 22.9% |
+| C | 11,854 | 4,169 | 23.00% | 1.20% | 42.3% |
+| D | 12,195 | 4,839 | 27.67% | 2.23% | 30.9% |
+| E | 12,122 | 5,864 | 2.37% | 0.02% | 26.0% |
+| F | 11,529 | 5,880 | 0.49% | 0.00% | 20.8% |
+| G | 8,937 | 8,375 | 5.72% | 2.26% | 24.5% |
+| H | 11,716 | 2,799 | 0.93% | 0.07% | 15.9% |
 | I | 5,715 | 1,230 | 0.57% | 0.00% | 13.7% |
-| tim | 103,352 | 13,147 | 20.6% | 1.12% | 15.9% |
+| tim | 12,261 | 5,859 | 0.99% | 0.17% | 13.7% |
 
-The damper engages on between 0.6 and 51 per cent of scored cycles depending on the user, which is
-a wide enough spread to matter. The tier downgrade is rare everywhere.
+## The era filter, which is not optional
+
+The `ml_hypo_risk` column carries the output of three model generations under one name, with nothing
+in the record marking the boundary. The eight-feature model ran from 2026-04-10 with a four-hour
+horizon; the current 53-feature model reached the cohort in the week of 2026-06-29, at which point
+the cohort median score falls from 0.364 to 0.038. Those are different quantities on different
+scales, and any figure computed across the boundary is a mixture rather than a measurement. All
+discrimination figures below are computed within a single generation.
 
 ## Discrimination in the field
 
-Scored against each model's own target, per user, pooled with a cluster bootstrap over users.
+Scored against each model's own target, pooled with a cluster bootstrap over users.
 
 | | pooled AUC | 95% CI | training LOUO |
 |---|---|---|---|
-| hypo risk, sustained ≥15 min within 90 min | 0.582 | [0.517, 0.643] | 0.8317 |
-| hypo risk, against the target the KDoc claims | 0.521 | [0.472, 0.569] | — |
-| meal likelihood | 0.728 | [0.702, 0.760] | 0.7375 |
+| hypo risk, current model, own target | 0.655 | [0.606, 0.701] | 0.8317 |
+| hypo risk, current model, target the KDoc claims | 0.563 | [0.513, 0.600] | |
+| hypo risk, previous model, own era | 0.606 | [0.493, 0.729] | 0.6796 |
+| meal likelihood, current era | 0.722 | [0.684, 0.757] | 0.7375 |
+| meal likelihood, previous era | 0.740 | [0.718, 0.774] | 0.7375 |
 
-The meal model replicates. Its field AUC is within a point of its leave-one-user-out figure and
-within four points of the six-user transfer test run in May 2026, which is about as clean a
-replication as this programme has produced. Per-user values run 0.619 to 0.846 and every user is
+The meal model replicates in both eras, within a point or two of its leave-one-user-out figure and
+of the six-user transfer test run in May 2026. Per-user values run 0.618 to 0.869 and every user is
 above 0.6.
-
-The hypo model does not. It clears chance, but at 0.582 against a training figure of 0.832 the
-gap is a quarter of the available range, and per-user values run from 0.442 to 0.725 with four of
-ten users at or below 0.5.
 
 ## The baseline that decides it
 
-The same rows and the same label, scored with trivial predictors.
+Same rows, same label, trivial predictors.
 
 | | AUC | 95% CI |
 |---|---|---|
-| hypo model | 0.582 | [0.517, 0.643] |
-| current glucose, negated | 0.594 | [0.524, 0.640] |
-| eventualBG, negated | 0.515 | [0.426, 0.611] |
-| IOB | 0.484 | [0.426, 0.558] |
-| model minus current glucose | −0.010 | [−0.067, +0.050] |
+| hypo model, current | 0.655 | [0.606, 0.701] |
+| current glucose, negated | 0.588 | [0.534, 0.617] |
+| eventualBG, negated | 0.532 | [0.436, 0.631] |
+| IOB | 0.470 | [0.412, 0.552] |
+| model minus current glucose | +0.068 | [+0.046, +0.104] |
 
-A 53-feature gradient-boosted model, given six cycles of history, does not outrank the single
-number that is its own first feature. Against the meal model the same comparison goes the other
-way: 0.728 against 0.586 for eventualBG, a difference of +0.143 with an interval of [+0.076,
-+0.218], so that model is doing real work.
+The current model beats the glucose reading. Its predecessor did not: on its own era it reaches 0.606
+against 0.605 for the same baseline, a difference of +0.018 with an interval from -0.037 to +0.113.
+The revision therefore achieved what it was for. The meal model beats eventualBG by +0.144
+[+0.054, +0.233].
 
 ## Horizon
 
-The same scores against nearer and further horizons, with the glucose baseline at each.
-
-| horizon | base rate | model | 95% CI | −BG | model − (−BG) |
+| horizon | base | model | 95% CI | -BG | model - (-BG) |
 |---|---|---|---|---|---|
-| 30 min | 0.005 | 0.663 | [0.606, 0.767] | 0.836 | −0.154 [−0.229, −0.068] |
-| 60 min | 0.017 | 0.607 | [0.552, 0.667] | 0.665 | −0.054 [−0.117, −0.002] |
-| 90 min | 0.034 | 0.582 | [0.517, 0.643] | 0.594 | −0.010 [−0.067, +0.050] |
-| 120 min | 0.052 | 0.562 | [0.504, 0.612] | 0.559 | +0.005 [−0.045, +0.070] |
-| 180 min | 0.086 | 0.545 | [0.490, 0.590] | 0.512 | +0.034 [−0.017, +0.106] |
-| 240 min | 0.121 | 0.541 | [0.488, 0.587] | 0.493 | +0.049 [−0.004, +0.116] |
+| 30 min | 0.008 | 0.799 | [0.739, 0.864] | 0.817 | -0.010 [-0.061, +0.041] |
+| 60 min | 0.019 | 0.701 | [0.644, 0.750] | 0.653 | +0.051 [+0.028, +0.087] |
+| 90 min | 0.036 | 0.655 | [0.606, 0.701] | 0.588 | +0.068 [+0.046, +0.104] |
+| 120 min | 0.055 | 0.627 | [0.572, 0.664] | 0.558 | +0.068 [+0.046, +0.102] |
+| 180 min | 0.089 | 0.593 | [0.537, 0.632] | 0.520 | +0.073 [+0.051, +0.111] |
+| 240 min | 0.124 | 0.578 | [0.521, 0.620] | 0.505 | +0.073 [+0.047, +0.111] |
 
-Absolute discrimination falls with horizon for both, as expected. What does not behave as hoped is
-the comparison: at the horizons where a hypo forecast could still be acted on, the model is
-significantly worse than reading the current glucose, and it only draws level once the horizon is
-long enough that neither predictor carries much.
+At 30 minutes the model is level with reading the glucose, which is the horizon at which "glucose is
+already low" predicts a low trivially. From 60 minutes outward it adds, and the increment is stable.
 
-## Calibration, and the on-policy confound
+## Is the model itself sane
 
-Observed event rate by predicted decile, with the damper the engine would have applied at that
-score. `mlHypoRiskScale` is 1.0 below risk 0.30 and falls linearly to 0.50 at risk 1.0.
+Probing the exported trees directly, all features at cohort medians and one swept:
+
+| glucose | 45 | 55 | 65 | 75 | 90 | 110 | 140 | 180 | 250 |
+|---|---|---|---|---|---|---|---|---|---|
+| risk | 0.861 | 0.868 | 0.780 | 0.442 | 0.170 | 0.105 | 0.081 | 0.070 | 0.078 |
+
+Monotone and correctly shaped, with a weak positive response to insulin on board. The model is not
+broken.
+
+## Calibration, and the threshold that was never moved
+
+Observed rate by predicted decile, current era, with the damper the engine applies at that score.
 
 | decile | n | predicted | observed | damper |
 |---|---|---|---|---|
-| 0 | 9,102 | 0.015 | 0.017 | 1.000 |
-| 1 | 8,115 | 0.020 | 0.021 | 1.000 |
-| 2 | 7,655 | 0.026 | 0.018 | 1.000 |
-| 3 | 7,459 | 0.033 | 0.031 | 1.000 |
-| 4 | 7,854 | 0.047 | 0.042 | 1.000 |
-| 5 | 7,770 | 0.087 | 0.066 | 1.000 |
-| 6 | 8,001 | 0.253 | 0.034 | 1.000 |
-| 7 | 7,984 | 0.339 | 0.027 | 0.972 |
-| 8 | 8,065 | 0.417 | 0.030 | 0.916 |
-| 9 | 7,907 | 0.541 | 0.059 | 0.828 |
+| 0 | 5,660 | 0.013 | 0.017 | 1.000 |
+| 1 | 7,799 | 0.019 | 0.021 | 1.000 |
+| 2 | 2,678 | 0.021 | 0.017 | 1.000 |
+| 3 | 4,473 | 0.024 | 0.017 | 1.000 |
+| 4 | 4,719 | 0.029 | 0.027 | 1.000 |
+| 5 | 5,063 | 0.035 | 0.027 | 1.000 |
+| 6 | 5,750 | 0.044 | 0.044 | 1.000 |
+| 7 | 4,370 | 0.059 | 0.043 | 1.000 |
+| 8 | 4,946 | 0.099 | 0.075 | 1.000 |
+| 9 | 5,045 | 0.392 | 0.072 | 0.934 |
 
-The lower six deciles are well calibrated. The top four are not: the model predicts 25 to 54 per
-cent and observes 3 to 6 per cent, against a base rate of 3.4 per cent. Its confident region is
-where it is most wrong, and that region is exactly where the dosing consumption lives.
+Nine deciles track. The tenth predicts 0.392 and observes 0.072 against a base rate of 0.036, and it
+is the only part of the range the consumption thresholds touch. The on-policy confound does not
+account for it: the damper there is 0.934, a seven per cent reduction in budget, which cannot take a
+genuine 39 per cent event rate down to 7.
 
-The obvious objection is that the model caused this by suppressing the events it predicted, which
-would deflate both the calibration and the AUC. The damper column prices that objection. Between
-decile 5 and decile 6 the observed rate halves, from 0.066 to 0.034, while the mean predicted score
-in decile 6 is 0.253, below the 0.30 threshold, so the damper was 1.0 in both and no insulin was
-withheld on account of the model in either. A treatment that did not occur cannot explain the
-step. At deciles 7 to 9 the damper does engage, but at 3, 8 and 17 per cent reductions in the
-budget, which is not enough to take a genuine 40 per cent event rate down to 3.
-
-The confound is real and it biases the field AUC downward. It is not large enough to account for
-the collapse from 0.83 to 0.58, and it cannot account for the inversion at the top of the range at
-all.
+The thresholds at 0.30 and 0.60 were placed against the previous model's distribution, where the
+cohort median was 0.364. They were not re-placed when the median fell to 0.038. The damper now
+engages on 0.49 to 27.7 per cent of scored cycles depending on the user, and the tier downgrade on
+0.00 to 2.26 per cent, which is a fifty-fold spread nobody selected.
 
 ## Verdict
 
-The meal model is doing what it was built to do and the field figures support leaving it alone.
-Confidence SOLID: replicated out of cohort twice, monotone calibration, beats its baseline with an
-interval clear of zero.
+The meal model is doing what it was built to do and the figures support leaving it alone. Confidence
+SOLID: replicated out of cohort three times now, monotone calibration, beats its baseline with an
+interval clear of zero, and stable across the model changeover that moved the other one.
 
-The hypo model, as consumed today, is not distinguishable from reading the current glucose, and is
-worse than reading the current glucose at the horizons where acting is still possible. Its top
-four deciles are anti-calibrated. Confidence SOLID for the negative on discrimination-over-baseline,
-which is robust to the label definition, the horizon and the choice of baseline. PROVISIONAL on the
-cause.
+The current hypo model adds real information over the glucose reading, at +0.068 [+0.046, +0.104],
+and does so consistently from 60 minutes outward. Its predecessor did not, at +0.018 [-0.037,
++0.113]. Confidence SOLID for the positive on the current model and for the null on its predecessor,
+both being robust to the horizon and to the choice of baseline.
 
-Three explanations remain open and the audit does not separate them. The feature vector assembled
-on device by `BoostMlFeatureBuilder` and its persisted six-cycle ring buffer may not reproduce the
-training-time features, which would degrade a 53-feature model while leaving the 8-feature meal
-model untouched, and that asymmetry fits what is observed. The training cohort may differ from this
-one in a way the leave-one-user-out estimate did not capture. Or the v12 label, sustained
-hypoglycaemia rather than any excursion, may simply be rarer and harder here.
+Its absolute discrimination remains well below the training figure, 0.655 against 0.8317. Three
+explanations are open and this audit does not separate them: the field measurement is on policy and
+biased toward zero; this cohort is not the training cohort, and a leave-one-user-out estimate bounds
+transfer within a population rather than across populations; and the on-device feature vector,
+36 of whose 53 entries come from a persisted six-cycle ring buffer, may not reproduce the
+training-time vector. The last is checkable by logging the assembled vector and scoring it offline
+through the training-time library, and that is the obvious next step.
 
-The first of those is checkable and is the obvious next step: log the on-device feature vector for
-a period, score it offline with the same JSON model through the Python LightGBM path, and compare
-against the value the engine published. If the two disagree, the model was never the problem.
+The actionable finding is the threshold. Both cuts were placed against a distribution whose median
+has since moved by an order of magnitude, and nothing re-placed them. Recalibrating them against the
+current output distribution needs no retraining, does not change the model's ranking, and would
+restore the firing rate to whatever the policy actually intends.
 
 ## What not to conclude
 
 This does not say the damper is unsafe. It reduces insulin, never adds it, is floored at half the
-budget, and sits under the composed floor at 30 per cent of baseline. The finding is that a
-component believed to be discriminating is behaving like a noisy function of glucose, so the
-restraint it applies is being applied for the wrong reason. That is a reason to fix the model or
-retire the component, not a reason to expect harm from having run it.
+budget, and sits under the composed floor at 30 per cent of baseline. Nor does it say the model is
+broken: probed directly it responds to glucose correctly and monotonically. The finding is that a
+threshold is a statement about a distribution, and replacing the model beneath it moved the
+distribution without moving the threshold.

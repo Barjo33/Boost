@@ -1,6 +1,26 @@
-# What could not be learned, and the rule that came out of it
+# Four searches for the decision that goes wrong, all returning chance
 
-## Hypothesis
+The negative results behind a rule against learning on the dose path, and the leakage that made one of
+them look positive.
+
+## Abstract
+
+Somewhere in the recorded state there might be information about which dosing decisions go wrong,
+which would let an algorithm restrain the dangerous cases specifically rather than restraining
+everything a little. Four searches return chance. The shape of an excursion is not predictable from
+the state at commitment, at 0.518 with an interval from 0.485 to 0.549 over 2,117 meals. No signal
+distinguishes working from non-working insulin beyond trajectory and dose magnitude: across 1,717
+stuck-high episodes in nine participants a boosted model moves from 0.466 to 0.518 on the crash while a
+logistic model on the same features lands on exactly 0.500, and the algorithm's own model residual, the
+most plausible efficacy proxy, scores 0.474. Activity does not transfer between people, a held-out
+predictor scoring 0.739 without it and 0.717 with it. Habitual timing splits by event, with exercise
+onset reaching a median 0.779 per participant against 0.672 cross-participant and meal onset reversing
+at 0.724 against 0.683. Hyperparameter optimisation of the hypoglycaemia model reported a fourteen
+point gain under a random split and 0.7 points under a split grouped by participant. Learning the dose
+directly from dosing history reproduces the policy's own mistakes, since the target carries no outcome
+signal.
+
+## Introduction
 
 This document collects the machine-learning results that returned nothing, because they are the
 evidence for the programme's most consequential design rule and because several of them were expensive
@@ -15,8 +35,6 @@ The unifying hypothesis behind the failures was that somewhere in the recorded s
 information about which decisions go wrong. If that were true, the algorithm could restrain the
 dangerous cases specifically instead of restraining everything a little. Four separate attempts were
 made to find it.
-
-## Investigation
 
 The first asked whether the crash that sometimes follows a large committed dose is foreseeable at
 the moment of commitment. If it is, the commitment can be gated. This was posed as a prediction

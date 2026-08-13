@@ -67,9 +67,22 @@ MEAL_HORIZON_MIN = 90
 BUCKET_MIN = 5  # de-duplicate decision rows to one per 5-minute bucket
 
 
+ERA = {"since": None, "until": None}   # set from --since/--until; the model generation window
+
+
+def _era(col):
+    """Restrict to one model generation. The ml_hypo_risk column pools the outputs of three
+    generations with different targets and different output scales, so any figure computed
+    across the boundary is a mixture rather than a measurement."""
+    c = []
+    if ERA["since"]: c.append(f"AND {col} >= '{ERA['since']}'")
+    if ERA["until"]: c.append(f"AND {col} < '{ERA['until']}'")
+    return " ".join(c)
+
+
 def fetch(conn, days):
     """One row per user per 5-minute bucket, carrying both model scores and the CGM value."""
-    where_days = "AND d.ts_utc >= now() - interval '%d days'" % days if days else ""
+    where_days = ("AND d.ts_utc >= now() - interval '%d days'" % days if days else "") + " " + _era("d.ts_utc")
     sql = f"""
         SELECT DISTINCT ON (d.user_id, to_timestamp(floor(extract(epoch FROM d.ts_utc) / {BUCKET_MIN * 60}) * {BUCKET_MIN * 60}))
                d.user_id,
@@ -101,7 +114,9 @@ def fetch(conn, days):
 
 def cgm_series(conn, days):
     """Sensor record, used for the forward outcome so the label does not depend on the loop running."""
-    where_days = "AND ts_utc >= now() - interval '%d days'" % days if days else ""
+    # the outcome window must extend past the era end, or labels truncate at the boundary
+    where_days = ("AND ts_utc >= now() - interval '%d days'" % days if days else "") + (
+        f" AND ts_utc >= '{ERA['since']}'" if ERA["since"] else "")
     cur = conn.cursor()
     cur.execute(f"""
         SELECT user_id, extract(epoch FROM ts_utc), cgm_mgdl
@@ -230,8 +245,13 @@ def calibration(scores, labels, n_bins=10):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--days", type=int, default=0, help="0 = all history")
+    ap.add_argument("--since", default=None, help="model-generation window start, YYYY-MM-DD")
+    ap.add_argument("--until", default=None, help="model-generation window end, YYYY-MM-DD")
     ap.add_argument("--json", default=None)
     args = ap.parse_args()
+    ERA["since"], ERA["until"] = args.since, args.until
+    if args.since or args.until:
+        print(f"era: {args.since or 'start'} to {args.until or 'now'}\n")
 
     conn = psycopg2.connect("dbname=oref")
     conn.autocommit = True
