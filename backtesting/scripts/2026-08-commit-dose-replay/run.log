@@ -44,4 +44,41 @@ PER PARTICIPANT, UNIFORM ARM
   I            16         7        3    0.43        4.7
   tim         338       156      109    0.70      126.0
 
+========================================================================================
+COST IN GLUCOSE EXPOSURE, WHICH IS THE CURRENCY THAT MATTERS
+========================================================================================
+  Insulin removed is not the cost of an arm. The cost is the hyperglycaemia accepted
+  in exchange, and it differs by a factor of forty between these arms because a late
+  commit delivers into a meal that has already peaked.
+
+  arm                       avoided  total mg/dL.h  per low avoided
+  uniform                       313          34142            109.1
+  oracle-late                    29            799             27.6
+  oracle-small                  170           6333             37.3
+
+========================================================================================
+IS THE HARM IN THE LARGE BOLUS AT A LATE COMMIT
+========================================================================================
+  Large is above the cohort median committed dose of 1.20 U.
+
+  cell                                    n  obs low  severe  med dose  med nadir
+  late peak, large dose                  81    0.457   0.136      2.25         74
+  late peak, small dose                  80    0.375   0.163      0.65         77
+  normal peak, large dose               776    0.325   0.107      2.35         83
+  normal peak, small dose               781    0.335   0.104      0.75         82
+
+========================================================================================
+HOW HARD TO CUT THE LATE COMMIT, AND WHAT IT COSTS
+========================================================================================
+  Applied only to commits whose peak arrives within ten minutes, leaving every other
+  commit untouched. The uniform arm at 0.70 is repeated for comparison.
+
+  policy                              avoided  severe   mg/dL.h   per low
+  late commits scaled to 0.85                16      13       160      10.0
+  late commits scaled to 0.70                29      16       799      27.6
+  late commits scaled to 0.50                47      17      3184      67.7
+  late commits scaled to 0.30                52      18      7224     138.9
+  late commits scaled to 0.00                57      20     14937     262.1
+  every commit scaled to 0.70             313     132     34142     109.1
+
 wrote results.json

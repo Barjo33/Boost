@@ -1,70 +1,125 @@
 # Pricing a smaller committed dose against the record (2026-08-13)
 
-*Reproduce: `commit_dose_replay.py`. 1,718 commits carrying a delivered dose across nine
-participants, five hours of trajectory each, sensitivity taken per commit from the record.*
+*Reproduce: `commit_dose_replay.py`, `target_detector.py`, `combined_policy.py`. 1,718 commits
+carrying a delivered dose across nine participants, five hours of trajectory each, sensitivity
+taken per commit from the record.*
 
-## What this is not
+## What cannot be done
 
 A replay that assigns a dose and then reads the recorded glucose is not a counterfactual. The
-glucose that followed each commit followed the dose that was actually given, and reading it
-against a different assigned dose measures nothing. The observational dose response in this cohort
-comes out near 6 mg/dL per unit against a dithering estimate of about minus 45, because the dose is
-assigned by the policy whose effect is in question. That is why the trial registered for this is
-prospective.
+glucose that followed each commit followed the dose actually given, and randomising the assigned
+label does not change that. The observational dose response in this cohort comes out near
+6 mg/dL per unit against a dithering estimate of about minus 45, because the dose is chosen by the
+policy whose effect is in question. The trial for this is prospective for that reason.
 
-## What can be bounded
+## What is bounded here
 
 Reducing the committed dose does not change the meal, so the carbohydrate side of the trajectory
-can be held exactly as observed while the insulin side is recomputed. Insulin not given never acts,
-so at any later time the counterfactual glucose is above the recorded glucose by
+is held exactly as observed and only the insulin side recomputed. Insulin not given never acts, so
+the counterfactual glucose is above the recorded glucose by
 
     delta_bg(t) = ISF x removed_dose x fraction of that dose that had acted by t
 
-with sensitivity taken per commit from the record and the activity curve the app itself uses.
+with sensitivity per commit from the record and the activity curve the app uses.
 
 The bound is one-sided in a known direction. The recorded trajectory already contains whatever
-counter-regulation the low provoked, and a smaller dose would have provoked less, so the true
-counterfactual sits below this estimate. Lows avoided is therefore a ceiling. The loop's own
-subsequent decisions are also unmodelled, and under a smaller dose it would have made different
-ones.
+counter-regulation the low provoked, so lows avoided is a ceiling while the exposure cost is not.
+The loop's own subsequent decisions are unmodelled.
 
-## Result
+Cost is measured as added glucose exposure above 180 mg/dL, in mg/dL hours. Insulin removed is not
+a cost: what a reduction actually spends is the hyperglycaemia accepted in exchange, and that
+differs by a factor of eight between commits.
 
-Scaling every committed dose to 0.7, which is the registered intervention:
+## Where the harm sits
 
-| arm | commits | observed lows | avoided | severe avoided | U removed | added mg/dL.h per commit | U per low avoided |
-|---|---|---|---|---|---|---|---|
-| uniform | 1,718 | 581 | 313 | 132 | 828.5 | 19.9 | 2.65 |
-| oracle, late peak only | 161 | 67 | 29 | 16 | 74.1 | 0.5 | 2.55 |
-| oracle, small excursion only | 855 | 337 | 170 | 70 | 394.7 | 3.7 | 2.32 |
-
-The two oracle arms use knowledge unavailable at the time, so they upper-bound any targeting rule
-that could ever be built.
-
-Targeting is worth very little. Restricting the reduction to commits whose peak arrives within ten
-minutes reaches 29 of the 313 avoidable lows, because those commits are 161 of 1,718. Its
-efficiency, at 2.55 U removed per low avoided, is barely better than the uniform 2.65. Targeting on
-the eventual excursion covers half the commits, reaches 54 per cent of the avoidable lows and is
-12 per cent more efficient.
-
-That is the answer to whether the late commit is worth singling out. Even with perfect foresight it
-is not, and no rule built on observable state could reach that ceiling.
-
-The result is robust to the insulin curve and scales as expected with the size of the reduction.
-
-| activity peak | multiplier | lows avoided | severe avoided | U per low |
+| cell | n | low rate | severe | median dose |
 |---|---|---|---|---|
-| 45 min | 0.50 | 424 | 158 | 3.26 |
-| 45 min | 0.70 | 329 | 135 | 2.52 |
-| 45 min | 0.85 | 211 | 107 | 1.96 |
-| 55 min | 0.50 | 403 | 154 | 3.43 |
-| 55 min | 0.70 | 313 | 132 | 2.65 |
-| 55 min | 0.85 | 201 | 101 | 2.06 |
-| 75 min | 0.50 | 374 | 146 | 3.69 |
-| 75 min | 0.70 | 280 | 125 | 2.96 |
-| 75 min | 0.85 | 177 | 94 | 2.34 |
+| late peak, large dose | 81 | 0.457 | 0.136 | 2.25 |
+| late peak, small dose | 80 | 0.375 | 0.163 | 0.65 |
+| normal peak, large dose | 776 | 0.325 | 0.107 | 2.35 |
+| normal peak, small dose | 781 | 0.335 | 0.104 | 0.75 |
 
-Per participant the share of lows the reduction reaches varies widely, from 0.24 to 0.70.
+Late commits carry a 37 to 46 per cent low rate against 32 to 34 for the rest. Dose separates the
+outcome only when the commit is late, which is the signature of insulin delivered into a meal that
+is already over.
+
+## What a cut costs, by where it lands
+
+Scaling to 0.85, per commit treated:
+
+| | lows avoided each | exposure cost each |
+|---|---|---|
+| a late commit | 0.099 | 1.00 mg/dL.h |
+| a normal commit | 0.119 | 8.48 mg/dL.h |
+
+The benefit is comparable and the cost differs 8.5-fold. That is the whole of the case for
+targeting: withholding insulin from a commit whose excursion has finished is nearly free, and
+withholding it from a live meal forfeits real coverage.
+
+At matched multiplier, treating only late commits costs 10.0 mg/dL hours per low prevented against
+66.5 for treating everything, a factor of 6.6.
+
+## What a buildable detector reaches
+
+The cost of cutting is partially predictable at the commit, at a correlation of 0.429 out of sample
+with participants held out, though its absolute error of 8.10 is no better than the 7.65 obtained
+by predicting the median. The ranking carries signal; the level does not.
+
+Treating the cheapest predicted fraction, scored on realised outcomes so a wrong prediction is
+charged what it actually cost:
+
+| treated | lows avoided | mg/dL.h | per low | against uniform |
+|---|---|---|---|---|
+| 5% | 9 | 294 | 32.7 | 2.04x |
+| 10% | 13 | 414 | 31.8 | 2.09x |
+| 20% | 22 | 821 | 37.3 | 1.78x |
+| 30% | 31 | 1,429 | 46.1 | 1.44x |
+| all | 201 | 13,357 | 66.5 | 1.00x |
+
+The detector doubles efficiency and reaches little of the problem, 13 lows against 201. Its
+enrichment for lateness is weak, lifting the share from 0.094 to 0.135 at its best operating point,
+which is consistent with lateness itself being unpredictable. It finds cheap commits by other
+routes.
+
+## The combined policy, at matched benefit
+
+Efficiency per low is the wrong comparison between policies of different reach. The question is
+what it costs to prevent a given number of lows. Against the pure uniform frontier interpolated to
+the same benefit:
+
+| uniform | targeted | treated | lows avoided | mg/dL.h | uniform at same benefit | saving |
+|---|---|---|---|---|---|---|
+| 1.00 | 0.70 | 10% | 19 | 874 | 963 | 9.2% |
+| 0.95 | 0.70 | 10% | 94 | 4,594 | 4,970 | 7.6% |
+| 0.90 | 0.70 | 10% | 160 | 8,862 | 9,486 | 6.6% |
+| 0.90 | 0.70 | 20% | 167 | 9,470 | 10,147 | 6.7% |
+| 0.90 | 0.50 | 20% | 182 | 11,014 | 11,563 | 4.7% |
+| 0.90 | 0.30 | 20% | 193 | 12,986 | 12,602 | -3.0% |
+| 1.00 | 0.30 | 10% | 28 | 2,747 | 1,419 | -93.5% |
+
+With perfect targeting the same structure saves 23 to 67 per cent. With the buildable detector it
+saves between 2 and 9, and deep targeted cuts are worse than uniform because a prediction error is
+charged at the full cost of a deep cut on a live meal.
+
+## Conclusion
+
+Targeting is worth doing in principle and the headroom is large: a commit whose excursion is
+finished can be cut almost for free, and perfect selection would cut the cost of a given benefit by
+a quarter to two thirds. The buildable version captures a small part of that, around 6 to 9 per
+cent at matched benefit, and only with a shallow targeted cut. A deep cut on an imperfect
+prediction is worse than doing nothing selective at all.
+
+The practical reading is that the registered uniform trial remains the right first experiment,
+because it is the policy whose benefit is large enough to measure and whose failure modes are
+understood. A shallow targeted overlay is a second-order refinement worth perhaps a tenth of the
+exposure cost, and it should not be bundled into the first trial, where it would add a factor
+without the power to resolve it.
+
+Confidence: PROVISIONAL throughout. A one-armed bound with the loop's response unmodelled is not a
+substitute for the trial, the benefit side is optimistic by construction, and the targeting figures
+rest on a detector whose absolute calibration is no better than a constant.
+
+## Per participant, uniform arm at 0.70
 
 | user | commits | observed lows | avoided | share | U removed |
 |---|---|---|---|---|---|
@@ -78,20 +133,5 @@ Per participant the share of lows the reduction reaches varies widely, from 0.24
 | I | 16 | 7 | 3 | 0.43 | 4.7 |
 | tim | 338 | 156 | 109 | 0.70 | 126.0 |
 
-D is the participant the reduction reaches least and also the one with the highest commit-related
-low rate, which is worth noting before the trial rather than after it.
-
-## What follows
-
-The cost side is the number to hold onto. Roughly 20 mg/dL hours of additional exposure above
-180 per commit, at a ceiling of 313 lows avoided over 1,718 commits, is the trade the trial is
-being asked to make, and the ceiling is optimistic on the low side while the cost estimate is not.
-
-For the trial itself, two things change. The effect is large enough that the registered design
-should detect it if the bound is anywhere near right, which is worth knowing before running it.
-And there is no case for stratifying or targeting the intervention on commit lateness, because the
-oracle version of that targeting is worth 29 lows against 313.
-
-Confidence: PROVISIONAL. The insulin arm is well characterised and the sensitivity analysis is
-stable, but a one-armed bound with the loop's own response unmodelled is not a substitute for the
-trial, and the direction of its error is known rather than measured.
+D is both the participant the reduction reaches least and the one with the highest commit-related
+low rate, which is worth knowing before randomising rather than after.

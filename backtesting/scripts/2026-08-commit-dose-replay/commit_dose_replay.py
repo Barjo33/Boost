@@ -228,6 +228,73 @@ def main():
         res["per_user"][u] = dict(n=len(sel), obs_lows=int(ol), avoided=int(av),
                                   insulin=float(ins))
 
+    print()
+    print("=" * 88)
+    print("COST IN GLUCOSE EXPOSURE, WHICH IS THE CURRENCY THAT MATTERS")
+    print("=" * 88)
+    print("  Insulin removed is not the cost of an arm. The cost is the hyperglycaemia accepted")
+    print("  in exchange, and it differs by a factor of forty between these arms because a late")
+    print("  commit delivers into a meal that has already peaked.\n")
+    print(f"  {'arm':24s} {'avoided':>8s} {'total mg/dL.h':>14s} {'per low avoided':>16s}")
+    for nm, a in res["arms"].items():
+        if a is None:
+            continue
+        tot = a["added_mgdl_hours_per_commit"] * len(ev)
+        a["total_mgdl_hours"] = float(tot)
+        a["mgdl_hours_per_low_avoided"] = float(tot / a["avoided"]) if a["avoided"] else None
+        print(f"  {nm:24s} {a['avoided']:8d} {tot:14.0f} "
+              f"{(tot/a['avoided'] if a['avoided'] else float('nan')):16.1f}")
+
+    print()
+    print("=" * 88)
+    print("IS THE HARM IN THE LARGE BOLUS AT A LATE COMMIT")
+    print("=" * 88)
+    med_dose = float(np.median([e["dose"] for e in ev]))
+    print(f"  Large is above the cohort median committed dose of {med_dose:.2f} U.\n")
+    print(f"  {'cell':34s} {'n':>6s} {'obs low':>8s} {'severe':>7s} {'med dose':>9s} "
+          f"{'med nadir':>10s}")
+    res["cells"] = {}
+    for nm, sel in (("late peak, large dose",
+                     [e for e in ev if e["interval"] <= PEAK_EARLY_MIN and e["dose"] > med_dose]),
+                    ("late peak, small dose",
+                     [e for e in ev if e["interval"] <= PEAK_EARLY_MIN and e["dose"] <= med_dose]),
+                    ("normal peak, large dose",
+                     [e for e in ev if e["interval"] > PEAK_EARLY_MIN and e["dose"] > med_dose]),
+                    ("normal peak, small dose",
+                     [e for e in ev if e["interval"] > PEAK_EARLY_MIN and e["dose"] <= med_dose])):
+        if len(sel) < 20:
+            continue
+        lo_ = np.mean([e["seg_b"].min() < LOW_MGDL for e in sel])
+        sv = np.mean([e["seg_b"].min() < SEVERE_MGDL for e in sel])
+        print(f"  {nm:34s} {len(sel):6d} {lo_:8.3f} {sv:7.3f} "
+              f"{np.median([e['dose'] for e in sel]):9.2f} "
+              f"{np.median([e['seg_b'].min() for e in sel]):10.0f}")
+        res["cells"][nm] = dict(n=len(sel), low=float(lo_), severe=float(sv))
+
+    print()
+    print("=" * 88)
+    print("HOW HARD TO CUT THE LATE COMMIT, AND WHAT IT COSTS")
+    print("=" * 88)
+    print("  Applied only to commits whose peak arrives within ten minutes, leaving every other")
+    print("  commit untouched. The uniform arm at 0.70 is repeated for comparison.\n")
+    print(f"  {'policy':34s} {'avoided':>8s} {'severe':>7s} {'mg/dL.h':>9s} {'per low':>9s}")
+    res["cut_curve"] = []
+    late = [e for e in ev if e["interval"] <= PEAK_EARLY_MIN]
+    for m in (0.85, 0.70, 0.50, 0.30, 0.0):
+        pr = [price(e, m, DEFAULT_PEAK_MIN, DEFAULT_DIA_MIN) for e in late]
+        av = sum(r["obs_low"] - r["cf_low"] for r in pr)
+        sv = sum(r["obs_sev"] - r["cf_sev"] for r in pr)
+        tot = sum(r["added_auc"] for r in pr) / 60.0
+        print(f"  late commits scaled to {m:.2f}          {av:8d} {sv:7d} {tot:9.0f} "
+              f"{(tot/av if av else float('nan')):9.1f}")
+        res["cut_curve"].append(dict(mult=m, avoided=int(av), severe=int(sv),
+                                     mgdl_hours=float(tot)))
+    pr = [price(e, 0.70, DEFAULT_PEAK_MIN, DEFAULT_DIA_MIN) for e in ev]
+    av = sum(r["obs_low"] - r["cf_low"] for r in pr)
+    tot = sum(r["added_auc"] for r in pr) / 60.0
+    print(f"  every commit scaled to 0.70        {av:8d} "
+          f"{sum(r['obs_sev']-r['cf_sev'] for r in pr):7d} {tot:9.0f} {tot/av:9.1f}")
+
     if args.json:
         json.dump(res, open(args.json, "w"), indent=2, default=float)
         print(f"\nwrote {args.json}")
