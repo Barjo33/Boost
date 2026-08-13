@@ -188,3 +188,36 @@ designed for and which does not require the dangerous commits to be identifiable
 
 Confidence: SOLID for the null on anticipation, being robust across two model classes with
 participants held out, and explained by a decomposition rather than merely observed.
+
+## Does the state estimator see it at the commit (`twin_at_commit.py`)
+
+The estimator is the one instrument with a reason to reach the residual rather than more features
+to throw at it. Its inferred glucose appearance rate estimates how much carbohydrate is still
+arriving, which is dose-independent and is the quantity that separates a meal still climbing from
+one nearly absorbed. If appearance has turned over at the commit, the peak is imminent whatever the
+glucose reads.
+
+It does not, and the reason is structural rather than statistical.
+
+Across 221 commits with estimator fields, appearance is at its own maximum over the preceding
+thirty minutes on 93.2 per cent of commits, and at 95 per cent of it or above on 96.4. The median
+ratio is 1.000. At the moment of commit the inferred appearance has essentially never turned over,
+so the discriminator has no spread and there is nothing for a test to separate.
+
+That is not an accident of this sample. Appearance is inferred from glucose by the filter, so it
+cannot lead glucose. There is no independent observation of carbohydrate anywhere in the estimator,
+and the state it reports is a smoothed reading of the same signal the interval is computed from.
+Asking it to know that absorption has peaked before glucose peaks is asking it to carry information
+it was never given. This is the same conclusion the identification work reached about insulin gain,
+arrived at from the other end.
+
+The areas under the curve on this subsample should not be read as a test of anything. There are 221
+commits across seven participants, and glucose at commit scores 0.589 against the low here against
+0.422 on the full 2,505. Restricting the full sample to the estimator era gives 0.464 and to the
+estimator participants gives 0.452, so only the intersection moves, which is what small-sample noise
+looks like rather than a real difference between eras.
+
+What would be needed is an observation of carbohydrate that does not come from glucose. Announced
+carbohydrate is the obvious one and is absent by design here, since the premise is unannounced
+meals. Failing that, the conclusion is unchanged: the dangerous commits are not identifiable at the
+moment of commitment, by any instrument the programme currently has.
