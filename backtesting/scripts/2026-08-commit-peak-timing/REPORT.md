@@ -111,11 +111,8 @@ or near the peak delivers insulin against carbohydrate that has largely been abs
 followed by a low half again as often as one that lands early in a rise. It also confirms the
 earlier null on the same events, since `delta_accl` scores 0.498 here.
 
-The actionable question is therefore a different one, and it is a prediction problem rather than a
-gating rule: is time-to-peak itself predictable at the moment of commit from what the algorithm
-holds. That has not been tested. If it is not predictable, the finding stands as attribution and
-the levers remain the two the programme already has, which are to give less or to withdraw
-afterwards.
+The actionable question is therefore a prediction problem rather than a gating rule, and it is
+answered below.
 
 Two further caveats bound this. The association is observational, and nothing here shows that a
 smaller dose at those commits would have avoided the low. And for the longer intervals the
@@ -125,3 +122,69 @@ possibility does not touch the short-interval cells, where insulin has not had t
 Confidence: SOLID for the association and its direction, being stable across nine cuts, consistent
 across eight of nine participants, and clear of the alternatives on the same events. SPECULATIVE
 for anything built on it, since the discriminating quantity is not observable at decision time.
+
+## Can the peak timing be anticipated (`predict_peak.py`)
+
+A gradient-boosted model over 29 features drawn strictly from before the commit, scored out of
+sample with participants held out as folds, predicts an early peak at an area under the curve of
+0.731 with an interval from 0.701 to 0.770. A logistic model on the same features and folds
+reaches 0.697, so the result is not a flexible model fitting noise.
+
+The prediction does not help.
+
+| | AUC | 95% CI |
+|---|---|---|
+| predicted early peak, against the low | 0.448 | [0.404, 0.499] |
+| the true interval, against the low | 0.581 | [0.548, 0.629] |
+
+The out-of-sample probability of an early peak does not separate the low, and points the wrong
+way. Its top decile carries a low rate of 0.116 against 0.181 elsewhere, on a base of 0.175.
+
+The reason is a decomposition rather than a failure of the model. Glucose at the commit alone
+predicts an early peak at 0.720, against 0.731 for the full model, and the predicted probability
+correlates with glucose at +0.595. The model is close to a glucose detector, and glucose at commit
+is inversely associated with the low.
+
+| cell | n | low rate | median glucose |
+|---|---|---|---|
+| truly early, model predicted it | 172 | 0.198 | 166 |
+| truly early, model missed it | 145 | 0.352 | 131 |
+| not early, model predicted early | 450 | 0.133 | 154 |
+| not early, model agreed | 1,719 | 0.168 | 118 |
+
+The early peaks the model catches arrive at high glucose and are followed by a low on 19.8 per cent
+of occasions, barely above the base rate. The early peaks it misses arrive at ordinary glucose,
+around 131 mg/dL, and are followed by a low on 35.2 per cent. The harmful cases are precisely the
+ones a predictor keyed on glucose cannot see.
+
+The interval is not merely a restatement of the glucose, which is what makes this a real
+decomposition rather than a tautology. Within bands of glucose at the commit it continues to
+separate the outcome, and does so more strongly at higher glucose.
+
+| glucose at commit | n | AUC of the interval | low rate |
+|---|---|---|---|
+| under 120 | 994 | 0.559 | 0.223 |
+| 120 to 150 | 838 | 0.613 | 0.147 |
+| 150 to 180 | 395 | 0.694 | 0.137 |
+| over 180 | 259 | 0.689 | 0.135 |
+
+## Where this leaves it
+
+The interval from commit to peak carries real information about the low, beyond glucose and beyond
+everything else observable at the commit. The component of it that can be anticipated is the
+component driven by glucose, and that component is benign. The component that is harmful, an early
+peak arriving at ordinary glucose, is the residual, and the residual is what a cross-participant
+model cannot reach.
+
+This is the identification constraint in an unfamiliar place. The usual form is that the outcome of
+an untaken action is unavailable. Here the discriminating quantity is observable, and only after the
+moment at which it would have to be used.
+
+The consequence is that no gate conditioned on the state at the commit will separate these cases,
+which is the same conclusion three earlier attempts reached by different routes. The levers remain
+the two the programme already has: give less at the commit, which the pre-registered
+within-participant trial tests, or withdraw afterwards, which is what the retractable back-out was
+designed for and which does not require the dangerous commits to be identifiable in advance.
+
+Confidence: SOLID for the null on anticipation, being robust across two model classes with
+participants held out, and explained by a decomposition rather than merely observed.
