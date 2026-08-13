@@ -40,7 +40,11 @@ from concurrent.futures import ProcessPoolExecutor
 import numpy as np
 import psycopg2
 
-LOW, SEVERE, HIGH = 70.0, 54.0, 180.0
+# TING is 3.5 to 7.8 mmol/L, so its floor is 63 mg/dL. That is the primary outcome here:
+# a nadir below it is a fall out of the tight band rather than a brush with the 70 line, and
+# it is less easily flipped by a small modelled lift than 70 is.
+TING_LOW = 63.0
+LOW, SEVERE, HIGH = TING_LOW, 54.0, 180.0
 WINDOW_MIN = 240
 # Fitted against the app's own IOB decay after confirms: 40/240 beats 55/360 at 0.42 U
 # median error against 0.60. The fit is contaminated by the basal arm, so it is indicative.
@@ -125,35 +129,33 @@ def build(dec, cts, cbg):
     return out
 
 
-def evaluate(w, mult, isf_scale=1.0):
+def evaluate(w, mult, isf_scale=1.0, low=None):
     """Vectorised over an array of multipliers. Returns per-replicate metrics."""
+    low = LOW if low is None else low
     mult = np.atleast_1d(np.asarray(mult, float))
     removed = w["dose"] * (1.0 - mult)                       # (R,)
     lift = removed[:, None] * (w["isf"] * isf_scale) * acted(w["mins"])[None, :]
     cf = w["bg"][None, :] + lift
     dt = np.gradient(w["mins"])
-    below = np.clip(LOW - cf, 0, None) @ dt
+    below = np.clip(low - cf, 0, None) @ dt
     above = np.clip(cf - HIGH, 0, None) @ dt
-    obs_below = float(np.clip(LOW - w["bg"], 0, None) @ dt)
+    obs_below = float(np.clip(low - w["bg"], 0, None) @ dt)
     obs_above = float(np.clip(w["bg"] - HIGH, 0, None) @ dt)
     return dict(
         removed=removed,
         nadir=cf.min(axis=1), peak=cf.max(axis=1),
-        low=(cf.min(axis=1) < LOW).astype(int),
+        low=(cf.min(axis=1) < low).astype(int),
         severe=(cf.min(axis=1) < SEVERE).astype(int),
         below=below, above=above,
         d_below=obs_below - below, d_above=above - obs_above,
         obs_nadir=float(w["bg"].min()), obs_peak=float(w["bg"].max()),
-        obs_low=int(w["bg"].min() < LOW), obs_severe=int(w["bg"].min() < SEVERE),
+        obs_low=int(w["bg"].min() < low), obs_severe=int(w["bg"].min() < SEVERE),
         obs_below=obs_below, obs_above=obs_above)
 
 
 def _chunk(payload):
-    windows, mults, scale = payload
-    acc = []
-    for w, m in zip(windows, mults):
-        acc.append(evaluate(w, m, scale))
-    return acc
+    windows, mults, scale, low = payload
+    return [evaluate(w, m, scale, low) for w, m in zip(windows, mults)]
 
 
 def main():
@@ -162,11 +164,15 @@ def main():
     ap.add_argument("--reps", type=int, default=3000)
     ap.add_argument("--lo", type=float, default=0.4); ap.add_argument("--hi", type=float, default=1.0)
     ap.add_argument("--outdir", default="figs")
+    ap.add_argument("--low", type=float, default=TING_LOW,
+                    help="nadir threshold; 63 is the TING floor, 70 the conventional one")
     args = ap.parse_args()
+    globals()["LOW"] = args.low
     os.makedirs(args.outdir, exist_ok=True)
 
     conn = psycopg2.connect("dbname=oref"); conn.autocommit = True
     dec, cts, cbg = fetch(conn, args.user, args.days)
+    globals()["LOW"] = args.low
     W = build(dec, cts, cbg)
     n = len(W)
     obs_low = sum(w["bg"].min() < LOW for w in W)
@@ -232,7 +238,7 @@ def main():
     with ProcessPoolExecutor(max_workers=min(os.cpu_count(), 14)) as ex:
         for sc in ISF_SCALES:
             k = max(1, n // 14)
-            parts = [(W[i:i + k], mults[i:i + k], sc) for i in range(0, n, k)]
+            parts = [(W[i:i + k], mults[i:i + k], sc, args.low) for i in range(0, n, k)]
             out = []
             for r in ex.map(_chunk, parts):
                 out.extend(r)
@@ -295,7 +301,7 @@ def main():
     fig, ax = plt.subplots(1, 2, figsize=(9.5, 3.6))
     for lab, key, a_ in (("windows with a low", "low", ax[0]), ("severe", "severe", ax[0])):
         for sc, style in zip(ISF_SCALES, (":", "-", ":")):
-            y = [sum(int(evaluate(w, m, sc)[key][0]) for w in W) for m in grid]
+            y = [sum(int(evaluate(w, m, sc, args.low)[key][0]) for w in W) for m in grid]
             a_.plot(grid, y, style, lw=2 if sc == 1.0 else 1,
                     label=f"{lab} x{sc}" if sc == 1.0 else None,
                     color="tab:red" if key == "low" else "tab:purple", alpha=1 if sc == 1 else .5)
@@ -305,7 +311,7 @@ def main():
     ax[0].set_title("Hypoglycaemia against the reduction\n(dotted: insulin effect halved and doubled)")
     ax[0].legend(frameon=False, fontsize=8)
     for sc, style in zip(ISF_SCALES, (":", "-", ":")):
-        y = [sum(int(evaluate(w, m, sc)["above"][0] > 0) for w in W) for m in grid]
+        y = [sum(int(evaluate(w, m, sc, args.low)["above"][0] > 0) for w in W) for m in grid]
         ax[1].plot(grid, y, style, lw=2 if sc == 1.0 else 1, color="tab:orange",
                    alpha=1 if sc == 1 else .5, label="windows above 180" if sc == 1.0 else None)
     ax[1].axhline(sum(int(w["bg"].max() > HIGH) for w in W), color="tab:orange", ls="--", lw=.8)
@@ -319,9 +325,9 @@ def main():
     for sc, mk in zip(ISF_SCALES, ("^", "o", "v")):
         xs, ys = [], []
         for m in grid:
-            xs.append(sum(int(evaluate(w, m, sc)["above"][0] > 0) for w in W)
+            xs.append(sum(int(evaluate(w, m, sc, args.low)["above"][0] > 0) for w in W)
                       - sum(int(w["bg"].max() > HIGH) for w in W))
-            ys.append(obs_low - sum(int(evaluate(w, m, sc)["low"][0]) for w in W))
+            ys.append(obs_low - sum(int(evaluate(w, m, sc, args.low)["low"][0]) for w in W))
         ax.plot(xs, ys, mk + "-", ms=4, lw=1.2, alpha=1 if sc == 1 else .45,
                 label=f"insulin effect x{sc}")
     ax.set_xlabel("extra windows taken above 180"); ax.set_ylabel("windows rescued from a low")
@@ -330,7 +336,7 @@ def main():
     fig.tight_layout(); fig.savefig(f"{args.outdir}/02_trade.png"); plt.close(fig)
 
     # c: per confirm, insulin withheld against nadir gained, sized by IOB share
-    half = [evaluate(w, 0.5) for w in W]
+    half = [evaluate(w, 0.5, 1.0, args.low) for w in W]
     fig, ax = plt.subplots(figsize=(6, 4.2))
     gain = np.array([h["nadir"][0] - h["obs_nadir"] for h in half])
     rem = np.array([h["removed"][0] for h in half])
@@ -350,7 +356,7 @@ def main():
     fig, ax = plt.subplots(figsize=(5.6, 3.8))
     bins = np.arange(30, 200, 10)
     ax.hist([w["bg"].min() for w in W], bins=bins, alpha=.65, label="observed", color="tab:red")
-    ax.hist([h["nadir"][0] for h in [evaluate(w, 0.8) for w in W]], bins=bins, alpha=.6,
+    ax.hist([h["nadir"][0] for h in [evaluate(w, 0.8, 1.0, args.low) for w in W]], bins=bins, alpha=.6,
             label="at a 0.8 multiplier", color="tab:blue")
     ax.axvline(LOW, color="k", ls="--", lw=.8); ax.axvline(SEVERE, color="k", ls=":", lw=.8)
     ax.set_xlabel("nadir in the four hours after a confirm (mg/dL)"); ax.set_ylabel("confirms")

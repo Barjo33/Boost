@@ -33,7 +33,8 @@ import numpy as np
 import psycopg2
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from confirm_trial import (LOW, SEVERE, HIGH, ISF_SCALES, acted, build, evaluate, fetch)
+import confirm_trial as CT
+from confirm_trial import (SEVERE, HIGH, ISF_SCALES, TING_LOW, acted, build, evaluate, fetch)
 
 USERS = ("A", "B", "C", "D", "E", "F", "H", "I", "tim")
 
@@ -49,14 +50,14 @@ def attribution(W):
     return np.array(out)
 
 
-def trial(W, reps, lo, hi, scale, seed):
+def trial(W, reps, lo, hi, scale, seed, low):
     if not W:
         return None
     rng = np.random.default_rng(seed)
     lows = np.zeros(reps); sev = np.zeros(reps); nh = np.zeros(reps); rem = np.zeros(reps)
     dn, db, dp, da = [], [], [], []
     for w in W:
-        o = evaluate(w, rng.uniform(lo, hi, reps), scale)
+        o = evaluate(w, rng.uniform(lo, hi, reps), scale, low)
         lows += o["low"]; sev += o["severe"]; rem += o["removed"]
         nh += ((o["above"] > 0) & (o["obs_above"] == 0)).astype(int)
         if o["obs_low"]:
@@ -64,7 +65,7 @@ def trial(W, reps, lo, hi, scale, seed):
         dp.append(o["peak"] - o["obs_peak"]); da.append(o["d_above"])
     q = lambda a: (float(np.median(a)), float(np.percentile(a, 2.5)), float(np.percentile(a, 97.5)))
     return dict(n=len(W),
-                obs_low=sum(int(w["bg"].min() < LOW) for w in W),
+                obs_low=sum(int(w["bg"].min() < low) for w in W),
                 obs_sev=sum(int(w["bg"].min() < SEVERE) for w in W),
                 lows=q(lows), severe=q(sev), new_high=q(nh),
                 removed=float(np.median(rem)),
@@ -80,7 +81,10 @@ def main():
     ap.add_argument("--days", type=int, default=30); ap.add_argument("--reps", type=int, default=3000)
     ap.add_argument("--lo", type=float, default=0.4); ap.add_argument("--hi", type=float, default=1.0)
     ap.add_argument("--outdir", default="figs_cohort")
+    ap.add_argument("--low", type=float, default=TING_LOW)
     args = ap.parse_args()
+    CT.LOW = args.low
+    globals()["LOW"] = args.low
     os.makedirs(args.outdir, exist_ok=True)
     conn = psycopg2.connect("dbname=oref"); conn.autocommit = True
 
@@ -147,7 +151,7 @@ def main():
           f"{'new highs':>13s} {'U off':>7s}")
     res["trial_explained"] = {}
     for u in per_user:
-        t = trial(split[u][0], args.reps, args.lo, args.hi, 1.0, 20260813)
+        t = trial(split[u][0], args.reps, args.lo, args.hi, 1.0, 20260813, args.low)
         if t is None:
             continue
         f = lambda x: f"{x[0]:.0f} [{x[1]:.0f},{x[2]:.0f}]"
@@ -155,7 +159,7 @@ def main():
               f"{f(t['severe']):>13s} {f(t['new_high']):>13s} {t['removed']:7.1f}")
         res["trial_explained"][u] = t
     allex = [w for v in split.values() for w in v[0]]
-    tc = trial(allex, args.reps, args.lo, args.hi, 1.0, 20260813)
+    tc = trial(allex, args.reps, args.lo, args.hi, 1.0, 20260813, args.low)
     f = lambda x: f"{x[0]:.0f} [{x[1]:.0f},{x[2]:.0f}]"
     print(f"\n  {'cohort':6s} {tc['n']:9d} {tc['obs_low']:9d} {f(tc['lows']):>15s} "
           f"{f(tc['severe']):>13s} {f(tc['new_high']):>13s} {tc['removed']:7.1f}")
@@ -169,7 +173,7 @@ def main():
           f"{'nadir gain':>11s} {'peak cost':>10s}")
     res["scales"] = {}
     for sc in ISF_SCALES:
-        t = trial(allex, args.reps, args.lo, args.hi, sc, 20260813)
+        t = trial(allex, args.reps, args.lo, args.hi, sc, 20260813, args.low)
         print(f"  {'x'+str(sc):>8s} {f(t['lows']):>16s} {f(t['severe']):>14s} "
               f"{f(t['new_high']):>14s} {t['nadir_gain']:10.1f}  {t['peak_gain']:9.1f}")
         res["scales"][sc] = t
@@ -182,7 +186,7 @@ def main():
     print("  If the reduction looks as effective here, the model is crediting itself with")
     print("  events it could not have altered.\n")
     allun = [w for v in split.values() for w in v[1]]
-    tu = trial(allun, args.reps, args.lo, args.hi, 1.0, 20260813)
+    tu = trial(allun, args.reps, args.lo, args.hi, 1.0, 20260813, args.low)
     if tu:
         print(f"  {'set':>12s} {'confirms':>9s} {'observed lows':>14s} {'after':>15s} "
               f"{'share removed':>14s}")

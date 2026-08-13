@@ -114,3 +114,56 @@ three are where an effect, if there is one, will be visible soonest.
 Confidence: SOLID for the cohort low rate of 0.34 and its per-participant spread, which are
 counted. PROVISIONAL for the attribution split, which depends on a sensitivity the record cannot
 calibrate. SPECULATIVE for every counterfactual count, and the control is the reason.
+
+## Re-run against the TING floor
+
+The threshold above is 70 mg/dL. TING runs from 3.5 to 7.8 mmol/L, so its floor is 63, and a nadir
+below that is a fall out of the tight band rather than a brush with the conventional line.
+Repeating everything at 63:
+
+| user | confirms | nadir below 63 | severe | rate |
+|---|---|---|---|---|
+| A | 72 | 10 | 3 | 0.14 |
+| B | 123 | 16 | 10 | 0.13 |
+| C | 113 | 39 | 10 | 0.35 |
+| D | 75 | 24 | 13 | 0.32 |
+| E | 20 | 4 | 0 | 0.20 |
+| F | 64 | 12 | 6 | 0.19 |
+| H | 24 | 4 | 0 | 0.17 |
+| I | 16 | 4 | 2 | 0.25 |
+| self | 84 | 25 | 12 | 0.30 |
+| **cohort** | **591** | **138** | **56** | **0.23** |
+
+Just under a quarter of confirms are followed by a nadir below the tight band, against a third
+below 70. Every participant remains above 0.13. The ordering changes: C at 0.35, D at 0.32 and self
+at 0.30 are the three highest, where at the looser threshold C and self were level at 0.50 and I
+was third. D is unchanged between the two thresholds at 24, meaning every one of D's
+confirm-related lows is already below the tight band, and D also carries the highest severe count
+at 13 of 75.
+
+The single-participant figures move the same way: 25 of 84 confirms rather than 42, with the
+randomised reduction leaving 4 [1, 7] at the recorded sensitivity and the nadir rising by a median
+of 35 mg/dL as before.
+
+## What the stricter threshold does to the control, which is the point
+
+| threshold | explained set | unexplained set |
+|---|---|---|
+| below 70 | 0.84 of lows removed | 0.51 |
+| below 63 | 0.89 | 0.64 |
+
+The control gets worse rather than better. Tightening the threshold was expected to help, on the
+reasoning that a nadir sitting a couple of mg/dL under 70 flips on almost any lift while a genuinely
+deep one should not. The opposite happens: the share of unexplained lows the model claims to remove
+rises from 0.51 to 0.64.
+
+The explanation is that the marginal events were never the problem. Raising the bar to 63 removes
+the shallow lows from the numerator altogether, and what remains are deep ones which the modelled
+lift, at a median sensitivity of 111 mg/dL/U for one participant and 25 to 59 for the rest applied
+to roughly half a unit, is more than large enough to clear anyway. The credulity is in the size of
+the lift, not in where the line is drawn.
+
+That closes off threshold choice as a way of making this method more honest. Either the insulin
+effect is calibrated, which the record cannot do, or the counterfactual is abandoned in favour of
+the prospective trial. It also means the conclusion is unchanged: the trial is justified by the
+counted rates, and the modelled effect sizes should not be used to size it at either threshold.

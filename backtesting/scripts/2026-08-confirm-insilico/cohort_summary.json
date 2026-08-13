@@ -4,36 +4,36 @@
   "users": {
     "A": {
       "n": 72,
-      "obs_low": 13,
+      "obs_low": 10,
       "obs_sev": 3,
-      "rate": 0.18055555555555555,
+      "rate": 0.1388888888888889,
       "ratio": 0.5981444743829907,
       "n_explained": 20,
-      "low_explained": 1,
+      "low_explained": 0,
       "n_unexplained": 52,
-      "low_unexplained": 12
+      "low_unexplained": 10
     },
     "B": {
       "n": 123,
-      "obs_low": 28,
+      "obs_low": 16,
       "obs_sev": 10,
-      "rate": 0.22764227642276422,
+      "rate": 0.13008130081300814,
       "ratio": 0.444159199003523,
       "n_explained": 18,
-      "low_explained": 2,
+      "low_explained": 0,
       "n_unexplained": 105,
-      "low_unexplained": 26
+      "low_unexplained": 16
     },
     "C": {
       "n": 113,
-      "obs_low": 56,
+      "obs_low": 39,
       "obs_sev": 10,
-      "rate": 0.49557522123893805,
+      "rate": 0.34513274336283184,
       "ratio": 0.7427168946155408,
       "n_explained": 36,
-      "low_explained": 13,
+      "low_explained": 8,
       "n_unexplained": 77,
-      "low_unexplained": 43
+      "low_unexplained": 31
     },
     "D": {
       "n": 75,
@@ -48,81 +48,81 @@
     },
     "E": {
       "n": 20,
-      "obs_low": 6,
+      "obs_low": 4,
       "obs_sev": 0,
-      "rate": 0.3,
+      "rate": 0.2,
       "ratio": 0.6681236564453558,
       "n_explained": 6,
-      "low_explained": 3,
+      "low_explained": 2,
       "n_unexplained": 14,
-      "low_unexplained": 3
+      "low_unexplained": 2
     },
     "F": {
       "n": 64,
-      "obs_low": 14,
+      "obs_low": 12,
       "obs_sev": 6,
-      "rate": 0.21875,
+      "rate": 0.1875,
       "ratio": 1.131765309988709,
       "n_explained": 36,
       "low_explained": 7,
       "n_unexplained": 28,
-      "low_unexplained": 7
+      "low_unexplained": 5
     },
     "H": {
       "n": 24,
-      "obs_low": 8,
+      "obs_low": 4,
       "obs_sev": 0,
-      "rate": 0.3333333333333333,
+      "rate": 0.16666666666666666,
       "ratio": 0.8942377697737238,
       "n_explained": 10,
       "low_explained": 0,
       "n_unexplained": 14,
-      "low_unexplained": 8
+      "low_unexplained": 4
     },
     "I": {
       "n": 16,
-      "obs_low": 7,
+      "obs_low": 4,
       "obs_sev": 2,
-      "rate": 0.4375,
+      "rate": 0.25,
       "ratio": 0.2793259481790154,
       "n_explained": 3,
       "low_explained": 0,
       "n_unexplained": 13,
-      "low_unexplained": 7
+      "low_unexplained": 4
     },
     "tim": {
       "n": 84,
-      "obs_low": 42,
+      "obs_low": 25,
       "obs_sev": 12,
-      "rate": 0.5,
+      "rate": 0.2976190476190476,
       "ratio": 1.343519884954938,
       "n_explained": 59,
-      "low_explained": 25,
+      "low_explained": 13,
       "n_unexplained": 25,
-      "low_unexplained": 17
+      "low_unexplained": 12
     }
   },
   "cohort": {
     "n": 591,
-    "obs_low": 198,
+    "obs_low": 138,
     "obs_sev": 56,
-    "rate": 0.3350253807106599
+    "rate": 0.233502538071066
   },
   "split": {
     "n_explained": 214,
     "n_unexplained": 377,
-    "low_explained": 57,
-    "low_unexplained": 141
+    "low_explained": 36,
+    "low_unexplained": 102
   },
   "trial_explained": {
     "A": {
       "n": 20,
-      "obs_low": 1,
+      "obs_low": 0,
       "obs_sev": 0,
       "lows": [
         0.0,
         0.0,
-        1.0
+        0.0
       ],
       "severe": [
         0.0,
@@ -136,19 +136,19 @@
       ],
       "removed": 23.47267129361018,
       "committed": 78.05,
-      "nadir_gain": 43.374326082634575,
-      "below_gain": 165.1083333333334,
+      "nadir_gain": NaN,
+      "below_gain": NaN,
       "peak_gain": 26.94024243961087,
       "above_gain": 2582.370549738203
     },
     "B": {
       "n": 18,
-      "obs_low": 2,
+      "obs_low": 0,
       "obs_sev": 0,
       "lows": [
         0.0,
         0.0,
-        1.0
+        0.0
       ],
       "severe": [
         0.0,
@@ -162,19 +162,19 @@
       ],
       "removed": 16.606080675959603,
       "committed": 55.164326946192716,
-      "nadir_gain": 28.981355744042908,
-      "below_gain": 65.0,
+      "nadir_gain": NaN,
+      "below_gain": NaN,
       "peak_gain": 17.90214397424883,
       "above_gain": 280.99480595522937
     },
     "C": {
       "n": 36,
-      "obs_low": 13,
+      "obs_low": 8,
       "obs_sev": 2,
       "lows": [
-        2.0,
+        1.0,
         0.0,
-        4.0
+        3.0
       ],
       "severe": [
         0.0,
@@ -188,8 +188,8 @@
       ],
       "removed": 18.650092972756127,
       "committed": 62.275403689330524,
-      "nadir_gain": 34.971624713340894,
-      "below_gain": 148.9847754928959,
+      "nadir_gain": 35.72972388888181,
+      "below_gain": 70.03380000193914,
       "peak_gain": 19.049705468667042,
       "above_gain": 40.92259700206782
     },
@@ -198,9 +198,9 @@
       "obs_low": 6,
       "obs_sev": 4,
       "lows": [
-        2.0,
+        1.0,
         0.0,
-        5.0
+        3.0
       ],
       "severe": [
         0.0,
@@ -215,13 +215,13 @@
       "removed": 19.186600048810277,
       "committed": 63.95,
       "nadir_gain": 22.153193189019063,
-      "below_gain": 574.8403916597367,
+      "below_gain": 199.86849167346952,
       "peak_gain": 15.062209353400661,
       "above_gain": 0.0
     },
     "E": {
       "n": 6,
-      "obs_low": 3,
+      "obs_low": 2,
       "obs_sev": 0,
       "lows": [
         0.0,
@@ -240,8 +240,8 @@
       ],
       "removed": 4.1783454937048745,
       "committed": 13.92660818238695,
-      "nadir_gain": 38.761645587449785,
-      "below_gain": 130.0937583108744,
+      "nadir_gain": 48.267365945549386,
+      "below_gain": 35.027533326546404,
       "peak_gain": 25.45055787676678,
       "above_gain": 36.54859738510648
     },
@@ -252,7 +252,7 @@
       "lows": [
         1.0,
         0.0,
-        4.0
+        2.0
       ],
       "severe": [
         0.0,
@@ -267,7 +267,7 @@
       "removed": 32.723852320849275,
       "committed": 109.07502515767206,
       "nadir_gain": 41.35432180411459,
-      "below_gain": 279.47514428680404,
+      "below_gain": 104.9412583470345,
       "peak_gain": 26.257583725904553,
       "above_gain": 1059.7836635875706
     },
@@ -325,12 +325,12 @@
     },
     "tim": {
       "n": 59,
-      "obs_low": 25,
+      "obs_low": 13,
       "obs_sev": 6,
       "lows": [
-        3.0,
+        1.0,
         0.0,
-        6.0
+        3.0
       ],
       "severe": [
         0.0,
@@ -344,20 +344,20 @@
       ],
       "removed": 37.886828768593915,
       "committed": 126.65045099445591,
-      "nadir_gain": 46.235727312984366,
-      "below_gain": 125.02097499767942,
+      "nadir_gain": 54.94316061602544,
+      "below_gain": 95.03176665703452,
       "peak_gain": 34.251798995373576,
       "above_gain": 2260.6943798345264
     }
   },
   "cohort_trial": {
     "n": 214,
-    "obs_low": 57,
+    "obs_low": 36,
     "obs_sev": 16,
     "lows": [
-      9.0,
       4.0,
-      14.0
+      1.0,
+      8.0
     ],
     "severe": [
       1.0,
@@ -371,20 +371,20 @@
     ],
     "removed": 160.65154571447516,
     "committed": 535.4396012028159,
-    "nadir_gain": 38.32326486090632,
-    "below_gain": 149.99578332901,
+    "nadir_gain": 39.218579209944906,
+    "below_gain": 95.03176665703452,
     "peak_gain": 22.36552698900765,
     "above_gain": 438.7104313956846
   },
   "scales": {
     "0.5": {
       "n": 214,
-      "obs_low": 57,
+      "obs_low": 36,
       "obs_sev": 16,
       "lows": [
-        17.0,
-        11.0,
-        23.0
+        8.0,
+        4.0,
+        13.0
       ],
       "severe": [
         2.0,
@@ -398,19 +398,19 @@
       ],
       "removed": 160.65154571447516,
       "committed": 535.4396012028159,
-      "nadir_gain": 19.846661711771333,
-      "below_gain": 130.0937583108744,
+      "nadir_gain": 20.622614861794325,
+      "below_gain": 95.00997498830162,
       "peak_gain": 8.90818046784564,
       "above_gain": 46.584353853518714
     },
     "1.0": {
       "n": 214,
-      "obs_low": 57,
+      "obs_low": 36,
       "obs_sev": 16,
       "lows": [
-        9.0,
         4.0,
-        14.0
+        1.0,
+        8.0
       ],
       "severe": [
         1.0,
@@ -424,19 +424,19 @@
       ],
       "removed": 160.65154571447516,
       "committed": 535.4396012028159,
-      "nadir_gain": 38.32326486090632,
-      "below_gain": 149.99578332901,
+      "nadir_gain": 39.218579209944906,
+      "below_gain": 95.03176665703452,
       "peak_gain": 22.36552698900765,
       "above_gain": 438.7104313956846
     },
     "2.0": {
       "n": 214,
-      "obs_low": 57,
+      "obs_low": 36,
       "obs_sev": 16,
       "lows": [
-        4.0,
-        1.0,
-        9.0
+        2.0,
+        0.0,
+        5.0
       ],
       "severe": [
         0.0,
@@ -450,20 +450,20 @@
       ],
       "removed": 160.65154571447516,
       "committed": 535.4396012028159,
-      "nadir_gain": 58.71584866350447,
-      "below_gain": 165.1083333333334,
+      "nadir_gain": 63.45268904478653,
+      "below_gain": 100.02739166021348,
       "peak_gain": 55.805674761367044,
       "above_gain": 3349.3586173338467
     }
   },
   "control": {
     "n": 377,
-    "obs_low": 141,
+    "obs_low": 102,
     "obs_sev": 40,
     "lows": [
-      69.0,
-      60.0,
-      78.0
+      37.0,
+      30.0,
+      45.0
     ],
     "severe": [
       13.0,
@@ -477,8 +477,8 @@
     ],
     "removed": 188.6115264750618,
     "committed": 628.394097995865,
-    "nadir_gain": 11.910010505840802,
-    "below_gain": 120.03089998761791,
+    "nadir_gain": 11.931747459891561,
+    "below_gain": 69.99287499984106,
     "peak_gain": 5.3049586819474825,
     "above_gain": 131.10973142321063
   }
