@@ -1,4 +1,4 @@
-# Anchoring insulin sensitivity to consumption rather than to prediction error
+# Insulin sensitivity estimation and the shape of absorption
 
 Why a sensitivity estimate computed from an algorithm's own residuals feeds its failures back into
 dosing, and the insulin context that justifies most of the restraint in the controller.

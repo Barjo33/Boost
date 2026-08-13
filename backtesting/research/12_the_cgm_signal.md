@@ -1,4 +1,4 @@
-# A one-minute sensor buys latency, not bandwidth
+# Sensor cadence, smoothing, and the ingestion path
 
 What five times as many glucose readings actually carry, and the ingestion path that discards four in
 five before any algorithm sees them.

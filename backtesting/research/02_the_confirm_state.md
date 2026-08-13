@@ -1,4 +1,4 @@
-# Confirming a meal doubles the chance of a subsequent low
+# The committed state and subsequent hypoglycaemia
 
 Three attempts to identify which commitments are dangerous, and the question underneath them that
 went unasked.

@@ -1,4 +1,4 @@
-# The two learned components that dose, audited against the people running them
+# The two pre-trained models on the dose path
 
 What a pair of pre-trained gradient-boosted models contributes over the glucose reading the algorithm
 already has, and what happens to a consumption threshold when the model beneath it is replaced.
@@ -93,7 +93,7 @@ merely conceded.
 
 ## Results
 
-The architecture comparison is decisive. Gradient boosting beats logistic regression by 10 to 21
+The architecture comparison separates the two model classes. Gradient boosting beats logistic regression by 10 to 21
 points in every one of the four strata, the largest gap being on hypoglycaemia with static
 sensitivity at 0.910 against 0.701, which places the signal firmly in the non-linear part of the
 feature space. Outcomes are markedly more predictable under static than under dynamic sensitivity,

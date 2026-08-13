@@ -1,4 +1,4 @@
-# Restraining the rebound that follows a treated hypoglycaemia
+# Rebound after treated hypoglycaemia, and where restraint has to be applied
 
 Why demoting an algorithm's response tier fails to restrain a dose, and what has to be scaled
 instead.

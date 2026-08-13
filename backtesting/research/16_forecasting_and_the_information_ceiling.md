@@ -1,4 +1,4 @@
-# The signal available to a glucose forecaster is nearly exhausted
+# Short-horizon glucose forecasting and its feature set
 
 What the physiological state adds to a momentum model, and why the best forecaster available is the
 worst possible controller substrate.
@@ -162,8 +162,7 @@ synthetic dithering estimator on the same data that recovers −45 to −51 with
 
 ## Discussion
 
-For short-horizon prediction the well is close to dry, and saying so is worth more than another
-increment would have been. The trajectory, meaning the value, its rate of change and its curvature,
+For short-horizon prediction the available signals are close to exhausted. The trajectory, meaning the value, its rate of change and its curvature,
 is essentially all the signal available. No non-sensor precursor gives specific early warning of an
 unannounced meal, and the residual error concentrates in regimes driven by inputs that are not
 recorded anywhere, which makes it irreducible rather than merely unsolved. The programme stopped
@@ -175,9 +174,8 @@ forecast, marginally, and it detects a meal about five minutes before the reacti
 in the engine.
 
 The finding that shaped everything afterwards is the split between the sensor and the controller.
-The database forecaster is the better sensor, decisively and for free, and it is a catastrophic
-controller substrate, because a policy built on a model that believes insulin does nothing would
-increase the dose without limit. Prediction accuracy and correct causal dose response are different
+The database forecaster is the better sensor and an unusable controller substrate, because a policy
+built on a model implying insulin does nothing would increase the dose without limit. Prediction accuracy and correct causal dose response are different
 properties, and optimising the first does not deliver the second. That is why the programme learns
 freely on the offline record for anything that predicts, detects or estimates, and refuses to let any
 of it choose a dose.

@@ -1,4 +1,4 @@
-# A brake credited with a third of time above range, priced by outcome
+# The composed brake, the caps and the floor beneath them
 
 What a strictly defined suppression set contains, how much of it was safely recoverable, and why a
 product of reasonable multipliers is not reasonable.

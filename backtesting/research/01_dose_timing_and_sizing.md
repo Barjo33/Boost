@@ -1,4 +1,4 @@
-# Moving insulin earlier in a meal, and the cost of adding to it
+# Dose timing and dose size at meals
 
 Whether the advantage of a more reactive dosing algorithm lies in acting sooner or in acting harder,
 and what separates the two empirically.
@@ -8,7 +8,7 @@ and what separates the two empirically.
 Almost every proposed change to a meal-dosing algorithm either moves insulin earlier within a meal
 or adds insulin that was not previously given, and the two are routinely conflated in discussion.
 Classifying every dosing difference between the shipped algorithm and its predecessor into those two
-categories and pricing each against the glucose that followed separates them decisively: movement is
+categories and pricing each against the glucose that followed separates them: movement is
 harm-neutral, while addition carries approximately fifteen percentage points of additional
 hypoglycaemia. The gate holding the algorithm in its observing state before commitment blocks
 between 26 and 29 per cent of commitments that preceded a glucose above 180 mg/dL, which is the

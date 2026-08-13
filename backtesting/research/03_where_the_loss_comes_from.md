@@ -1,4 +1,4 @@
-# Attributing every excursion to the mechanism that started it
+# Attribution of time outside range to proximate mechanism
 
 Where time outside range actually comes from, which of it was foreseeable, and what a
 forward-looking feature does to a causal ranking.

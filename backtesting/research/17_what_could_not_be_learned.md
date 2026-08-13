@@ -1,4 +1,4 @@
-# Four searches for the decision that goes wrong, all returning chance
+# Negative results in prediction and detection
 
 The negative results behind a rule against learning on the dose path, and the leakage that made one of
 them look positive.
@@ -108,7 +108,7 @@ step count and post-exertion fall differ enough that a single cross-participant 
 the relationship. That is the empirical case for per-participant activity thresholds rather than a
 global model.
 
-Habitual timing splits by event type and the split is decisive in one direction. For exercise onset,
+Habitual timing splits by event type. For exercise onset,
 a per-participant model reaches a median 0.779 against 0.672 for the cross-participant model, and
 every one of eight participants individually beats the cross-participant figure, so roughly 0.11 of
 area under the curve is left on the table by pooling. For meal onset the ordering reverses, 0.724
@@ -152,7 +152,7 @@ appear on both sides of a split. With eight to thirty participants, a model that
 has an enormous amount to memorise relative to the signal, and any validation that does not hold a
 participant out will reward it for doing so.
 
-The two results on transfer, activity failing to generalise and exercise timing being decisively
+The two results on transfer, activity failing to generalise and exercise timing being
 per-participant while meal timing is not, are the same measurement pointed at different questions,
 and together they set where personalisation belongs. The programme derives per-participant
 configuration deterministically and offline for exactly the quantities that do not transfer, and

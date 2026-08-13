@@ -1,4 +1,4 @@
-# A state estimator that is a good sensor and cannot be a controller
+# A per-person state estimator as forecaster and as controller substrate
 
 Why insulin gain is not identifiable inside a filter fitted to observational glucose, and what
 survives of a model predictive controller once it is not.
@@ -11,7 +11,7 @@ forecast-optimising controller. Two things had to hold: the forecaster had to be
 calibrated, and its response to insulin had to be correct, since a controller works by asking what
 happens if it doses differently. The first holds. After calibration the thirty minute band achieves 85
 per cent coverage and the sixty minute band 91, and as a detector of falls it beats the incumbent
-predictors decisively, firing on one third to one half the false alarms at equal catch, where the
+predictors, firing on one third to one half the false alarms at equal catch, where the
 incumbent cannot reach a false alarm rate below about 0.26 and 0.36 whatever threshold is chosen. As a
 detector of rises it is worse than what already exists, at false alarm rates of 0.24 against 0.14 for
 the incumbent's eventual glucose figure and 0.10 for the naive trend, across 146 rises in seven
@@ -65,7 +65,7 @@ Recorded under `backtesting/scripts/2026-07-kairos-twin/`, principally `TWIN_HYP
 As a forecaster the estimator is good. After calibration the thirty minute band achieves 85 per cent
 coverage and the sixty minute band 91.
 
-As a detector of falls it beats the incumbent's own predictors decisively. At equal catch of real lows
+As a detector of falls it beats the incumbent's own predictors. At equal catch of real lows
 it fires on one third to one half the false alarms, and the incumbent cannot reach a false alarm rate
 below about 0.26 for one of its predictors and 0.36 for the other whatever threshold is chosen.
 

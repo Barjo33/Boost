@@ -1,4 +1,4 @@
-# Making a weak predictor safe by making the action retractable
+# Anticipation of meals and exercise, and retractable action
 
 Where anticipation transfers between people and where it does not, and why a detector that is wrong a
 third of the time is usable when the dose can be withdrawn.

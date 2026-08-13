@@ -1,4 +1,4 @@
-# Where a more aggressive algorithm earns its advantage, and the gate that switches it off
+# Overnight performance, the night gate, and sleep detection
 
 The overnight and daytime performance of an amplifying dosing algorithm against its predecessor, and
 whether a learned bedtime is worth learning.

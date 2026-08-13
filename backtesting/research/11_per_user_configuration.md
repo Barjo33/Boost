@@ -1,4 +1,4 @@
-# Four online controllers that converge on the configuration they were built to beat
+# Per-participant configuration, derived offline and adjusted online
 
 Why a dosing knob adjusted against observed outcomes responds to noise, and what the revert rate
 reveals.

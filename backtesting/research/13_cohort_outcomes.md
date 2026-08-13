@@ -1,4 +1,4 @@
-# A generation change that is outcome-neutral, and why that is consistent with the levers being real
+# Cohort outcomes across a change of algorithm generation
 
 Three approaches to the same migration comparison, and the two measurement choices that change the
 answer.

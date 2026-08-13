@@ -1,4 +1,4 @@
-# 00 The programme
+# The programme
 
 What the Boost investigations were able to answer, what they were not, and the standards the
 series holds itself to.

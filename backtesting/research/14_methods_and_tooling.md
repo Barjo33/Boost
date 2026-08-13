@@ -1,4 +1,4 @@
-# Instruments that make the answerable questions cheaper without making the unanswerable ones tractable
+# Simulator fidelity and the analysis harness
 
 A simulator that fails in one direction, an evaluation that conditioned on survival, and a harness
 that runs the shipped engine from analysis code.
