@@ -107,6 +107,22 @@ constraint, and their limits. Simulator fidelity graded across six levels, faili
 by being uniformly too easy; the survival-conditioning error that flattered an earlier assessment;
 and the harness that drives the real engine from analysis code at 0.991 fidelity.
 
+## Citations and provenance
+
+Each paper names the analysis folder its figures come from, in the form
+`backtesting/scripts/2026-07-residency/` and similar. Those folders hold the scripts, the raw
+reports and the intermediate tables, and they live in a separate private repository alongside the
+algorithm source. They are not reproduced here.
+
+A reader of this repository therefore cannot follow a citation through to the code, and that is a
+real limitation rather than an oversight. The citations are given so that anyone with access to the
+analysis repository can find the exact script that produced a figure and re-run it, and so that the
+provenance of every number in this series is recorded even where it cannot be followed from here.
+
+The underlying data cannot be published in any case. It is the continuous glucose and insulin record
+of a small number of identifiable people who consented to their data being used for this work and
+not to its release.
+
 ## Conventions
 
 Participants are identified by letter. Figures carry intervals, computed by resampling participants
