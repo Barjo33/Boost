@@ -1,133 +1,120 @@
 # In-silico trial of the confirm dose, one participant, thirty days (2026-08-13)
 
-*Reproduce: `insilico_confirm.py`. Self, 29.8 days to 2026-08-13 21:15, 8,518 sensor readings,
-84 confirms carrying 165.9 U. Sensitivity taken from the record at each confirm: median
-111 mg/dL/U, range 41 to 216. Multiplier drawn uniformly on [0.5, 1.0] per confirm, 400
-replicates.*
+*Reproduce: `insilico_v2.py`. Self, 30 days to 2026-08-13 21:15. 84 confirms carrying 165.9 U,
+median 1.70 U. Sensitivity taken from the record at each confirm, median 111 mg/dL/U. Outcomes are
+counted per confirm over a four-hour window. `insilico_confirm.py` is the earlier construction and
+is retained only because its diagnostics are cited below.*
 
-## What is computed
+## The counterfactual, and where it stops being valid
 
-Each entry into CONFIRMED has its delivered dose scaled by a randomly drawn multiplier, and the
-glucose series is recomputed with every draw in place, so confirms that overlap in time accumulate
-rather than being scored in isolation.
+Reducing a confirm does not change the meal, so the carbohydrate side of the trajectory is held as
+recorded and only the insulin side recomputed: insulin not delivered never acts, so glucose is
+higher by the sensitivity at that confirm times the removed dose times the fraction of that bolus
+which would have acted by then.
 
-The counterfactual is one-armed. A smaller dose does not change the meal, so the carbohydrate side
-is held exactly as recorded and only the insulin side recomputed: insulin not delivered never acts,
-so glucose is higher by the sensitivity at that confirm times the removed dose times the fraction
-of that bolus which would have acted by then.
+That fraction rises to one and stays there, which makes the modelled lift a permanent step. Summed
+across a thirty-day record it does not converge: eighty-four steps of roughly a hundred mg/dL each
+drive the modelled mean glucose into the thousands. Glucose is regulated and returns toward a set
+point, so the approximation holds for one event over a few hours and cannot be carried across the
+record. Masking the series to windows does not repair it either, because it puts a discontinuity at
+each boundary and any time-weighted percentage computed over the masked set inherits it.
 
-The bound applies only while the removed insulin is still acting. Carried further it accumulates
-without limit, since the modelled lift never washes out, and superposing eighty-four confirms
-across thirty days produces a mean glucose in the thousands. Everything below is therefore computed
-inside a five-hour window after each confirm, which covers 42 per cent of the record, and the
-observed baseline is computed on the same masked set so the comparison is like for like.
+Everything here is therefore counted per confirm, as whether the nadir in that window cleared 70
+and whether the peak crossed 180. No quantity is summed across the record.
 
-## The observed period
+## What the record cannot tell us
 
-| | whole record | inside the windows |
-|---|---|---|
-| TBR < 70 | 5.63% | 6.54% |
-| TBR < 54 | | 0.74% |
-| TIR | 86.6% | 77.6% |
-| TAR | | 15.8% |
-| mean | 118 | 131 |
-| low episodes | | 35 |
+The model assumes removing d units raises glucose by ISF x d x acted(t). Across 80 confirms the
+lowering it predicts by the nadir correlates with the observed peak-to-nadir fall at minus 0.03. A
+larger confirm accompanies a larger meal, and the two move together, so the record contains no
+usable check on the insulin effect. This is the confounding that puts the observational dose
+response near 6 mg/dL per unit against a dithered estimate near 45.
 
-The windows are worse than the record as a whole on every measure, which is what would be expected
-if the confirm is implicated in the excursions at both ends.
+Absolute effect sizes below are therefore uncalibrated. The insulin effect is scaled from half to
+double so that the sensitivity of each conclusion to that assumption is visible.
 
-## The randomised trial
+## The record
 
-| measure | observed | median across replicates | 2.5% | 97.5% | change |
-|---|---|---|---|---|---|
-| TBR < 70 | 6.54 | 0.63 | 0.25 | 1.32 | −5.91 |
-| TBR < 54 | 0.74 | 0.05 | 0.00 | 0.19 | −0.69 |
-| TIR | 77.64 | 55.90 | 50.71 | 60.61 | −21.74 |
-| TAR | 15.82 | 43.40 | 38.71 | 48.85 | +27.57 |
-| mean | 131 | 179 | 172 | 184 | +47 |
-| episodes | 35 | 3 | 1 | 8 | −32 |
+Of 84 confirms, 42 are followed by a glucose below 70 within four hours and 12 by one below 54.
+Half of all confirms sit in front of a low.
 
-A median of 41.6 U withheld of the 165.9 U committed, or 25 per cent.
+## Randomised assignment
 
-The replicate interval is the spread of the random assignment, which is what a real trial would
-draw from once. It is not the spread of the participant or of the estimate.
+Multiplier drawn per confirm, 400 replicates, at the recorded sensitivity.
 
-## The deterministic dose response
+| range | windows with a low | severe | newly above 180 | U withheld |
+|---|---|---|---|---|
+| observed | 42 | 12 | 0 | 0 |
+| [0.85, 1.00] | 25 [21, 30] | 5 [3, 8] | 7 [4, 10] | 12.5 |
+| [0.70, 1.00] | 18 [14, 23] | 3 [1, 6] | 12 [8, 15] | 24.8 |
+| [0.50, 1.00] | 13 [9, 18] | 2 [0, 5] | 17 [13, 21] | 41.2 |
+| [0.50, 0.90] | 8 [6, 11] | 1 [0, 2] | 20 [16, 23] | 49.7 |
 
-| multiplier | U withheld | TBR<70 | TBR<54 | TIR | TAR | mean | episodes |
-|---|---|---|---|---|---|---|---|
-| 1.00 | 0.0 | 6.54 | 0.74 | 77.6 | 15.8 | 131 | 35 |
-| 0.90 | 16.6 | 1.13 | 0.14 | 76.5 | 22.3 | 150 | 6 |
-| 0.80 | 33.2 | 0.36 | 0.03 | 65.0 | 34.6 | 169 | 3 |
-| 0.70 | 49.8 | 0.16 | 0.00 | 49.9 | 49.9 | 188 | 0 |
-| 0.60 | 66.4 | 0.08 | 0.00 | 36.4 | 63.5 | 206 | 0 |
-| 0.50 | 83.0 | 0.03 | 0.00 | 26.0 | 74.0 | 225 | 0 |
+The interval is the spread of the random assignment, which is what a single trial would draw from
+once. It is not the uncertainty in the effect.
 
-Almost all of the hypoglycaemia benefit is bought by the first ten per cent of the reduction.
-Going from 1.00 to 0.90 takes time below 70 from 6.54 to 1.13 and episodes from 35 to 6, at
-16.6 U. Every further step buys little below range and costs heavily above it.
+## Fixed multiplier, against the assumed insulin effect
 
-## Which side of this to believe
+Lows / severe / newly above 180.
 
-The loop is not re-run. Under a smaller confirm the algorithm would have seen higher glucose and
-dosed into it, and none of that is modelled, so the longer the window the more the estimate assumes
-the algorithm sat still. Splitting the window shows how that bites.
+| multiplier | U withheld | effect x0.5 | effect x1.0 | effect x2.0 |
+|---|---|---|---|---|
+| 1.00 | 0.0 | 42 / 12 / 0 | 42 / 12 / 0 | 42 / 12 / 0 |
+| 0.95 | 8.3 | 38 / 10 / 4 | 29 / 8 / 5 | 20 / 3 / 9 |
+| 0.90 | 16.6 | 29 / 8 / 5 | 20 / 3 / 9 | 11 / 1 / 16 |
+| 0.85 | 24.9 | 20 / 3 / 7 | 15 / 3 / 13 | 8 / 0 / 22 |
+| 0.80 | 33.2 | 20 / 3 / 9 | 11 / 1 / 16 | 5 / 0 / 24 |
+| 0.70 | 49.8 | 15 / 3 / 13 | 8 / 0 / 22 | 0 / 0 / 26 |
+| 0.50 | 83.0 | 9 / 0 / 18 | 4 / 0 / 25 | 0 / 0 / 26 |
 
-| window | covers | change in TBR<70 | change in TBR<54 | change in TAR | TAR per point of TBR |
-|---|---|---|---|---|---|
-| 60 min | 12% | −3.35 | −1.03 | +8.24 | 2.5 |
-| 120 min | 23% | −5.79 | −0.88 | +10.75 | 1.9 |
-| 180 min | 31% | −6.33 | −0.91 | +17.76 | 2.8 |
-| 300 min | 42% | −6.37 | −0.74 | +34.07 | 5.3 |
+Two things hold across the whole grid and one does not.
 
-The hypoglycaemia benefit is essentially complete by three hours, at −6.33 of an eventual −6.37.
-The hyperglycaemia cost doubles between three hours and five, from +17.8 to +34.1, entirely because
-the model has the loop doing nothing for two further hours. The rising ratio is the unmodelled arm
-made visible.
+The direction holds. At every assumed insulin effect, reducing the confirm removes lows and adds
+highs, and severe lows fall faster than lows.
 
-The reading that follows is that the benefit side is reasonably estimated and the cost side is not.
-Time below range falls by roughly six percentage points at a 0.70 multiplier, most of it inside two
-hours of the confirm. The true cost above range is somewhere below the +17.8 measured at three
-hours, and well below the +34.1 at five.
+The magnitude does not. At a multiplier of 0.90 the lows remaining are 29, 20 or 11 depending on
+whether the insulin effect is half, as recorded, or double. That is the uncertainty the record
+cannot close.
 
-Both sides remain ceilings for a second reason: the recorded trajectory already contains whatever
-counter-regulation each low provoked, and a smaller dose would have provoked less.
+There is no knee in the curve. Benefit declines smoothly, at 29, 20, 15, 11, 8, 4 across the
+column, and the cost rises smoothly against it. Nothing about the shape marks out a natural
+stopping point, and the registered 0.70 is as defensible as any other value on it.
 
-## The cost of individual confirms
+## The confirms that carry it
 
-Each confirm halved with every other left alone, sorted by hypoglycaemia removed within its own
-window.
+Halved individually at the recorded sensitivity, ranked by how far the nadir moves.
 
-| when | dose | ISF | BG | IOB | U withheld | ΔTBR<70 | ΔTBR<54 | ΔTAR |
+| when | dose | ISF | BG | IOB | nadir | becomes | peak | becomes |
 |---|---|---|---|---|---|---|---|---|
-| Thu 16 22:17 | 2.05 | 141 | 145 | −0.14 | 1.03 | −46.7 | 0.0 | +51.7 |
-| Wed 22 13:40 | 1.56 | 104 | 132 | 0.61 | 0.78 | −31.7 | −8.3 | +18.3 |
-| Mon 03 12:26 | 1.65 | 131 | 127 | 0.34 | 0.83 | −25.0 | −5.0 | +41.7 |
-| Mon 10 17:46 | 3.75 | 68 | 137 | 0.96 | 1.88 | −21.1 | 0.0 | +71.9 |
-| Tue 21 14:05 | 2.20 | 98 | 144 | 0.78 | 1.10 | −20.0 | −5.0 | +46.7 |
-| Thu 13 17:10 | 4.50 | 48 | 183 | 1.49 | 2.25 | −18.4 | −8.2 | +44.9 |
-| Sun 02 15:51 | 2.25 | 81 | 266 | 2.50 | 1.12 | −18.3 | −5.0 | +20.0 |
+| Thu 23 14:45 | 1.45 | 198 | 136 | −0.09 | 62 | 183 | 279 | 290 |
+| Mon 03 09:26 | 1.95 | 147 | 148 | 0.27 | 51 | 150 | 179 | 274 |
+| Mon 20 16:17 | 3.00 | 95 | 142 | 0.72 | 56 | 153 | 260 | 315 |
+| Mon 10 17:46 | 3.75 | 68 | 137 | 0.96 | 59 | 154 | 183 | 214 |
+| Sat 25 19:30 | 1.55 | 126 | 164 | 0.17 | 67 | 161 | 247 | 276 |
+| Thu 30 09:55 | 1.30 | 179 | 165 | 0.61 | 65 | 158 | 221 | 248 |
+| Mon 10 10:06 | 4.50 | 59 | 204 | 2.41 | 63 | 152 | 266 | 322 |
 
-Fifty of the eighty-four confirms remove some time below range when halved; thirty-four change
-nothing below range at all, so the harm is not spread evenly and a little over a third of confirms
-are not implicated.
+Halving every confirm individually rescues 38 of the 42 windows containing a low and creates 25
+newly above 180. The recurring shape is a confirm at ordinary glucose, 122 to 165, with little
+insulin already present, which is the small-meal signature identified separately.
 
-The event that prompted this work appears sixth. The pattern in the top rows is a confirm at
-ordinary glucose, between 122 and 148, with little insulin already present, which is the small-meal
-signature identified separately.
+The nadirs in the counterfactual column, at 150 to 183, are where the uncalibrated insulin effect
+shows itself most plainly. A shift of 90 to 120 mg/dL from halving a single bolus is at the limit
+of what is credible and is a direct consequence of a sensitivity of 100 to 200 mg/dL/U combined
+with a linear model that never washes out.
 
 ## Conclusion
 
-For this participant over these thirty days, reducing the committed dose is a large intervention
-with a favourable shape at small reductions and a poor one beyond them. A ten per cent reduction
-removes most of the confirm-attributable hypoglycaemia, taking episodes from 35 to 6, at a cost
-above range that this method cannot price honestly but which is smaller than any figure in the
-table above.
+Half of this participant's confirms precede a low, which is the finding that does not depend on any
+modelling: it is counted from the record.
 
-That argues for testing a shallower reduction than the registered 0.70. The registered multiplier
-sits well past the point where the benefit has saturated, and buys almost nothing below range that
-0.90 has not already bought while costing several times as much above it.
+Reducing the confirm dose removes lows and adds highs in a smooth trade with no natural stopping
+point, and severe lows fall faster than lows across every assumption tested. That supports running
+the registered trial and gives no reason to prefer a different multiplier.
 
-Confidence: PROVISIONAL for the benefit side and SPECULATIVE for the cost side. One participant,
-84 confirms, a one-armed bound with the loop's response unmodelled, and no counterfactual for the
-carbohydrate arm.
+The absolute numbers should not be quoted. They rest on an insulin-effect model that the record
+cannot check, and they move by a factor of two to three across a plausible range for it.
+
+Confidence: SOLID for the observation that 42 of 84 confirm windows contain a low. SPECULATIVE for
+every counterfactual quantity, on a one-armed bound with an uncalibrated insulin effect, the loop's
+response unmodelled, and one participant.
