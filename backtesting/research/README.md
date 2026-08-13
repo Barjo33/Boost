@@ -107,6 +107,27 @@ constraint, and their limits. Simulator fidelity graded across six levels, faili
 by being uniformly too easy; the survival-conditioning error that flattered an earlier assessment;
 and the harness that drives the real engine from analysis code at 0.991 fidelity.
 
+**[15 The two learned components that dose](15_learned_components_in_the_dose_path.md).** The only
+statistical objects allowed to change what the pump does: a pair of gradient-boosted tree models
+running on device. How the model class, the feature count and the deployment format were chosen,
+what the pre-deployment validation showed, and a field audit against the people now running them.
+The meal model replicates its training accuracy months later on a different cohort; the hypo model
+does not outrank the single glucose reading that is its own first feature, and is behind it at the
+horizons where acting is still possible.
+
+**[16 Forecasting and the information ceiling](16_forecasting_and_the_information_ceiling.md).**
+Whether a better forecast is available and whether it would help. The trajectory, its rate of change
+and its curvature are essentially all the signal there is: the physiological insulin decomposition
+and the sensitivity regime both make the forecast worse. Contains the result that reoriented the
+programme, which is that the best available forecaster implies insulin does almost nothing and would
+therefore make a catastrophic controller.
+
+**[17 What could not be learned](17_what_could_not_be_learned.md).** The negative results that
+produced the rule against learning on the dose path. Four attempts to identify which decisions go
+wrong, all returning chance; a fourteen-point improvement that was entirely participant leakage; and
+the two transfer tests that decide where personalisation belongs, exercise timing being decisively
+per-person and meal timing not.
+
 ## Citations and provenance
 
 Each paper names the analysis folder its figures come from, in the form
