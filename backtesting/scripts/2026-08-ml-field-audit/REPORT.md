@@ -145,6 +145,94 @@ cohort median was 0.364. They were not re-placed when the median fell to 0.038. 
 engages on 0.49 to 27.7 per cent of scored cycles depending on the user, and the tier downgrade on
 0.00 to 2.26 per cent, which is a fifty-fold spread nobody selected.
 
+## Why the tenth decile is wrong
+
+Three explanations were open. The follow-up separates them (`calibration_followup.py`).
+
+The model reads its input correctly at the extremes. Cycles scoring above 0.60 sit at a mean
+glucose of 66.4 mg/dL with a tenth percentile of 52, which is where the direct probe says the
+model should be returning those values. Cycles scoring below 0.05 sit at 144.2. The band that
+does not fit is 0.30 to 0.45, at a mean glucose of 122.9 with mean insulin on board of 1.27,
+where the probe says the model should return about 0.10.
+
+The model over-predicts at every glucose, by a factor falling from 8.3 below 70 mg/dL to 1.4
+above 140, while discrimination within each band stays between 0.59 and 0.68. A model that ranks
+correctly and scores too high everywhere is mis-scaled rather than mis-informed, which is
+consistent with the event being rarer in this cohort than in training.
+
+The mechanism behind the anomalous band is the ring buffer. Thirty six of the 53 features come
+from a persisted six-cycle history, and on an empty buffer the lag values default to the current
+cycle's value where the training pipeline used a median fill. Taking a cycle as cold when fewer
+than six contiguous cycles precede it, and a break of thirty minutes as breaking contiguity, 33
+per cent of scored cycles are cold. Within matched glucose bands, cold cycles score higher than
+warm ones by 0.043 at 80 to 110 mg/dL, 0.032 at 110 to 140 and 0.013 above 140, every interval
+clear of zero, and lower by 0.053 below 80.
+
+| score band | n | cold share | mean glucose |
+|---|---|---|---|
+| 0.00 to 0.05 | 35,624 | 24.0% | 144.2 |
+| 0.05 to 0.10 | 8,167 | 53.9% | 108.3 |
+| 0.10 to 0.30 | 3,633 | 56.5% | 99.1 |
+| 0.30 to 0.45 | 1,562 | 40.2% | 122.9 |
+| 0.45 to 0.60 | 1,552 | 63.0% | 102.6 |
+| 0.60 to 1.01 | 395 | 48.1% | 66.4 |
+
+At the operating point this costs a real amount. Restricted to glucose between 100 and 160 mg/dL,
+where the probe says the model should be well below the cut, cold cycles cross 0.30 on 8.61 per
+cent of cycles against 3.92 for warm ones, a difference of 4.69 points with an interval from 4.11
+to 5.27 and a ratio of 2.20.
+
+Discrimination is unaffected, at 0.654 on cold cycles against 0.651 on warm ones. The cold path
+shifts the level of the score without destroying its ranking, which is exactly the signature of a
+calibration defect rather than a broken model, and it matches what the audit found: the area under
+the curve is respectable and the calibration is not.
+
+## The firing spread is correct behaviour
+
+The spread in how often the damper engages, from 0.49 per cent of cycles for one participant to
+27.6 for another, tracks the participants' own hypoglycaemia rates. The correlation between
+firing rate and each participant's own rate is +0.820 with an interval from +0.364 to +0.980.
+
+| user | n | own hypo rate | fires above 0.30 | AUC |
+|---|---|---|---|---|
+| A | 5,083 | 0.0065 | 2.62% | 0.520 |
+| B | 6,476 | 0.0327 | 4.46% | 0.627 |
+| C | 4,251 | 0.0790 | 22.84% | 0.538 |
+| D | 4,855 | 0.0735 | 27.60% | 0.569 |
+| E | 5,877 | 0.0083 | 2.37% | 0.609 |
+| F | 5,887 | 0.0053 | 0.49% | 0.607 |
+| G | 8,375 | 0.0591 | 5.72% | 0.635 |
+| H | 2,806 | 0.0103 | 0.93% | 0.707 |
+| I | 1,451 | 0.0145 | 1.17% | 0.640 |
+| tim | 5,872 | 0.0467 | 0.99% | 0.590 |
+
+A damper engaging more often for someone who goes low more often is the intended behaviour. The
+one participant who does not fit is tim, with the third highest hypoglycaemia rate and almost the
+lowest firing rate.
+
+## The operating point
+
+Pooled across the cohort the shipped 0.30 cut fires on 6.83 per cent of cycles and selects a
+population with an observed rate of 0.0687 against a base of 0.0361, a lift of 1.90. The cut is
+therefore selecting genuinely elevated risk, and the defect is in the magnitude of the score
+rather than in whether the damper engages on the right cycles.
+
+Quantiles of the current distribution place an equivalently rare cut, and show that the very top
+of the range is not the highest-risk population.
+
+| quantile | score | fires | observed rate above |
+|---|---|---|---|
+| 50% | 0.030 | 49.89% | 0.0521 |
+| 75% | 0.057 | 24.84% | 0.0688 |
+| 90% | 0.163 | 9.98% | 0.0726 |
+| 95% | 0.385 | 4.99% | 0.0700 |
+| 99% | 0.568 | 1.00% | 0.0609 |
+| 99.5% | 0.642 | 0.50% | 0.0510 |
+
+The observed rate peaks around the ninetieth percentile and falls above it, which is the
+contamination showing through: the highest scores include cold-path cycles at normal glucose
+whose forward risk is ordinary.
+
 ## Verdict
 
 The meal model is doing what it was built to do and the figures support leaving it alone. Confidence
@@ -164,15 +252,26 @@ transfer within a population rather than across populations; and the on-device f
 training-time vector. The last is checkable by logging the assembled vector and scoring it offline
 through the training-time library, and that is the obvious next step.
 
-The actionable finding is the threshold. Both cuts were placed against a distribution whose median
-has since moved by an order of magnitude, and nothing re-placed them. Recalibrating them against the
-current output distribution needs no retraining, does not change the model's ranking, and would
-restore the firing rate to whatever the policy actually intends.
+Two actions follow, and the first is an engineering fix rather than a statistical one. The
+cold-start branch of the feature builder should impute the lag features the way the training
+pipeline did, or the model should decline to score until the buffer is warm. A third of cycles
+currently run on the cold path, and at normal glucose it doubles the rate at which the damper
+engages.
+
+The second is the threshold. Both cuts were placed against a distribution whose median has since
+moved by an order of magnitude, and nothing re-placed them. Recalibrating needs no retraining and
+does not change the model's ranking, but it should follow the cold-start fix rather than precede
+it, since fixing the imputation will move the distribution again.
 
 ## What not to conclude
 
 This does not say the damper is unsafe. It reduces insulin, never adds it, is floored at half the
 budget, and sits under the composed floor at 30 per cent of baseline. Nor does it say the model is
-broken: probed directly it responds to glucose correctly and monotonically. The finding is that a
-threshold is a statement about a distribution, and replacing the model beneath it moved the
-distribution without moving the threshold.
+broken: probed directly it responds to glucose correctly and monotonically, its ranking is intact
+on both the cold and the warm path, and at the shipped cut it selects a population with 1.90 times
+the base rate. Nor is the spread in firing rates a fault, since it tracks the participants' own
+hypoglycaemia rates at +0.820.
+
+What the evidence supports is narrower and fixable: a third of cycles score through an imputation
+path that does not match the one the model was trained under, which inflates the score at normal
+glucose and doubles the rate at which the damper engages there.

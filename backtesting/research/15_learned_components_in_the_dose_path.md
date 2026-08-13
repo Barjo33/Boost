@@ -20,10 +20,12 @@ model, did not: on its own era it reaches 0.606 against 0.605 for glucose alone,
 0.018 with an interval from minus 0.037 to plus 0.113. Any figure computed across the boundary
 between the two is a mixture rather than a measurement, because the score column pools outputs from
 models with different targets and different output scales. Calibration holds through nine deciles and
-fails in the tenth, which predicts 0.392 and observes 0.072. The consumption thresholds were placed
-against the earlier model's output distribution and were not revisited when the distribution moved:
-the cohort median score fell from 0.364 to 0.038 in the week of the changeover, and the damper now
-engages on between 0.49 and 27.7 per cent of cycles depending on the participant.
+fails in the tenth, which predicts 0.392 and observes 0.072. The mechanism is a train-and-serve
+difference in imputation: 36 of the 53 features come from a persisted six-cycle buffer whose empty
+state repeats the current value where training used a median fill, 33 per cent of scored cycles run
+on that path, and within matched glucose bands they score 0.032 to 0.043 higher, which at glucose
+between 100 and 160 mg/dL doubles the rate at which the damper engages, 8.61 per cent against 3.92.
+Discrimination is unaffected, at 0.654 on those cycles against 0.651.
 
 ## Introduction
 
@@ -137,9 +139,26 @@ Calibration holds through nine deciles, from 0.013 predicted against 0.017 obser
 0.075, and fails in the tenth, which predicts 0.392 and observes 0.072 against a base rate of 0.036.
 The damper is 1.000 through the first nine deciles and 0.934 in the tenth.
 
+The state the high-scoring cycles occupy locates the failure. Cycles above 0.60 sit at a mean glucose
+of 66.4 mg/dL with a tenth percentile of 52, which is where the probe says those scores belong, and
+cycles below 0.05 sit at 144.2. The band that does not fit is 0.30 to 0.45, at a mean glucose of 122.9
+with 1.27 U on board, where the probe says the model should return about 0.10. Across every glucose
+band the model over-predicts, by a factor falling from 8.3 below 70 mg/dL to 1.4 above 140, while
+discrimination within each band holds between 0.59 and 0.68.
+
+Taking a cycle as running on a partly-filled buffer when fewer than six contiguous cycles precede it,
+and a break of thirty minutes as breaking contiguity, 33 per cent of scored cycles qualify. Within
+matched glucose bands those cycles score higher than the rest by 0.043 at 80 to 110 mg/dL, 0.032 at
+110 to 140 and 0.013 above 140, every interval clear of zero, and lower by 0.053 below 80. Restricted
+to glucose between 100 and 160, where the probe places the model well below the threshold, they cross
+it on 8.61 per cent of cycles against 3.92, a difference of 4.69 points with an interval from 4.11 to
+5.27. Discrimination is unaffected, at 0.654 against 0.651.
+
 The cohort median score fell from 0.364 to 0.038 in the week of the changeover between the two models.
 The damper now engages on between 0.49 and 27.7 per cent of scored cycles depending on the
-participant, and the tier downgrade on between 0.00 and 2.26 per cent.
+participant, and that spread tracks each participant's own hypoglycaemia rate, at a correlation of
++0.820 with an interval from +0.364 to +0.980. Pooled, the shipped threshold fires on 6.83 per cent of
+cycles and selects a population with an observed rate of 0.0687 against a base of 0.0361.
 
 ## Discussion
 
@@ -157,23 +176,39 @@ cohort, and a leave-one-participant-out estimate bounds transfer within a popula
 across populations. The gap from 0.83 to 0.66 is larger than those explanations comfortably carry, and
 the residual is the honest open question.
 
-The threshold problem is the actionable finding. Both consumption thresholds were placed against the
-earlier model's output distribution, in which the cohort median score was 0.364, and they were not
-revisited when the model beneath them was replaced and the median fell to 0.038. A threshold is a
-statement about a distribution, not about a probability, and replacing the model moved the
-distribution without moving the threshold. The visible consequence is a fifty-fold spread in how often
-the damper engages across participants, from 0.49 to 27.7 per cent, which is not a policy anyone chose.
-
 The tenth decile is the one place the model should not be believed, and it is where the thresholds
 operate. Predicting 0.392 and observing 0.072 in the region that drives the damper means the damper's
 magnitude is not proportional to the risk it is responding to, even though its direction is right. The
 on-policy confound does not account for it: the damper in that decile is 0.934, a reduction of about
 seven per cent of the budget, which cannot take a genuine 39 per cent event rate down to 7.
 
-Recalibrating the thresholds against the current output distribution is a mechanical exercise and is
-the recommendation. It does not require retraining, it does not change the ranking the model produces,
-and it would restore the firing rate to whatever the policy intends rather than leaving it to a
-distribution nobody chose.
+The mechanism is a difference between how a feature was constructed in training and how it is
+constructed at inference. Thirty six of the 53 features are lags drawn from a persisted buffer, and an
+empty buffer is filled with the current cycle's value where the training pipeline used a median fill.
+The two disagree most where the current value is unrepresentative of the recent past, which is why the
+inflation appears at ordinary glucose and reverses below 80. A third of cycles run on that path, which
+is high because the decision series is interrupted often, and the effect at the operating point is to
+double the rate at which the damper engages at glucose the model itself considers unremarkable. The
+signature is diagnostic: an error in a feature that carries history will move the level of a score
+without disturbing its ranking, and that is exactly the pattern, with discrimination identical on the
+two paths and calibration not.
+
+That reorders the recommendations. The imputation should be corrected to match training, or the model
+should decline to score until the buffer has filled, and only then should the thresholds be re-placed,
+since correcting the imputation will move the distribution again. Recalibrating first would fit a
+threshold to a contaminated distribution.
+
+The consumption thresholds do need re-placing on their own account. Both were set against the earlier
+model's output distribution, in which the cohort median was 0.364, and were not revisited when the
+median fell to 0.038. A threshold is a statement about a distribution rather than about a probability,
+and replacing the model moved the distribution while leaving the threshold where it was.
+
+What is not a fault is the spread in firing rates. It correlates with each participant's own
+hypoglycaemia rate at +0.820 with an interval from +0.364 to +0.980, so a damper engaging on a
+quarter of cycles for one participant and half a per cent for another is largely the component doing
+what it was built to do. At the shipped cut it selects a population with 1.90 times the base rate,
+which is real discrimination at the operating point, and the deficiency is in the magnitude of the
+response rather than in whether it engages on the right cycles.
 
 Two documentation discrepancies sit underneath all of this and are worth recording because they are what
 made the audit hard to interpret. The consuming code's own comment, the reader document and the branch
