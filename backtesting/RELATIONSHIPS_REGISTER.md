@@ -51,6 +51,11 @@ A record of the data relationships, dosing levers, mechanisms and models we've e
 ### Prediction and models
 | Relationship / lever | Finding | Evidence | Status |
 |---|---|---|---|
+| Commit-to-peak interval → post-commit low | Commits whose glucose peak arrives within 10 min are followed by a low 26.8% vs 16.0%, +0.108 [+0.055, +0.147]. Stable across every cut from 0 to 30 min (+0.112 to +0.138), 8/9 users. Beats delta_accl (0.498) and every other quantity at the commit | 2026-08-13 `2026-08-commit-peak-timing/`, 2,505 commits | Attribution only, NOT a lever: the interval uses post-commit data |
+| Anticipating that interval at the commit | Predictable at 0.731 [0.701, 0.770] out of sample, but the prediction does NOT separate the low (0.448 [0.404, 0.499], wrong direction). Glucose alone predicts an early peak at 0.720, so the model is a glucose detector and glucose is inversely associated with the low. The early peaks it MISSES are the harmful ones: n=145, low rate 0.352 at median BG 131 vs n=172, 0.198 at BG 166 | same folder, `predict_peak.py` | Discarded. Predictable component is the benign component |
+| Twin appearance rate (Ra) at the commit | Cannot see it, for a structural reason. Ra is at its own 30-min maximum on 93.2% of commits and above 0.95 of it on 96.4%, so the discriminator has no spread. Ra is inferred FROM glucose and cannot lead it | 2026-08-13, 221 commits with estimator fields | Discarded. Needs a carb observation independent of glucose |
+| Meal detection from the trajectory | A declared meal separates from an unannounced rise at 0.805 (10 min after onset) and 0.975 (30 min), participants held out | 2026-08-13 `2026-08-carb-signature/`, 592 meals vs 2,883 rises | Detection is not the constraint |
+| Meal SIZE from the trajectory | Not readable at any useful horizon. Small (<20 g) vs large (>40 g) held out by participant: 0.267 at 10 min, 0.508 at 45 — below chance early, i.e. the relationship inverts between people. As a quantity, correlation negative at every horizon, MAE 18-21 g vs 13.2 g for predicting the median. Within-user, the best-powered participant sits at chance | same folder | Discarded. Closes dose-sizing-to-the-meal |
 | IOB@30min prediction | Trustworthy | MAE 21, night bias ~0, Parkes A+B 98.9% | Usable |
 | UAM prediction | Upper bound on unchecked climbs | +20/+48 on climbs | Interpret as a bound |
 | Forward high / low predictability | Predictable an hour out | grouped-OOS AUC 0.83 / 0.78 | Foreseeability layer |
@@ -115,6 +120,11 @@ A record of the data relationships, dosing levers, mechanisms and models we've e
 ### Models, methods, and corrected effect sizes
 | Item | Why discarded / corrected | Evidence |
 |---|---|---|
+| Post-meal exercise "crashers carry LESS insulin" | WITHDRAWN. Rested on pooled absolute-unit IOB across participants whose TDD spans 16-58 U (3.5x) with one on U200. Between-participant correlation of median IOB at onset with own low rate is -0.388, which pulls the pooled association toward inversion. Standardised by own TDD and resampling participants: 0.549 [0.512, 0.604], every participant above 0.5, median IOB 1.76 U where a low followed vs 1.36 where none did — the ORDINARY direction | 2026-08-13 `2026-08-postmeal-exercise-recheck/`, 157 events, 5 users |
+| ml_hypo_risk as a single quantity | The column pools THREE model generations with different targets and output scales, nothing marks the boundary. Cohort median score falls 0.364 → 0.038 in the week of 2026-06-29. Any figure computed across it is a mixture | 2026-08-13 `2026-08-ml-field-audit/` |
+| One-armed counterfactual summed across a record | The acted-fraction kernel rises to 1 and STAYS there, so a modelled lift is a permanent step; 84 confirms x ~100 mg/dL drives modelled mean glucose to 8,290. Windowing does not repair it, it relocates the discontinuity. Only per-event framing is defensible | 2026-08-13 `2026-08-confirm-insilico/` |
+| Tightening the hypo threshold to fix counterfactual credulity | Does NOT work and goes the wrong way. Share of UNEXPLAINED lows the model claims to remove rises 0.51 → 0.64 moving from 70 to the TING floor of 63, because the shallow lows leave the numerator and the lift clears the deep ones anyway. The credulity is in the size of the lift | same folder |
+| ISF x dose x acted as a calibrated effect | Cannot be calibrated from the record. Predicted lowering by the nadir correlates with the observed peak-to-nadir fall at -0.03 across 80 confirms, because larger confirms accompany larger meals | same folder |
 | Optuna hypo-model tuning | In-sample gain was leakage | +14 pp CV → +0.7 pp honest LOUO; production model not replaced |
 | ISF EMA overlay equivalence | Not clinically equivalent | within ±5% on only 28–58% of cycles |
 | delta_accl ML retrain | Rejected on validation | 05-05 |
@@ -126,6 +136,14 @@ A record of the data relationships, dosing levers, mechanisms and models we've e
 | Learn insulin sensitivity (SI) from CGM | Non-identifiable observationally — latent meal appearance Ra absorbs any insulin gain; needs a within-user micro-bolus probe, not a model | 2026-07-18 8× invariance + clean-fall instability |
 
 ---
+
+### Confirm dose reduction, priced
+| Item | Finding | Evidence |
+|---|---|---|
+| Confirms preceding a low, counted | 198 of 591 confirms across 9 participants are followed by a glucose below 70 within 4h (0.34); 138 below the TING floor of 63 (0.23); 56 severe. Every participant above 0.13. C 0.35, D 0.32, self 0.30 at the TING floor. Depends on no modelling | 2026-08-13 `2026-08-confirm-insilico/`, 30 days |
+| Cost currency for a dose reduction | Insulin removed is NOT the cost; glucose exposure is, and it differs 8.5x by where the cut lands. Cutting a late commit to 0.85 costs 1.00 mg/dL.h and avoids 0.099 lows; a normal one costs 8.48 and avoids 0.119 | 2026-08-13 `2026-08-commit-dose-replay/` |
+| Targeting the late commit | Worth 6.6x uniform at matched multiplier with perfect foresight. A buildable detector (predicting the cost of cutting, not the timing) reaches ~2x, and a combined gentle-uniform-plus-deep-targeted policy saves only 2-9% at matched benefit; DEEP targeted cuts are worse than uniform because a prediction error is charged at full cost | same folder |
+| Attribution split for the in-silico trial | Only 214 of 591 confirms have a modelled deficit covering the observed peak-to-nadir fall; 141 of 198 lows sit after one the model cannot account for. The CONTROL: the reduction still removes 51% (0.64 at the TING floor) of the lows in the set it says it cannot explain, so effect sizes are inflated on both sets | 2026-08-13 `2026-08-confirm-insilico/cohort_trial.py` |
 
 ## Partial / unproven / unbuilt
 
