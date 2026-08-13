@@ -233,6 +233,76 @@ The observed rate peaks around the ninetieth percentile and falls above it, whic
 contamination showing through: the highest scores include cold-path cycles at normal glucose
 whose forward risk is ordinary.
 
+## The buffer replay, which settles it
+
+`feature_replay.py` rebuilds the 53-feature vector offline and scores it with the same exported
+model, so the reconstruction can be checked against the engine's own published output rather than
+argued from gap timing.
+
+Nine of the seventeen static features are direct columns. Six are derived exactly from columns that
+are present, using the definitions read out of `DetermineBasalBoostV3MLG3.kt`: `bg_above_target`,
+`iob_bolusiob` as `max(0, iob - basaliob)` which the engine computes itself, `sug_expectedDelta` as
+`round(bgi + (target - eventualBG) / 24, 1)`, `direction_num` as a seven-level bucket of
+`shortAvgDelta`, `sug_minDelta`, and `hour`. Two come from `boost_treatments`, which holds 181,372
+SMB rows. Only `iob_netbasalinsulin` is absent, and sweeping it across its plausible range moves the
+score by about 0.001, so imputing it at zero is not load-bearing.
+
+Two nuisance parameters are fitted per user on contiguous cycles only, where all three hypotheses
+produce identical vectors so the fit cannot favour any of them: the local time offset, which the
+record does not carry, and which stored total-daily-dose column the engine passed as `profile.TDD`.
+
+The reconstruction verifies.
+
+| user | n | tdd column | median abs error | within 0.01 |
+|---|---|---|---|---|
+| A | 5,083 | tdd_weighted8h | 0.0031 | 90.3% |
+| B | 6,476 | tdd_weighted8h | 0.0042 | 86.5% |
+| C | 4,251 | tdd | 0.0055 | 64.9% |
+| D | 4,855 | tdd | 0.0060 | 59.1% |
+| E | 5,877 | tdd_7d | 0.0032 | 93.9% |
+| F | 5,887 | tdd_weighted8h | 0.0037 | 89.5% |
+| H | 2,806 | tdd_blended | 0.0040 | 91.7% |
+| I | 1,451 | tdd_7d | 0.0034 | 88.9% |
+| tim | 5,872 | tdd_7d | 0.0028 | 95.5% |
+
+## The mechanism is staleness, not cold start
+
+`BoostMlFeatureBuilder.RingBuffer` has no time-based invalidation. `push` appends and trims to six,
+`lagged(n)` indexes backwards by position, the timestamp carried on each snapshot is never read, and
+the buffer is serialised to preferences and reloaded on start. After a break in the decision series
+it therefore still holds the six snapshots from before the break and hands them to the model as the
+previous five cycles.
+
+Three hypotheses scored on cycles where they diverge, against the published score. Median absolute
+error, lower is better, and the winner starred.
+
+| user | n post-break | carried | current | true |
+|---|---|---|---|---|
+| A | 2,269 | 0.0052 * | 0.0077 | 0.0069 |
+| B | 2,139 | 0.0066 * | 0.0109 | 0.0094 |
+| C | 2,329 | 0.0152 * | 0.0432 | 0.0307 |
+| D | 2,384 | 0.0081 * | 0.0238 | 0.0179 |
+| E | 1,948 | 0.0043 * | 0.0062 | 0.0057 |
+| F | 1,723 | 0.0041 * | 0.0063 | 0.0056 |
+| H | 1,174 | 0.0047 * | 0.0071 | 0.0066 |
+| I | 603 | 0.0052 * | 0.0068 | 0.0060 |
+| tim | 2,137 | 0.0052 * | 0.0086 | 0.0086 |
+
+Carried wins for all nine. The lag features after a break are whatever was last pushed, however old,
+which is what the code does and is not what the model was trained on.
+
+The distortion is not uniform. Taking the gap between the true-history and carried scores as the
+staleness penalty, it runs from 0.0008 to 0.0154 and concentrates in C and D, the two participants
+whose damper fires most, at 22.8 and 27.6 per cent, and whose model discriminates worst, at 0.538
+and 0.569. Across the nine the penalty correlates with firing rate at +0.907 and with per-user area
+under the curve at -0.502.
+
+That correlation cannot be interpreted causally on this sample. C and D also carry the two highest
+hypoglycaemia rates in the cohort, at 0.079 and 0.074, so genuine risk and score distortion are
+concentrated in the same two people and nine participants cannot separate them. What can be said is
+that the earlier attribution of the firing spread entirely to genuine per-participant risk is not
+safe, since a second explanation fits the same data equally well.
+
 ## Verdict
 
 The meal model is doing what it was built to do and the figures support leaving it alone. Confidence
@@ -252,11 +322,11 @@ transfer within a population rather than across populations; and the on-device f
 training-time vector. The last is checkable by logging the assembled vector and scoring it offline
 through the training-time library, and that is the obvious next step.
 
-Two actions follow, and the first is an engineering fix rather than a statistical one. The
-cold-start branch of the feature builder should impute the lag features the way the training
-pipeline did, or the model should decline to score until the buffer is warm. A third of cycles
-currently run on the cold path, and at normal glucose it doubles the rate at which the damper
-engages.
+Two actions follow, and the first is an engineering fix rather than a statistical one. The ring
+buffer should discard entries older than the lookback window it represents, so that a cycle
+arriving after a break is scored against a short buffer rather than against stale history. A third
+of cycles currently follow a break, and at normal glucose they cross the damper threshold at more
+than twice the rate of the rest.
 
 The second is the threshold. Both cuts were placed against a distribution whose median has since
 moved by an order of magnitude, and nothing re-placed them. Recalibrating needs no retraining and

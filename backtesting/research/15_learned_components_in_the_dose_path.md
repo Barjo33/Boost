@@ -20,12 +20,15 @@ model, did not: on its own era it reaches 0.606 against 0.605 for glucose alone,
 0.018 with an interval from minus 0.037 to plus 0.113. Any figure computed across the boundary
 between the two is a mixture rather than a measurement, because the score column pools outputs from
 models with different targets and different output scales. Calibration holds through nine deciles and
-fails in the tenth, which predicts 0.392 and observes 0.072. The mechanism is a train-and-serve
-difference in imputation: 36 of the 53 features come from a persisted six-cycle buffer whose empty
-state repeats the current value where training used a median fill, 33 per cent of scored cycles run
-on that path, and within matched glucose bands they score 0.032 to 0.043 higher, which at glucose
-between 100 and 160 mg/dL doubles the rate at which the damper engages, 8.61 per cent against 3.92.
-Discrimination is unaffected, at 0.654 on those cycles against 0.651.
+fails in the tenth, which predicts 0.392 and observes 0.072. The mechanism is stale history. Thirty six
+of the 53 features come from a persisted six-cycle buffer that is never invalidated by age, so a
+cycle arriving after a break in the decision series is scored against snapshots from before the
+break. Rebuilding the vector offline reproduces the engine's published score to a median absolute
+error of 0.0028 to 0.0060 per participant on contiguous cycles, and on cycles following a break the
+carried-history hypothesis beats both a cleared buffer and true contiguous history for all nine
+participants. A third of scored cycles follow a break, and at glucose between 100 and 160 mg/dL they
+cross the damper threshold on 8.61 per cent of cycles against 3.92 for the rest. Discrimination is
+unaffected, at 0.654 against 0.651.
 
 ## Introduction
 
@@ -182,33 +185,43 @@ magnitude is not proportional to the risk it is responding to, even though its d
 on-policy confound does not account for it: the damper in that decile is 0.934, a reduction of about
 seven per cent of the budget, which cannot take a genuine 39 per cent event rate down to 7.
 
-The mechanism is a difference between how a feature was constructed in training and how it is
-constructed at inference. Thirty six of the 53 features are lags drawn from a persisted buffer, and an
-empty buffer is filled with the current cycle's value where the training pipeline used a median fill.
-The two disagree most where the current value is unrepresentative of the recent past, which is why the
-inflation appears at ordinary glucose and reverses below 80. A third of cycles run on that path, which
-is high because the decision series is interrupted often, and the effect at the operating point is to
-double the rate at which the damper engages at glucose the model itself considers unremarkable. The
-signature is diagnostic: an error in a feature that carries history will move the level of a score
-without disturbing its ranking, and that is exactly the pattern, with discrimination identical on the
-two paths and calibration not.
+The mechanism is a difference between the history the model was trained on and the history it is
+given. Thirty six of the 53 features are lags drawn from a buffer that is persisted across restarts
+and trimmed only by length, never by age, so after a break in the decision series it still holds the
+snapshots from before the break and presents them as the preceding five cycles. A cycle arriving two
+hours after the last one is scored against a trajectory two hours old.
 
-That reorders the recommendations. The imputation should be corrected to match training, or the model
-should decline to score until the buffer has filled, and only then should the thresholds be re-placed,
-since correcting the imputation will move the distribution again. Recalibrating first would fit a
-threshold to a contaminated distribution.
+That this is what happens rather than a plausible story about what might happen is established by
+rebuilding the feature vector offline and scoring it with the same exported model. On contiguous
+cycles the reconstruction reproduces the engine's own published output to a median absolute error
+between 0.0028 and 0.0060 depending on the participant, which licenses treating the replay as the
+engine. On cycles following a break, three candidate histories were scored against the published
+value: the carried snapshots, a cleared buffer falling back to the current cycle, and the true
+contiguous history. The carried snapshots win for all nine participants, and by the widest margin
+for the two whose damper fires most.
+
+The signature is diagnostic in a way that was visible before the cause was: an error in a feature
+carrying history moves the level of a score without disturbing its ranking, which is exactly the
+pattern, with discrimination identical either side and calibration not.
+
+That reorders the recommendations. The buffer should discard entries older than the window it claims
+to represent, and only then should the thresholds be re-placed, since fixing it will move the
+distribution again. Recalibrating first would fit a threshold to a distorted distribution.
 
 The consumption thresholds do need re-placing on their own account. Both were set against the earlier
 model's output distribution, in which the cohort median was 0.364, and were not revisited when the
 median fell to 0.038. A threshold is a statement about a distribution rather than about a probability,
 and replacing the model moved the distribution while leaving the threshold where it was.
 
-What is not a fault is the spread in firing rates. It correlates with each participant's own
-hypoglycaemia rate at +0.820 with an interval from +0.364 to +0.980, so a damper engaging on a
-quarter of cycles for one participant and half a per cent for another is largely the component doing
-what it was built to do. At the shipped cut it selects a population with 1.90 times the base rate,
-which is real discrimination at the operating point, and the deficiency is in the magnitude of the
-response rather than in whether it engages on the right cycles.
+The spread in firing rates has two candidate explanations and this sample cannot separate them. It
+correlates with each participant's own hypoglycaemia rate at +0.820 with an interval from +0.364 to
++0.980, which would make a damper engaging on a quarter of cycles for one participant and half a per
+cent for another the component doing what it was built to do. It also correlates at +0.907 with how
+much that participant's scores are distorted by stale history. The two participants who dominate
+both correlations are the same two, and nine participants cannot tell a damper responding to real
+risk from one responding to a corrupted feature. At the shipped cut the damper does select a
+population with 1.90 times the base rate, so it is not firing at random, but how much of that is
+earned is not established.
 
 Two documentation discrepancies sit underneath all of this and are worth recording because they are what
 made the audit hard to interpret. The consuming code's own comment, the reader document and the branch
