@@ -1,0 +1,47 @@
+commits with a delivered dose: 1718 across 9 participants
+  observed low within 300 min: 0.338
+  median dose 1.20 U, median sensitivity 40 mg/dL/U
+  scaling to 0.70 of the committed dose
+
+========================================================================================
+WHAT THE REDUCTION BUYS, ON THE INSULIN ARM ONLY
+========================================================================================
+  Lows avoided is a ceiling: the recorded trajectory already contains the
+  counter-regulation the low provoked, which a smaller dose would have provoked less of.
+
+  arm                    commits  obs low  avoided     sev U removed    +mgdl.h U per low
+  uniform                  1718      581      313     132     828.5       19.9      2.65
+  oracle-late               161       67       29      16      74.1        0.5      2.55
+  oracle-small              855      337      170      70     394.7        3.7      2.32
+
+========================================================================================
+SENSITIVITY TO THE INSULIN CURVE AND TO THE SIZE OF THE REDUCTION
+========================================================================================
+
+      peak / DIA   mult  avoided   severe  U per low
+      45 / 360     0.50      424      158       3.26
+      45 / 360     0.70      329      135       2.52
+      45 / 360     0.85      211      107       1.96
+      55 / 360     0.50      403      154       3.43
+      55 / 360     0.70      313      132       2.65
+      55 / 360     0.85      201      101       2.06
+      75 / 360     0.50      374      146       3.69
+      75 / 360     0.70      280      125       2.96
+      75 / 360     0.85      177       94       2.34
+
+========================================================================================
+PER PARTICIPANT, UNIFORM ARM
+========================================================================================
+
+  user    commits  obs lows  avoided   share  U removed
+  A           260        42       24    0.57      183.4
+  B           348        90       51    0.57      194.5
+  C           273       121       59    0.49       98.3
+  D           177        88       21    0.24       72.2
+  E            39        11        7    0.64       14.0
+  F           211        53       30    0.57       99.4
+  H            56        13        9    0.69       35.9
+  I            16         7        3    0.43        4.7
+  tim         338       156      109    0.70      126.0
+
+wrote results.json

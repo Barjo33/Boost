@@ -1,0 +1,154 @@
+{
+  "n": 1718,
+  "mult": 0.7,
+  "arms": {
+    "uniform": {
+      "n": 1718,
+      "obs_lows": 581,
+      "avoided": 313,
+      "severe_avoided": 132,
+      "insulin_removed": 828.4676097596043,
+      "added_mgdl_hours_per_commit": 19.87287175268889,
+      "insulin_per_low_avoided": 2.6468613730338797
+    },
+    "oracle-late": {
+      "n": 161,
+      "obs_lows": 67,
+      "avoided": 29,
+      "severe_avoided": 16,
+      "insulin_removed": 74.08232870261746,
+      "added_mgdl_hours_per_commit": 0.46516228501986234,
+      "insulin_per_low_avoided": 2.5545630587109467
+    },
+    "oracle-small": {
+      "n": 855,
+      "obs_lows": 337,
+      "avoided": 170,
+      "severe_avoided": 70,
+      "insulin_removed": 394.6917822286661,
+      "added_mgdl_hours_per_commit": 3.6862059410590207,
+      "insulin_per_low_avoided": 2.321716366050977
+    }
+  },
+  "sensitivity": [
+    {
+      "peak": 45.0,
+      "mult": 0.5,
+      "avoided": 424,
+      "severe": 158,
+      "insulin": 1380.7793495993403
+    },
+    {
+      "peak": 45.0,
+      "mult": 0.7,
+      "avoided": 329,
+      "severe": 135,
+      "insulin": 828.4676097596043
+    },
+    {
+      "peak": 45.0,
+      "mult": 0.85,
+      "avoided": 211,
+      "severe": 107,
+      "insulin": 414.23380487980216
+    },
+    {
+      "peak": 55.0,
+      "mult": 0.5,
+      "avoided": 403,
+      "severe": 154,
+      "insulin": 1380.7793495993403
+    },
+    {
+      "peak": 55.0,
+      "mult": 0.7,
+      "avoided": 313,
+      "severe": 132,
+      "insulin": 828.4676097596043
+    },
+    {
+      "peak": 55.0,
+      "mult": 0.85,
+      "avoided": 201,
+      "severe": 101,
+      "insulin": 414.23380487980216
+    },
+    {
+      "peak": 75.0,
+      "mult": 0.5,
+      "avoided": 374,
+      "severe": 146,
+      "insulin": 1380.7793495993403
+    },
+    {
+      "peak": 75.0,
+      "mult": 0.7,
+      "avoided": 280,
+      "severe": 125,
+      "insulin": 828.4676097596043
+    },
+    {
+      "peak": 75.0,
+      "mult": 0.85,
+      "avoided": 177,
+      "severe": 94,
+      "insulin": 414.23380487980216
+    }
+  ],
+  "per_user": {
+    "A": {
+      "n": 260,
+      "obs_lows": 42,
+      "avoided": 24,
+      "insulin": 183.37500000000003
+    },
+    "B": {
+      "n": 348,
+      "obs_lows": 90,
+      "avoided": 51,
+      "insulin": 194.52934870135488
+    },
+    "C": {
+      "n": 273,
+      "obs_lows": 121,
+      "avoided": 59,
+      "insulin": 98.28593425323432
+    },
+    "D": {
+      "n": 177,
+      "obs_lows": 88,
+      "avoided": 21,
+      "insulin": 72.24000000000001
+    },
+    "E": {
+      "n": 39,
+      "obs_lows": 11,
+      "avoided": 7,
+      "insulin": 13.986782042335527
+    },
+    "F": {
+      "n": 211,
+      "obs_lows": 53,
+      "avoided": 30,
+      "insulin": 99.4253062698133
+    },
+    "H": {
+      "n": 56,
+      "obs_lows": 13,
+      "avoided": 9,
+      "insulin": 35.87250000000001
+    },
+    "I": {
+      "n": 16,
+      "obs_lows": 7,
+      "avoided": 3,
+      "insulin": 4.740913946425622
+    },
+    "tim": {
+      "n": 338,
+      "obs_lows": 156,
+      "avoided": 109,
+      "insulin": 126.01182454644069
+    }
+  }
+}
