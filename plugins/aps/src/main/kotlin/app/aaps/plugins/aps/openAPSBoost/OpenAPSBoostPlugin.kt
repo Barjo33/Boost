@@ -180,7 +180,11 @@ open class OpenAPSBoostPlugin @Inject constructor(
         .shortName(R.string.boost_shortname)
         .preferencesId(PluginDescription.PREFERENCE_SCREEN)
         .preferencesVisibleInSimpleMode(false)
-        .showInList {
+        .showInList { config.APS }
+        .description(R.string.description_boost),
+    aapsLogger, rh
+), APS, PluginConstraints {
+
 
     /** The volume-weighted dose shadow, held on preferences as the other shadows are. It logs
      *  an alternative blend and reaches nothing on the dose path. */
@@ -191,10 +195,6 @@ open class OpenAPSBoostPlugin @Inject constructor(
             logInfo = { aapsLogger.debug(LTag.APS, it) },
         )
     }
- config.APS }
-        .description(R.string.description_boost),
-    aapsLogger, rh
-), APS, PluginConstraints {
 
     companion object {
         /**
