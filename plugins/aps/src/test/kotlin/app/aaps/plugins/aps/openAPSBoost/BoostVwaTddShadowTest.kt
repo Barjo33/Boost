@@ -117,4 +117,36 @@ class BoostVwaTddShadowTest {
         val reloaded = st.shadow().compute(at(25.5), 1.2, 20.0)!!
         assertThat(reloaded.curveDays).isAtLeast(1)
     }
+
+    @Test fun `history warming folds one day per call and then stops`() {
+        val st = Store()
+        val s = st.shadow()
+        // a flat day: every half hour delivers the same, so the curve it implies is a ramp
+        val flat = { _: Long, _: Long -> 30.0 / BoostVwaTddShadow.WARM_SLICES }
+        repeat(BoostVwaTddShadow.WARM_DAYS + 3) { s.warmFromHistory(at(12.0), flat) }
+        val r = s.compute(at(12.0), 10.0, 20.0)!!
+        assertThat(r.curveDays).isAtMost(BoostVwaTddShadow.WARM_DAYS)
+        assertThat(r.curveDays).isAtLeast(1)
+    }
+
+    @Test fun `warming stops rather than inventing where the phone cannot answer`() {
+        val st = Store()
+        val s = st.shadow()
+        s.warmFromHistory(at(12.0)) { _, _ -> null }
+        val r = s.compute(at(12.0), 10.0, 20.0)!!
+        assertThat(r.curveDays).isEqualTo(0)
+    }
+
+    @Test fun `a flat history produces a curve close to a straight ramp`() {
+        val st = Store()
+        val s = st.shadow()
+        val flat = { _: Long, _: Long -> 24.0 / BoostVwaTddShadow.WARM_SLICES }
+        repeat(BoostVwaTddShadow.WARM_DAYS) { s.warmFromHistory(at(12.0), flat) }
+        val c = s.curveSnapshot()
+        // a ramp puts about half the day behind you at the halfway point; the population seed
+        // it started from is shrunk toward that as the days accumulate
+        assertThat(c[c.size / 2]).isGreaterThan(0.30)
+        assertThat(c[c.size / 2]).isLessThan(0.70)
+        assertThat(c.last()).isWithin(1e-9).of(1.0)
+    }
 }
