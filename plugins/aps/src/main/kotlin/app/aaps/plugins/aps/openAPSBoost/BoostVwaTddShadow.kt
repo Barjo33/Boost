@@ -35,6 +35,7 @@ import kotlin.math.min
  *   curve      288 cumulative fractions, one per five minutes from the anchor
  *   expected   the same curve expressed in units, rebuilt daily from the seven-day dose
  *   curveDays  how many of the participant's own days the curve rests on
+ *   warmedDays how many historical days have been read in, one per cycle
  *   anchorHour the participant's quiet hour, where the day is cut
  *   dayStartMs the anchor instant of the day in progress
  *   dayBuckets the cumulative delivery observed in the day so far, by half hour
@@ -55,6 +56,8 @@ class BoostVwaTddShadow(
         const val SANITY_HI = 2.0
         const val WEIGHT = 0.5                     // the projection's share of the blend
         const val MIN_DAY_UNITS = 1.0              // a day below this is not evidence of a shape
+        const val WARM_SLICES = 48                 // half-hour slices used to read a past day
+        const val WARM_DAYS = 7                    // days of history folded in, one per cycle
 
         /**
          * Population delivery curve, cumulative share of a day by five-minute bucket from the
@@ -137,6 +140,7 @@ class BoostVwaTddShadow(
     private var loaded = false
 
     /** The curve expressed in units rather than shares, rebuilt when the day rolls. */
+    private var warmedDays: Int = 0             // historical days already folded in
     private var expectedUnits: DoubleArray = DoubleArray(BUCKETS)
     private var calibratedTdd: Double = 0.0
     private var calibratedMs: Long = 0L
@@ -272,6 +276,7 @@ class BoostVwaTddShadow(
                 }
             }
             curveDays = o.optInt("curveDays", 0)
+            warmedDays = o.optInt("warmedDays", 0)
             anchorHour = o.optInt("anchorHour", DEFAULT_ANCHOR_HOUR)
             dayStartMs = o.optLong("dayStartMs", 0L)
             prevTotal = o.optDouble("prevTotal", 0.0)
@@ -290,6 +295,7 @@ class BoostVwaTddShadow(
             val o = org.json.JSONObject()
                 .put("curve", org.json.JSONArray(curve.toList()))
                 .put("curveDays", curveDays)
+                .put("warmedDays", warmedDays)
                 .put("anchorHour", anchorHour)
                 .put("dayStartMs", dayStartMs)
                 .put("prevTotal", prevTotal)
@@ -304,6 +310,65 @@ class BoostVwaTddShadow(
     fun dayAnchorMs(nowMs: Long): Long {
         ensureLoaded()
         return anchorFor(nowMs)
+    }
+
+    /**
+     * Fold one day of the phone's own history into the curve, oldest first.
+     *
+     * Learning the curve by observation alone takes as many days as the shrinkage needs, and
+     * for the first of them the estimate is the population's rather than the participant's.
+     * The history to avoid that is already on the phone: the dose calculator can total any
+     * past window, so a past day can be read directly instead of waited for.
+     *
+     * One day per cycle rather than all of them at once. A day costs 48 half-hour totals, and
+     * seven days read at start-up would be several hundred queries in a single loop pass, on
+     * the path that decides a dose. Spread across cycles the same history is in hand within
+     * the hour and no pass carries more than a day's worth.
+     *
+     * The half-hour slices are interpolated onto the five-minute grid. A seed does not need
+     * five-minute detail; the live observation supplies that from the first day forward.
+     *
+     * @param totalBetween returns units delivered between two hour offsets from now, or null
+     *        where the phone cannot answer, in which case warming stops rather than guessing.
+     */
+    fun warmFromHistory(nowMs: Long, totalBetween: (Long, Long) -> Double?) {
+        ensureLoaded()
+        if (warmedDays >= WARM_DAYS || curveDays >= WARM_DAYS) return
+
+        val dayBack = warmedDays + 1L                       // 1 = yesterday
+        val sliceH = 24.0 / WARM_SLICES
+        val cumulative = DoubleArray(WARM_SLICES)
+        var running = 0.0
+        for (i in 0 until WARM_SLICES) {
+            val endH = -(dayBack * 24L) + ((i + 1) * sliceH).toLong()
+            val startH = -(dayBack * 24L) + (i * sliceH).toLong()
+            val units = totalBetween(startH, endH) ?: return   // stop rather than invent
+            running += max(0.0, units)
+            cumulative[i] = running
+        }
+        warmedDays++
+        val total = cumulative[WARM_SLICES - 1]
+        if (total < MIN_DAY_UNITS) {
+            persist()
+            return
+        }
+        // onto the five-minute grid, then folded in as an observed day would be
+        val perBucket = BUCKETS / WARM_SLICES
+        var prev = 0.0
+        for (i in 0 until WARM_SLICES) {
+            val lo = if (i == 0) 0.0 else cumulative[i - 1] / total
+            val hi = cumulative[i] / total
+            for (k in 0 until perBucket) {
+                val f = (k + 1).toDouble() / perBucket
+                val v = lo + (hi - lo) * f
+                dayBuckets[i * perBucket + k] = max(prev, v) * total
+                prev = max(prev, v)
+            }
+        }
+        foldDayIntoCurve()
+        dayBuckets = DoubleArray(BUCKETS)
+        persist()
+        logInfo("VwaTdd: warmed day -$dayBack from history, curveDays=$curveDays")
     }
 
     /** Testing seam: the curve currently in force. */

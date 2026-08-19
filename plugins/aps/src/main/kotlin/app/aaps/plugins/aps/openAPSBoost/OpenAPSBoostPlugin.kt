@@ -453,7 +453,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
         val isfDebug: String = "",
         // ISF shadow — V4.4.2-style EMA(τ=3h) sensitivity ratio computed in parallel for
         // comparison. Null when TDD inputs unavailable. Does not influence dosing.
-        val tddSensShadow: BoostIsfShadow.TddSensShadowResult? = null
+        val tddSensShadow: BoostIsfShadow.TddSensShadowResult? = null,
+        val vwaTddShadow: BoostVwaTddShadow.Result? = null
     )
 
     private fun calculateBoostIsf(
@@ -594,6 +595,12 @@ open class OpenAPSBoostPlugin @Inject constructor(
                         / 3_600_000L).coerceIn(0L, 24L)
                     val deliveredToday = if (sinceAnchorH > 0L)
                         tddCalculator.calculateDaily(-sinceAnchorH, 0L)?.totalAmount else 0.0
+                    // Read one day of stored history per cycle until the curve stands on the
+                    // participant rather than on the population. Costs 48 window totals on a
+                    // cycle and stops after seven days.
+                    vwaTddShadow.warmFromHistory(nowForVwa) { startH, endH ->
+                        tddCalculator.calculateDaily(startH, endH)?.totalAmount
+                    }
                     vwaShadowResult = vwaTddShadow.compute(
                         nowMs = nowForVwa,
                         deliveredSinceDayStart = deliveredToday,
@@ -648,7 +655,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
             ratio = Round.roundTo(ratio, 0.01),
             tdd = tdd,
             isfDebug = debug.toString(),
-            tddSensShadow = isfShadowResult
+            tddSensShadow = isfShadowResult,
+            vwaTddShadow = vwaShadowResult
         )
     }
 
@@ -1569,6 +1577,19 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 it.units?.let { u ->
                     it.isfShadow_microBolus = Round.roundTo(u / scale, 0.001)
                 }
+            }
+
+            // Volume-weighted dose shadow. Read-only: the blend it proposes and the working
+            // behind it, so the paired estimates accumulate from the first cycle.
+            isfResult.vwaTddShadow?.let { v ->
+                it.boostVwa_blend = Round.roundTo(v.vwaBlend, 0.01)
+                it.boostVwa_projection = Round.roundTo(v.projection, 0.01)
+                it.boostVwa_expected = Round.roundTo(v.expectedToday, 0.01)
+                it.boostVwa_delivered = Round.roundTo(v.deliveredToday, 0.01)
+                it.boostVwa_dayFraction = Round.roundTo(v.dayFraction, 0.001)
+                it.boostVwa_calibratedTdd = Round.roundTo(v.calibratedTdd, 0.01)
+                it.boostVwa_curveDays = v.curveDays
+                it.boostVwa_usedPrevDay = v.usedPreviousDay
             }
             // Persist the v12 ML lookback ring buffer (updated in-place during this
             // cycle's inference) so the lag features survive a process restart.
