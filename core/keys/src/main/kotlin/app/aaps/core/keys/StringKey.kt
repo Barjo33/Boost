@@ -76,6 +76,7 @@ enum class StringKey(
     // ISF shadow persisted state (JSON blob: EMA value + timestamps for warmup computation)
     // Used by BoostIsfShadow to persist EMA(τ=3h) sensitivity ratio across plugin restarts.
     ApsBoostIsfShadowState("boost_isf_shadow_state", "", defaultedBySM = true),
+    ApsBoostVwaTddShadowState("boost_vwa_tdd_shadow_state", "", defaultedBySM = true),
 
     // Anticipation shadow onset history (JSON blob: rolling exercise + meal onset timestamps,
     // ~56-day window). Read/written by AnticipationShadow every Boost cycle to refit the per-user
