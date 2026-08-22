@@ -940,7 +940,13 @@ class UnscentedKalmanFilterPlugin @Inject constructor(
             }
 
             // Logging with effective parameters (just switch to xPredEff for consistency).
-            aapsLogger.warn(
+            // DEBUG, not WARN: this is per-sample filter state, and the whole retained history is
+            // reprocessed on every new reading. At warning level three glucose readings produced
+            // 1,221 lines and filled a 5 MB log fragment in under fifteen minutes, so an exported
+            // log covered a quarter of an hour and could not answer a question about anything
+            // earlier. Genuine warnings in this file (singular innovation covariance, a
+            // non-positive-definite covariance) stay at warn precisely so they remain visible.
+            aapsLogger.debug(
                 LTag.GLUCOSE,
                 "UKF: live R=${String.format(Locale.US, "%.1f", r)}, " +
                     "R_eff=${String.format(Locale.US, "%.1f", rEff)}, " +
