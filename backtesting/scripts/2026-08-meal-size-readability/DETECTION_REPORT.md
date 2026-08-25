@@ -1,6 +1,6 @@
 # Telling that food arrived: detection on 850 participants (2026-08-25)
 
-*Reproduce: `detection.py` and `detection_diagnostics.py` against the `studies` schema of the local
+*Reproduce: `detection.py`, `detection_diagnostics.py` and `accel_vs_model_v2.py` against the `studies` schema of the local
 TimescaleDB, sharing the extraction built by `extract_meals.py`. 492,440 announced meals from 839
 participants against 562,564 undeclared rises from 850, spanning 323,965 participant-days, with a
 second corpus of 71,761 meals and 92,050 rises from 189 participants on different therapy.
@@ -87,6 +87,49 @@ One caveat runs the other way and cannot be resolved from these data. Some undec
 meals somebody forgot to log, and every one of those is counted as a false alarm here. The false
 alarm figures are therefore an upper bound, and the true operating point is somewhere better than
 the table says by an unknown margin.
+
+## The shipped shadow against a corpus-trained detector
+
+The accelMeal shadow is a fixed threshold on glucose curvature, `accel = shortAvgDelta -
+longAvgDelta`, firing when `accel > 2.0` with the trace rising and the engine not yet confirmed. It
+reads the second derivative of glucose rather than an accelerometer, so it sits inside the same
+information class as the fitted detector and the two can be compared on identical inputs.
+
+The comparison can only be made where the shadow runs and carbohydrate is announced, which is two
+participants, E and F, contributing 37 and 34 meal onsets over 22 and 21 days. Both detectors are
+run over the whole timeline and their firings collapsed into episodes, since the shadow is a
+per-cycle flag and one rise sets it on many consecutive cycles. An episode is credited when it
+begins within 15 minutes before or 45 minutes after an announced onset.
+
+| participant | detector | meals caught | false alarms per day |
+|---|---|---|---|
+| E | shadow | 35.1% | 5.94 |
+| E | model at 10 min, same false alarms | 27.0% | 5.94 |
+| E | model at 30 min, same false alarms | 43.2% | 5.94 |
+| E | model at 30 min, same sensitivity | 35.1% | 4.05 |
+| F | shadow | 38.2% | 6.08 |
+| F | model at 10 min, same false alarms | 41.2% | 6.08 |
+| F | model at 20 min, same false alarms | 44.1% | 6.08 |
+| F | model at 30 min, same sensitivity | 38.2% | 6.69 |
+
+The model wins some cells and loses others, by margins of a few points on 34 to 37 meals, where a
+difference of fifteen points would not be distinguishable. On this evidence a detector fitted on 839
+participants does not beat two lines of arithmetic on the same signal.
+
+That is consistent with the ablation. Value and delta alone reach 0.809 of an eventual 0.843, and
+adding curvature reaches 0.821, so a threshold on curvature and direction is already close to the
+ceiling of what this feature class supports. The shadow is not leaving much on the table.
+
+Two things distort the absolute numbers and both should be read as bounds rather than measurements.
+E announced 58 meals of which 37 survive the rescue and separation rules, and F 53 of which 34
+survive, over three-week windows; at fewer than two surviving meals a day, a substantial share of
+what is scored as a false alarm is food. And the fitted model is handicapped in this form: it was
+trained on windows anchored at a detected onset, and streaming it means asking it to read windows
+anchored at arbitrary points. A deployment would pair onset detection with the model rather than
+scoring every cycle, and this comparison does not measure that arrangement.
+
+Confidence: PROVISIONAL. Two participants, 71 meals, differences inside the noise, and a ground
+truth known to be incomplete.
 
 ## What this supports
 
