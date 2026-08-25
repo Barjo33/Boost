@@ -2,7 +2,7 @@
 
 Status: pre-registered, analysis plan fixed before any model is fitted.
 Registered: 2026-08-25.
-Version: 1.0.
+Version: 1.1.
 Supersedes nothing. Re-opens a question closed in `scripts/2026-08-carb-signature/`.
 
 ## 1. Why this is being re-opened
@@ -90,7 +90,7 @@ calibration period would be worth if one were ever asked for.
 ## 4. What counts as a meal
 
 The prior definition is adopted unchanged so that H1 is a replication rather than a new study.
-Carbohydrate entries below 15 g are dropped. Carbohydrate entered to treat a low is not a meal and
+Carbohydrate entries below 8 g are dropped, which is the prior study's threshold. Carbohydrate entered to treat a low is not a meal and
 is excluded, by the prior rule: glucose at or below the rescue threshold at the entry, or falling
 over the preceding three samples. Entries within 90 minutes of an accepted meal are folded into it
 rather than counted again. Onset is the last non-rising sample at or before the entry and within
