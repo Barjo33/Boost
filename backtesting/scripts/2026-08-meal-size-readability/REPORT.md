@@ -1,7 +1,7 @@
 # Reading meal size from the glucose trace: 492,440 meals across 839 participants (2026-08-25)
 
 *Reproduce: `run_when_free.sh`, which drives `extract_meals.py`, `size_readability.py`,
-`slope_heterogeneity.py` and `report_tables.py` against the `studies` schema of the local
+`slope_heterogeneity.py`, `detection.py` and `report_tables.py` against the `studies` schema of the local
 TimescaleDB. Loop contributes 492,440 meals from 839 participants and REPLACE-BG 71,761 from 189,
 after excluding rescue carbohydrate and entries below 8 g. Participants are held out as folds
 throughout, and every interval comes from resampling participants. Protocol:
@@ -140,6 +140,35 @@ de-identification scheme. The trajectory-and-clock arm gives 0.634 at ten minute
 sixty; the arm with the participant's history gives 0.835 at ten and 0.839 at sixty, flat across
 the horizon in the same way. Its meals are 71,737 at-meal boluses out of 71,761, so it carries no
 weight on the bolus contrast and serves only as external validation.
+
+## Detection, and what its headline figure was resting on
+
+The same extraction answers the other half of the question, on 492,440 announced meals against
+562,564 undeclared rises from 850 participants. The negative class is built as before: a rise of
+at least 25 mg/dL within thirty minutes, above the rescue threshold, with no carbohydrate entered
+within two hours either side.
+
+| horizon | as previously constructed | meals held to the same 25 mg/dL bar |
+|---|---|---|
+| 10 min | 0.833 [0.830, 0.836] | 0.843 [0.841, 0.846] |
+| 15 min | 0.855 [0.852, 0.858] | 0.851 [0.848, 0.853] |
+| 20 min | 0.896 [0.894, 0.899] | 0.865 [0.862, 0.867] |
+| 30 min | 0.952 [0.950, 0.953] | 0.873 [0.871, 0.875] |
+| 45 min | 0.930 [0.928, 0.932] | 0.865 [0.863, 0.867] |
+| 60 min | 0.918 [0.916, 0.920] | 0.861 [0.859, 0.864] |
+
+The left column reproduces the six-participant result closely, 0.833 against 0.805 at ten minutes
+and 0.952 against 0.975 at thirty. The right column is the one to quote. An undeclared rise must
+reach 25 mg/dL to enter the comparison while a meal enters however flat its trace, so the classes
+are separated in part by a rule rather than by physiology, and the separation grows with horizon
+because a meal that never rises becomes easier to tell from a rise that must. Hold the meals to
+the same bar and detection sits between 0.84 and 0.87 across every horizon, high at ten minutes
+and close to flat thereafter.
+
+Detection is therefore good, available early, and worth less at thirty minutes than the previous
+figure implied. It is also the honest bar for the accelerometer meal shadow, which should be
+judged against 0.843 at ten minutes rather than against 0.805, and against 0.873 at thirty rather
+than 0.975.
 
 ## What follows
 
