@@ -1,6 +1,6 @@
 # Telling that food arrived: detection on 850 participants (2026-08-25)
 
-*Reproduce: `detection.py`, `detection_diagnostics.py` and `accel_vs_model_v2.py` against the `studies` schema of the local
+*Reproduce: `detection.py`, `detection_diagnostics.py` and `accel_vs_model_v2.py` and `streaming_detection.py` against the `studies` schema of the local
 TimescaleDB, sharing the extraction built by `extract_meals.py`. 492,440 announced meals from 839
 participants against 562,564 undeclared rises from 850, spanning 323,965 participant-days, with a
 second corpus of 71,761 meals and 92,050 rises from 189 participants on different therapy.
@@ -130,6 +130,50 @@ scoring every cycle, and this comparison does not measure that arrangement.
 
 Confidence: PROVISIONAL. Two participants, 71 meals, differences inside the noise, and a ground
 truth known to be incomplete.
+
+## Continuous operation, which is what a controller does
+
+The figures above rank a curated set: meal onsets against undeclared rises of at least 25 mg/dL. A
+controller never receives that set. It gets a reading every five minutes, must decide each time,
+and is charged for every firing. Measuring both detectors that way, on 200 participants, 121,334
+meal onsets and 78,268 participant-days, gives a different picture from 0.843.
+
+Both run on the same cycles. The shadow is the shipped rule reproduced from source, with the oref
+delta windows and the threshold of 2.0. The model is fitted on the same features in the same
+streaming form, on training participants and scored on held-out ones, which removes the handicap of
+training on onset-anchored windows and then serving arbitrary ones. Firings are collapsed into
+episodes and an episode is credited when it begins within 15 minutes before or 45 minutes after an
+onset.
+
+| detector | meals caught | false alarms per day | precision |
+|---|---|---|---|
+| shadow, as shipped | 55.1% | 7.51 | 11.4% |
+| model, at its best operating point | 47.1% | 4.19 | 16.5% |
+| model, at 2.90 false alarms per day | 14.2% | 7.9% | |
+
+Meal onsets occur 1.75 times per participant-day, so at the shadow's operating point roughly one
+firing in nine is a meal, and at the model's best roughly one in six. Neither detector dominates:
+the shadow catches more meals, the model is right more often when it fires, and the model's curve
+never reaches the shadow's sensitivity at any threshold. Across participants the shadow ranges from
+35.8 to 68.2 per cent.
+
+The model curve is not monotonic in its threshold, and the reason is worth stating because it is a
+property of continuous operation rather than of the model. Lowered far enough, a detector fires
+almost always, its firings merge into a few long episodes, and an episode that began hours before a
+meal earns no credit. Sensitivity and false alarms fall together. An always-on detector is
+indistinguishable from a silent one under any crediting rule that asks when the alarm started.
+
+So the gap between 0.843 and eleven per cent precision is not a modelling failure. It is what the
+same discrimination looks like when the negative class is every five minutes of the day rather than
+a curated set of rises, and it is the reason detection quality is not the lever it appears to be.
+The same caveat applies as elsewhere: some undeclared rises are meals nobody logged, so precision
+is understated by an unknown margin.
+
+What follows is an architectural point rather than a modelling one. If a detection is right between
+one time in nine and one time in six, then committing a full dose on detection is the wrong
+response regardless of which detector produced it, and a small initial commitment that escalates
+only once the excursion declares itself is the right shape. That is the staged design, reached here
+from a different direction than the size result reached it.
 
 ## What this supports
 
