@@ -103,6 +103,17 @@ Protocols, reports and papers are written as though for submission to a journal,
 and read as if a person wrote them rather than a machine. The rules below are not preferences to be
 balanced against others; they are how the output is expected to look.
 
+Every document is a new draft, always. A revised protocol, report or article is rewritten as though
+it were the first version and contains no trace of what it used to say. Never write "an earlier
+version assumed", "that was wrong", "this supersedes", "previously specified" or an amendment log.
+State the current position and nothing else.
+
+This holds even when the change came from correcting a real mistake, and it holds most strongly then,
+because the temptation to show the working is greatest. The reasoning for a change belongs in the
+commit message, where the people who need it will find it, not in the document, where it is noise to
+every reader who was not present for the earlier version. A reader of the current draft should be
+unable to tell that there was one.
+
 Write continuous prose. A bulleted list is a way of avoiding the work of connecting ideas, and it
 belongs in a repository README rather than in a document making an argument. Tables are permitted
 where the content is genuinely tabular, such as an arm configuration or a set of measured values,
@@ -126,6 +137,36 @@ already been made. Prefer the understated formulation throughout: "cannot be set
 rather than "it is critically important to note that this study is fundamentally unable to settle".
 
 The same register applies to commit messages, which are read by the same people.
+
+The mechanical rules above are necessary and not sufficient. A draft can pass every one of them and
+still read as machine-written, because the strongest tells are structural rather than typographic.
+The following were all present in a piece that passed the dash, bullet, bold and triplet checks and
+was rejected on sight.
+
+Rhetorical section headings. Headings that pose a question, promise a revelation or land a phrase
+("The thing anyone can check for themselves", "Where it earns its keep") signal an essay performing
+its own structure. Name the section after its contents and move on.
+
+The negation-then-correction construction. "It is not more information. It is less waiting." "Not a
+different shape, not more detail. One number." Once in a long piece is emphasis. Three times is a
+tic, and it is the single most recognisable one.
+
+Sentence fragments for emphasis. A two word sentence following a long one is a rhythm almost nobody
+uses in expository prose and every model reaches for.
+
+Signposting and meta-commentary. "What I want to do here is", "let me lay them out plainly", "it is
+worth being precise", "I should be clear about". Say the thing rather than announcing that you are
+about to say it, and never describe your own writing.
+
+Relentless symmetry. Every paragraph opening with a claim, turning on a concession and closing on a
+summary is a template rather than a voice. Vary the shape, and let some paragraphs simply end.
+
+Summarising flourishes. "That is the argument in one chart", "this is the whole problem in one
+picture". They tell the reader what to think about something they can already see.
+
+The check that works is to read the draft aloud, to grep for the constructions above, and to count
+section headings that could be replaced by a plain noun phrase without loss.
+
 
 ## Key reference docs (in `backtesting/`)
 

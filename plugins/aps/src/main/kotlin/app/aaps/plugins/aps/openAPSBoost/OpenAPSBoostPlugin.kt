@@ -185,6 +185,17 @@ open class OpenAPSBoostPlugin @Inject constructor(
     aapsLogger, rh
 ), APS, PluginConstraints {
 
+
+    /** The volume-weighted dose shadow, held on preferences as the other shadows are. It logs
+     *  an alternative blend and reaches nothing on the dose path. */
+    private val vwaTddShadow by lazy {
+        BoostVwaTddShadow(
+            loadState = { preferences.getBoostDosing(StringKey.ApsBoostVwaTddShadowState) },
+            saveState = { preferences.put(StringKey.ApsBoostVwaTddShadowState, it) },
+            logInfo = { aapsLogger.debug(LTag.APS, it) },
+        )
+    }
+
     companion object {
         /**
          * Picks the sensitivity ratio that scales basal / targets / CR in determine_basal.
@@ -442,7 +453,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
         val isfDebug: String = "",
         // ISF shadow — V4.4.2-style EMA(τ=3h) sensitivity ratio computed in parallel for
         // comparison. Null when TDD inputs unavailable. Does not influence dosing.
-        val tddSensShadow: BoostIsfShadow.TddSensShadowResult? = null
+        val tddSensShadow: BoostIsfShadow.TddSensShadowResult? = null,
+        val vwaTddShadow: BoostVwaTddShadow.Result? = null
     )
 
     private fun calculateBoostIsf(
@@ -468,6 +480,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
         var ratio = 1.0
         // ISF shadow accumulator — populated when V4.4.2-style EMA ratio is computed below.
         var isfShadowResult: BoostIsfShadow.TddSensShadowResult? = null
+        var vwaShadowResult: BoostVwaTddShadow.Result? = null
         var tdd = 0.0
         val bgCurrent = if (glucoseValue > bgCap) bgCap + ((glucoseValue - bgCap) / 3.0) else glucoseValue
 
@@ -570,6 +583,32 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     if (isfShadowResult != null) {
                         debug.append("\n${isfShadowResult.debugLine}")
                     }
+
+                    // Volume-weighted dose shadow. Computes an alternative blend from the
+                    // insulin delivered so far today against the participant's own delivery
+                    // curve, and logs it. It does not touch tdd, sensNormalTarget or anything
+                    // downstream: the candidate failed one of the four pre-registered targets
+                    // it was judged on, and the only route from here to dosing is a
+                    // pre-registered within-person trial.
+                    val nowForVwa = System.currentTimeMillis()
+                    val sinceAnchorH = ((nowForVwa - vwaTddShadow.dayAnchorMs(nowForVwa))
+                        / 3_600_000L).coerceIn(0L, 24L)
+                    val deliveredToday = if (sinceAnchorH > 0L)
+                        tddCalculator.calculateDaily(-sinceAnchorH, 0L)?.totalAmount else 0.0
+                    // Read one day of stored history per cycle until the curve stands on the
+                    // participant rather than on the population. Costs 48 window totals on a
+                    // cycle and stops after seven days.
+                    vwaTddShadow.warmFromHistory(nowForVwa) { startH, endH ->
+                        tddCalculator.calculateDaily(startH, endH)?.totalAmount
+                    }
+                    vwaShadowResult = vwaTddShadow.compute(
+                        nowMs = nowForVwa,
+                        deliveredSinceDayStart = deliveredToday,
+                        tdd7D = tdd7D
+                    )
+                    if (vwaShadowResult != null) {
+                        debug.append("\n${vwaShadowResult.debugLine}")
+                    }
                 } else {
                     debug.append("\n⚠ TDD calculation produced invalid values (tdd=$tdd, logTerm=$logTerm) — using profile ISF")
                     aapsLogger.warn(LTag.APS, "Boost TDD ISF: invalid tdd=$tdd or logTerm=$logTerm, falling back to profile ISF")
@@ -616,7 +655,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
             ratio = Round.roundTo(ratio, 0.01),
             tdd = tdd,
             isfDebug = debug.toString(),
-            tddSensShadow = isfShadowResult
+            tddSensShadow = isfShadowResult,
+            vwaTddShadow = vwaShadowResult
         )
     }
 
@@ -1538,6 +1578,19 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     it.isfShadow_microBolus = Round.roundTo(u / scale, 0.001)
                 }
             }
+
+            // Volume-weighted dose shadow. Read-only: the blend it proposes and the working
+            // behind it, so the paired estimates accumulate from the first cycle.
+            isfResult.vwaTddShadow?.let { v ->
+                it.boostVwa_blend = Round.roundTo(v.vwaBlend, 0.01)
+                it.boostVwa_projection = Round.roundTo(v.projection, 0.01)
+                it.boostVwa_expected = Round.roundTo(v.expectedToday, 0.01)
+                it.boostVwa_delivered = Round.roundTo(v.deliveredToday, 0.01)
+                it.boostVwa_dayFraction = Round.roundTo(v.dayFraction, 0.001)
+                it.boostVwa_calibratedTdd = Round.roundTo(v.calibratedTdd, 0.01)
+                it.boostVwa_curveDays = v.curveDays
+                it.boostVwa_usedPrevDay = v.usedPreviousDay
+            }
             // Persist the v12 ML lookback ring buffer (updated in-place during this
             // cycle's inference) so the lag features survive a process restart.
             preferences.put(StringKey.ApsBoostMlRingBuffer, determineBasalBoost.serializeMlRingBuffer())
@@ -1987,7 +2040,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
                         stepsToday = stepsTodayForSleep,
                         // 2026-07-08 sleep-in merge (v7-shadow): fold the lie-in backstop into the state machine.
                         sleepInStepsThreshold = sleepInSteps,
-                        sleepInWindowMin = (sleepInHours * 60.0).toInt()
+                        sleepInWindowMin = (sleepInHours * 60.0).toInt(),
+                        cycleSpacingMinutes = iobCobCalculator.ads.detectedCadenceMinutes
                     ),
                     aapsLogger = aapsLogger
                 )
@@ -2653,6 +2707,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmbAfterCarbs, summary = R.string.enable_smb_after_carbs_summary, title = R.string.enable_smb_after_carbs))
                 if (includeEngineEssentials) addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseUam, summary = R.string.enable_uam_summary, title = R.string.enable_uam))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsMaxSmbFrequency, title = R.string.smb_interval_summary))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsLoopAtNativeCadence, summary = R.string.loop_native_cadence_summary, title = R.string.loop_native_cadence_title))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsMaxMinutesOfBasalToLimitSmb, title = R.string.smb_max_minutes_summary))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsUamMaxMinutesOfBasalToLimitSmb, dialogMessage = R.string.uam_smb_max_minutes, title = R.string.uam_smb_max_minutes_summary))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsCarbsRequestThreshold, dialogMessage = R.string.carbs_req_threshold_summary, title = R.string.carbs_req_threshold))

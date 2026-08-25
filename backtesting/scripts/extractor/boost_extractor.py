@@ -520,6 +520,16 @@ def build_row(rec: dict, user_id: str) -> Optional[dict]:
         "tdd": sug.get("tdd"),
         "tdd_ratio": sug.get("tddRatio"),
         "delta_acceleration": sug.get("deltaAcceleration"),
+        # Volume-weighted dose shadow: the blend it proposes and the working behind it. Read-only
+        # telemetry, so a within-person trial has the paired estimates from the first cycle.
+        "vwa_blend": sug.get("boostVwa_blend"),
+        "vwa_projection": sug.get("boostVwa_projection"),
+        "vwa_expected": sug.get("boostVwa_expected"),
+        "vwa_delivered": sug.get("boostVwa_delivered"),
+        "vwa_day_fraction": sug.get("boostVwa_dayFraction"),
+        "vwa_calibrated_tdd": sug.get("boostVwa_calibratedTdd"),
+        "vwa_curve_days": sug.get("boostVwa_curveDays"),
+        "vwa_used_prev_day": sug.get("boostVwa_usedPrevDay"),
         "sens_normal_target": sug.get("sensNormalTarget"),
         "variable_sens": sug.get("variable_sens"),
         "dynamic_isf": sug.get("dynamicISF"),

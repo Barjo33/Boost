@@ -36,6 +36,28 @@ not a clockwork scenario.
 | `signatures.py` | the signature registry — add a signature here |
 | `run_suite.py` | run every signature, emit `REPORT.md` + `fig_fidelity.png` |
 | `REPORT.md` | generated: the verdict table + figure + notes |
+| `sensor_layer.py` | post-hoc sensor realism: jitter and compression lows |
+| `behaviour.py` | the person in the loop: announcement, rescue carbohydrate, an adapting ISF setting, and a generic correction loop |
+| `gen_sim_behaviour.py` | run the layered simulator; `--layers phys,behav,loop` selects any subset |
+| `behaviour_compare.py` | layer-by-layer attribution, emits `REPORT_BEHAVIOUR.md` + `fig_behaviour.png` |
+
+## Layers
+
+Each layer targets the signatures the layer below it could not reach, and each can be
+switched off, so a movement is attributable to a named mechanism rather than to the
+combination. `REPORT_BEHAVIOUR.md` has the measured table: 3 of 11 signatures inside the
+real range for the stock 2008 personae, 6 of 11 with all four layers.
+
+| Layer | Mechanism | What it closes |
+|---|---|---|
+| physiology | S2013-style time-varying insulin sensitivity | day-to-day and diurnal statistics |
+| behaviour | unannounced meals, rescue carbohydrate, an adapting ISF setting | rise tail, hypo recovery, drift |
+| loop | continuous correction with an IOB bound and basal withdrawal | autocorrelation, variability |
+| sensor | jitter and compression lows, post hoc | the two sensor signatures |
+
+Outcome spread at stuck-high is the one signature no layer has closed. It is the
+efficacy blind spot, and it is the reason the simulator still cannot price a dosing
+change.
 
 ## Signatures
 
