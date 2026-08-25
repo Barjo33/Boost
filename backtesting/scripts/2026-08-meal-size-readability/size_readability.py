@@ -57,7 +57,25 @@ def _data(path):
 
 
 def features_for(arm, h):
-    f = [f"h{h}_{s}" for s in SHAPE] + TOD
+    """Arms 0 to 3 carry the trajectory. Arms 10 to 13 are the matched baselines: the same
+    information about the person and the clock, with the glucose trace removed entirely.
+
+    The increment attributable to the trajectory is arm 1 minus arm 10, arm 2 minus arm 11 and
+    arm 3 minus arm 12. Read against chance instead, an arm that merely knows which person it is
+    looking at scores well while saying nothing about the meal in front of it.
+    """
+    if arm == 10:
+        return list(TOD)
+    if arm == 11:
+        return list(PSCALE)
+    if arm == 12:
+        return PSCALE + PHIST
+    if arm == 13:
+        return PSCALE + PHIST + TOD
+    shape = [f"h{h}_{s}" for s in SHAPE]
+    if arm == 0:                       # the prior study's feature set exactly, no clock
+        return shape
+    f = shape + TOD
     if arm >= 2:
         f += PSCALE
     if arm >= 3:

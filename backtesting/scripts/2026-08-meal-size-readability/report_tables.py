@@ -56,5 +56,59 @@ def main():
                   f"{w['ci_lo']:+.4f} to {w['ci_hi']:+.4f} | {w['mean_b_unbolused']:+.4f} | "
                   f"{w['mean_b_bolused']:+.4f} | {w['share_unbolused_gt_bolused']*100:.0f}% |")
 
+    decomposition(a.data, a.study)
+    signal_to_noise(a.data, a.study)
+
+
+
+
+def decomposition(data, study="Loop"):
+    """What the glucose trace adds once the person and the clock are already known.
+
+    Each trajectory arm is matched to the arm carrying the same information about the person and
+    the clock with the trace removed. The difference is the only quantity that speaks to whether
+    a controller can size the meal in front of it.
+    """
+    import itertools
+    R = json.load(open(os.path.join(data, f"results_{study}.json")))
+    B = json.load(open(os.path.join(data, f"results_{study}_baselines.json")))
+    idx = {}
+    for r in itertools.chain(R["classification"], B["classification"]):
+        idx[(r["arm"], r["stratum"], r["horizon"])] = r
+    pairs = [(1, 10, "trajectory and clock", "clock alone"),
+             (3, 13, "everything", "person, history and clock")]
+    print("\n## What the glucose trace adds once the person and the clock are known\n")
+    print("| stratum | horizon | with the trace | without it | difference |")
+    print("|---|---|---|---|---|")
+    for st in ("all", "none"):
+        for h in (10, 60):
+            for arm, base, _, _ in pairs:
+                a, b = idx.get((arm, st, h)), idx.get((base, st, h))
+                if not a or not b:
+                    continue
+                print(f"| {st} | {h} min | {a['auc']:.3f} [{a['lo']:.3f} to {a['hi']:.3f}] | "
+                      f"{b['auc']:.3f} [{b['lo']:.3f} to {b['hi']:.3f}] | "
+                      f"{a['auc'] - b['auc']:+.3f} |")
+
+
+def signal_to_noise(data, study="Loop"):
+    """The size signal against the variability of the rise it has to be read out of."""
+    import pandas as pd
+    S = json.load(open(os.path.join(data, f"slopes_{study}.json")))
+    d = pd.read_parquet(os.path.join(data, f"meals_{study}.parquet"),
+                        columns=["bolus_stratum"] + [f"h{h}_rise" for h in (10, 15, 20, 30, 45, 60)])
+    u = d[d.bolus_stratum == "none"]
+    print("\n## The size signal against the spread of the rise, unbolused meals\n")
+    print("| horizon | slope, mg/dL per gram | 20 g against 60 g | spread of the rise | ratio |")
+    print("|---|---|---|---|---|")
+    for p in S["pooled"]:
+        if p.get("stratum") != "none" or "mu" not in p:
+            continue
+        h = p["horizon"]
+        sd = float(u[f"h{h}_rise"].std())
+        sep = p["mu"] * 40
+        print(f"| {h} min | {p['mu']:+.4f} | {sep:.2f} mg/dL | {sd:.2f} mg/dL | {sep / sd:.3f} |")
+
+
 if __name__ == "__main__":
     main()
