@@ -149,10 +149,10 @@ onset.
 |---|---|---|---|
 | shadow, as shipped | 55.1% | 7.51 | 11.4% |
 | model, at its best operating point | 47.1% | 4.19 | 16.5% |
-| model, at 2.90 false alarms per day | 14.2% | 7.9% | |
+| model, at 2.90 false alarms per day | 41.5% | 2.90 | 20.0% |
 
 Meal onsets occur 1.75 times per participant-day, so at the shadow's operating point roughly one
-firing in nine is a meal, and at the model's best roughly one in six. Neither detector dominates:
+firing in nine is a meal, and at the model's best roughly one in six, rising to one in five if it is tightened to 2.90. Neither detector dominates:
 the shadow catches more meals, the model is right more often when it fires, and the model's curve
 never reaches the shadow's sensitivity at any threshold. Across participants the shadow ranges from
 35.8 to 68.2 per cent.
