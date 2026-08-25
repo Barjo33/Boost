@@ -362,6 +362,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
     // Anticipatory back-out controller SHADOW (2026-07-20): retractable-anticipation state machine, held
     // in memory across cycles. READ-ONLY — logs antBackout=...; delivers nothing. See BACKOUT_CONTROLLER_SPEC.
     private val backoutShadow by lazy { app.aaps.plugins.aps.openAPSBoostTwin.AnticipationBackoutShadow() }
+    private val consequenceShadow by lazy { app.aaps.plugins.aps.openAPSBoostV5.ConsequencePriorShadow() }
     // Per-user ANTICIPATION shadow (2026-07-27): refits per-user exercise/meal onset-hazard models
     // offline, predicts p(onset) at 45-min lead, runs the two retractable arms in shadow. READ-ONLY —
     // logs anticip=...; delivers nothing. Onset history persists as a StringKey JSON blob (V7 idiom).
@@ -1738,6 +1739,16 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 it.reason.append("accelMeal=$trig,${Round.roundTo(accel, 0.1)},${Round.roundTo(glucoseStatus.shortAvgDelta, 0.1)}," +
                     "${Round.roundTo(glucoseStatus.longAvgDelta, 0.1)},${glucoseStatus.glucose.toInt()},${v5decision?.mealHypothesis ?: "?"}; ")
             }.onFailure { t -> aapsLogger.error(LTag.APS, "Accel-meal shadow failed (swallowed — dosing untouched)", t) }
+            // Consequence prior SHADOW (2026-08-26). Logs a probability that this rise ends
+            // somewhere that matters, from glucose at the onset and the local hour. READ-ONLY.
+            // Included because the engine's own projection is at chance on that question (0.527
+            // against a 0.398 base rate on 27,619 onsets) while these two numbers reach 0.763, and
+            // adding the whole engine record to them is worth +0.001. Delivers NOTHING; a dose
+            // sized on this is a dosing change and goes to the two-test bar.
+            runCatching {
+                consequenceShadow.runCycle(now, glucoseStatus.glucose)
+                    ?.let { p -> it.reason.append("conseq=$p; ") }
+            }.onFailure { t -> aapsLogger.error(LTag.APS, "Consequence-prior shadow failed (swallowed — dosing untouched)", t) }
             // Sleep gate (2026-06-14): do NOT let V5 drive the SMB while SLEEPING — fall back to V1's
             // (oref1/Boost) SMB, which already respects night mode. V5 still computes its shadow
             // telemetry above (runShadow ran), so the V5-vs-V1 comparison continues overnight; only
