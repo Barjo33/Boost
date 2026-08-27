@@ -80,4 +80,22 @@ class ConfirmTrancheControllerTest {
         assertThat(c.heldU()).isEqualTo(0.0)
         assertThat(c.onCycle(10 * min, 200.0)).isEqualTo(0.0)
     }
+
+    @Test fun `a cycle landing just short of the window still decides`() {
+        // 2026-08-27: the confirm at 14:52:11.459 was followed by a cycle at 15:02:10.934, which is
+        // 9.991 minutes. An exact comparison deferred the decision by a whole cycle.
+        val c = ConfirmTrancheController(holdMinutes = 10.0, releaseThreshold = 0.48)
+        c.onConfirm(0L, 180.0, 2.0)
+        c.onCycle(5 * min, 181.0)
+        val short = (9.991 * 60_000).toLong()
+        assertThat(c.onCycle(short, 180.0)).isEqualTo(0.0)
+        assertThat(c.heldU()).isEqualTo(0.0)   // decided at 9.991, not deferred to 15 min
+    }
+
+    @Test fun `a cycle far short of the window still defers`() {
+        val c = ConfirmTrancheController(holdMinutes = 10.0)
+        c.onConfirm(0L, 120.0, 2.0)
+        assertThat(c.onCycle(6 * min, 160.0)).isEqualTo(0.0)
+        assertThat(c.heldU()).isWithin(1e-9).of(1.0)   // still held
+    }
 }

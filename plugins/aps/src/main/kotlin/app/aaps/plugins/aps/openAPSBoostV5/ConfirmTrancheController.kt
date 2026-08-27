@@ -52,6 +52,7 @@ class ConfirmTrancheController(
         const val MAX_RISE_SINCE = 0.138821
         const val SLOPE_NOW = 0.072499
         const val BG_NOW = -0.018302
+        const val HOLD_SLACK_MIN = 2.5
         fun sigmoid(z: Double) = 1.0 / (1.0 + exp(-z))
     }
 
@@ -97,7 +98,12 @@ class ConfirmTrancheController(
         val prev = lastBg
         lastBg = bg
         val mins = (nowMs - p.confirmMs) / 60000.0
-        if (mins < holdMinutes) return 0.0
+        // Half a cycle of slack. Cycles do not land on the boundary: the confirm at 14:52:11.459 on
+        // 2026-08-27 was followed by a cycle at 15:02:10.934, which is 9.991 minutes, so an exact
+        // comparison deferred the decision to the next cycle and released at 15:07 instead. With
+        // five-minute cycles that misses roughly half the time, which is not a rare edge case but
+        // the normal behaviour of the check.
+        if (mins < holdMinutes - HOLD_SLACK_MIN) return 0.0
         if (mins > expiryMinutes) {
             pending = null
             return 0.0
