@@ -218,12 +218,11 @@ class LoopHubImpl @Inject constructor(
         // keeps a genuine burst, whereas dropping the record loses the cycle entirely. The wider
         // windows are also clamped from below by the narrower ones, since a three-hour count cannot
         // be less than the five-minute count inside it.
-        val s5 = clampSteps(steps5min, 5)
-        val s10 = maxOf(clampSteps(steps10min, 10), s5)
-        val s15 = maxOf(clampSteps(steps15min, 15), s10)
-        val s30 = maxOf(clampSteps(steps30min, 30), s15)
-        val s60 = maxOf(clampSteps(steps60min, 60), s30)
-        val s180 = maxOf(clampSteps(steps180min, 180), s60)
+        val w = GarminStepWindows.sanitise(
+            steps5min, steps10min, steps15min, steps30min, steps60min, steps180min
+        )
+        val s5 = w.s5; val s10 = w.s10; val s15 = w.s15
+        val s30 = w.s30; val s60 = w.s60; val s180 = w.s180
         if (s5 != steps5min || s180 != steps180min) {
             aapsLogger.warn(
                 LTag.GARMIN,
@@ -243,10 +242,6 @@ class LoopHubImpl @Inject constructor(
         disposable += persistenceLayer.insertOrUpdateStepsCount(sc).subscribe()
     }
 
-    /** Steps in a window of [minutes], bounded by what a person can physically do. */
-    private fun clampSteps(steps: Int, minutes: Int): Int =
-        steps.coerceIn(0, minutes * MAX_STEPS_PER_MINUTE)
-
     override fun storeHeartRates(samples: List<Pair<Long, Int>>, device: String?) {
         // Correct HR-model convention: timestamp = END of the minute, duration = 60 000 (matches
         // HealthConnectHrIngest so overlapping rows dedupe by minute bucket). insertOrUpdate is
@@ -263,10 +258,5 @@ class LoopHubImpl @Inject constructor(
             )
             disposable += persistenceLayer.insertOrUpdateHeartRate(hr).subscribe()
         }
-    }
-
-    private companion object {
-        /** Above a sprint cadence; anything higher is a counter, not a window. */
-        const val MAX_STEPS_PER_MINUTE = 200
     }
 }
