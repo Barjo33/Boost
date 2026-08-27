@@ -363,6 +363,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
     // in memory across cycles. READ-ONLY — logs antBackout=...; delivers nothing. See BACKOUT_CONTROLLER_SPEC.
     private val backoutShadow by lazy { app.aaps.plugins.aps.openAPSBoostTwin.AnticipationBackoutShadow() }
     private val consequenceShadow by lazy { app.aaps.plugins.aps.openAPSBoostV5.ConsequencePriorShadow() }
+    private val confirmTranche by lazy { app.aaps.plugins.aps.openAPSBoostV5.ConfirmTrancheController() }
     // Per-user ANTICIPATION shadow (2026-07-27): refits per-user exercise/meal onset-hazard models
     // offline, predicts p(onset) at 45-min lead, runs the two retractable arms in shadow. READ-ONLY —
     // logs anticip=...; delivers nothing. Onset history persists as a StringKey JSON blob (V7 idiom).
@@ -1795,7 +1796,34 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 // 27% of the removed insulin sits ahead of a second low <70 vs 14-19% for other levers;
                 // cost 10% genuine post-hypo meals at 0.15U median under-delivery).
                 val caps = applyV6OverrideCaps(inMealState, inPostRescueWindow, v5decision.finalDose, v1WouldDose, recentLowBG45Min)
-                val overrideDose = caps.dose
+                var overrideDose = caps.dose
+                // 2026-08-27 confirm tranche. Split the confirm commitment: part now, the rest ten
+                // minutes later only if the rise continues. The confirm shot is currently the same
+                // size whether the excursion reaches 20 mg/dL or 100, and the trace separates those
+                // two ends at 0.730 at the confirming cycle against 0.893 ten minutes on, a paired
+                // gain of +0.162 [+0.066, +0.264]. Bounded: this can only deliver LESS than the
+                // engine would without it.
+                //
+                // The release is evaluated inside this same block deliberately. Ten minutes after a
+                // confirm the block runs on 76.4% of cycles, and the 23.6% where it does not divide
+                // into exactly two causes, the rolling cumulative SMB cap and the sleep gate, both
+                // of which are states in which the engine has already decided against a micro bolus.
+                // A release that cannot land is that machinery agreeing with the withhold.
+                if (preferences.getBoostDosing(BooleanKey.ApsBoostV5ConfirmTranche)) {
+                    confirmTranche.immediateFraction = preferences.getBoostDosing(DoubleKey.ApsBoostV5TrancheFraction)
+                    confirmTranche.releaseThreshold = preferences.getBoostDosing(DoubleKey.ApsBoostV5TrancheThreshold)
+                    val before = overrideDose
+                    overrideDose = if (v5decision.mealHypothesis == MealHypothesis.CONFIRMED) {
+                        confirmTranche.onConfirm(now, glucoseStatus.glucose, before)
+                    } else {
+                        before + confirmTranche.onCycle(now, glucoseStatus.glucose)
+                    }
+                    it.reason.append("tranche=${Round.roundTo(before, 0.001)},"
+                        + "${Round.roundTo(overrideDose, 0.001)},"
+                        + "${Round.roundTo(confirmTranche.heldU(), 0.001)},"
+                        + "${confirmTranche.probeProbability(glucoseStatus.glucose)?.let { p -> Round.roundTo(p, 0.001) } ?: "-"},"
+                        + "${v5decision.mealHypothesis}; ")
+                }
                 it.units = overrideDose
                 it.reason.append("V6-ACTIVE drove SMB ${Round.roundTo(overrideDose, 0.001)}U (base would=${Round.roundTo(v1WouldDose, 0.001)}U, state=${v5decision.mealHypothesis}${caps.capNote}); ")
                 aapsLogger.info(LTag.APS, "V6-ACTIVE override: SMB ${v1WouldDose} → ${overrideDose} state=${v5decision.mealHypothesis}${caps.capNote}")

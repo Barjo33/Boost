@@ -36,8 +36,10 @@ import kotlin.math.min
  * the size-responsive part of the response.
  */
 class ConfirmTrancheController(
-    private val immediateFraction: Double = 0.5,
-    private val releaseThreshold: Double = 0.48,
+    // Settable rather than constructed, so changing the preference takes effect on the next cycle
+    // instead of at the next restart. Auto-config owns the threshold in the shipping form.
+    var immediateFraction: Double = 0.5,
+    var releaseThreshold: Double = 0.48,
     private val holdMinutes: Double = 10.0,
     private val expiryMinutes: Double = 30.0,
 ) {

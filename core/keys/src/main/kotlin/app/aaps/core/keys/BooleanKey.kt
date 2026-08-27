@@ -105,6 +105,13 @@ enum class BooleanKey(
     // score-corroborated rise while awake & not exercising. Replay-validated (backtesting/replay.py).
     // Default ON (it's the fix for the 2026-06-16 fast-carb crash); toggle OFF = instant revert.
     ApsBoostV5FastCarbConfirm("boost_v5_fast_carb_confirm", true, defaultedBySM = true),
+    // 2026-08-27 confirm tranche — split the confirm commitment, part now and the rest ten minutes
+    // later if the rise continues. The confirm shot is the same size whether the excursion reaches
+    // 20 mg/dL or 100, and the trace separates those two ends at 0.730 at the confirming cycle
+    // against 0.893 ten minutes on. Can only deliver LESS than without it, never more.
+    // AUTO-CONFIG MANAGED in the shipping form: the release rule's coefficients are population
+    // derived and only the threshold is personal, so this is not a per-user preference.
+    ApsBoostV5ConfirmTranche("boost_v5_confirm_tranche", false, defaultedBySM = true),
     // 2026-07-17 aggressive early-confirm — shaves the sustained-score early-confirm path one more
     // cycle (age −2). The pre-push backtest showed ~28% of its candidates are fizzle-catches (new
     // insulin at ~base rate), so it is NOT a clean cohort default; it is OPT-IN and AUTO-CONFIG
