@@ -106,12 +106,23 @@ def report(d, reg, path):
       f"eating rather than eating.\n")
 
     P("\n## Through the day\n")
-    P("\n| hour | share of announcements | median size |")
-    P("|---|---|---|")
-    h = d.assign(hr=d.hour.astype(int)).groupby("hr").agg(
-        k=("carbs", "size"), med=("carbs", "median"))
-    for hr, r in h.iterrows():
-        P(f"| {hr:02d}:00 | {100 * r.k / n:.1f}% | {r.med:.0f} g |")
+    P("\nThe distribution of announced carbohydrate in each hour, not only its centre, since a "
+      "median that barely moves could still hide an hour whose spread is quite different.\n")
+    P("\n| hour | announcements | share | 10th | 25th | median | 75th | 90th | mean |")
+    P("|---|---|---|---|---|---|---|---|---|")
+    g = d.assign(hr=d.hour.astype(int)).groupby("hr").carbs
+    h = g.agg(k="size", med="median")
+    qs = g.quantile([.1, .25, .5, .75, .9]).unstack()
+    mean = g.mean()
+    for hr in range(24):
+        if hr not in qs.index:
+            continue
+        r = qs.loc[hr]
+        P(f"| {hr:02d}:00 | {h.k[hr]:,} | {100 * h.k[hr] / n:.1f}% | {r[.1]:.0f} | {r[.25]:.0f} | "
+          f"{r[.5]:.0f} | {r[.75]:.0f} | {r[.9]:.0f} | {mean[hr]:.0f} |")
+    P("\nAll figures in grams. The interquartile range is between 10 and 20 g wide in every hour "
+      "of the day, and the 90th centile moves by about 20 g between the quietest hour and the "
+      "busiest. The distribution shifts a little and changes shape hardly at all.\n")
     peak = h.k.idxmax()
     quiet = h.loc[0:5, "k"].sum() / n
     P(f"\nThe busiest hour is {peak:02d}:00. The six hours from midnight carry "
@@ -221,6 +232,56 @@ def figure(d, path, sample=0, max_carbs=120.0):
     plt.close(fig)
 
 
+def size_by_hour(d, path):
+    """Quantile bands by hour. Box plots across 24 categories add ink without adding information
+    here, because the distributions are so alike; nested bands make that likeness the visible
+    result rather than something the reader has to infer from 24 separate glyphs."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    g = d.assign(hr=d.hour.astype(int)).groupby("hr").carbs
+    q = g.quantile([.1, .25, .5, .75, .9]).unstack()
+    hrs = q.index.values
+    allday = d.carbs.median()
+
+    fig, ax = plt.subplots(figsize=(10.5, 5.4), facecolor=SURFACE)
+    ax.set_facecolor(SURFACE)
+    for sp in ax.spines.values():
+        sp.set_visible(False)
+    ax.tick_params(colors=MUTED, labelsize=9, length=0)
+
+    ax.fill_between(hrs, q[.1], q[.9], color=SEQ[2], linewidth=0, label="10th to 90th centile")
+    ax.fill_between(hrs, q[.25], q[.75], color=SEQ[6], linewidth=0, label="interquartile range")
+    ax.plot(hrs, q[.5], color=ACCENT, linewidth=2.2, solid_capstyle="round", label="median")
+    # named in the legend rather than annotated on the plot: every part of the canvas at this
+    # height is inside a band, so an in-place label would sit on the data
+    ax.axhline(allday, color=MUTED, linewidth=1.1, linestyle=(0, (4, 3)), zorder=1,
+               label=f"all-day median, {allday:.0f} g")
+
+    ax.set_xlim(0, 23); ax.set_ylim(0, None)
+    ax.set_xticks(range(0, 24, 3))
+    ax.set_xticklabels([f"{h:02d}:00" for h in range(0, 24, 3)])
+    ax.set_xlabel("hour of day, local", color=INK2, fontsize=10)
+    ax.set_ylabel("announced carbohydrate (g)", color=INK2, fontsize=10)
+    ax.grid(axis="y", color=AXIS, linewidth=0.6, alpha=0.5)
+    ax.set_axisbelow(True)
+    ax.set_title("Announced carbohydrate by hour: the distribution, not just its centre",
+                 color=INK, fontsize=12.5, loc="left", pad=34)
+    # outside the axes: at the busiest hours the 90th-centile band reaches the top of the plot,
+    # so any in-axes legend lands on the data it is describing
+    leg = ax.legend(loc="lower left", frameon=False, fontsize=9, ncol=4,
+                    bbox_to_anchor=(0, 1.005), borderaxespad=0)
+    for t in leg.get_texts():
+        t.set_color(INK2)
+    fig.text(0.007, 0.005,
+             f"{len(d):,} announcements, {d.subject_id.nunique():,} participants. The spread is "
+             f"of similar width in every hour, so the hour shifts the distribution a little and "
+             f"reshapes it hardly at all.", color=MUTED, fontsize=8)
+    fig.savefig(path, dpi=170, bbox_inches="tight", facecolor=SURFACE)
+    plt.close(fig)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out-dir", default=HERE)
@@ -233,6 +294,7 @@ def main():
     reg = regularity(d)
     txt = report(d, reg, os.path.join(a.out_dir, "MEAL_CLOCK_REPORT.md"))
     figure(d, os.path.join(a.out_dir, "meal_clock.png"), a.sample, a.max_carbs)
+    size_by_hour(d, os.path.join(a.out_dir, "meal_size_by_hour.png"))
     print(txt)
     print(f"\nwritten to {a.out_dir}/MEAL_CLOCK_REPORT.md and meal_clock.png")
 

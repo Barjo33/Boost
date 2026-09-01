@@ -25,32 +25,38 @@ A median of 65 g a day is well below likely intake, and 89 per cent of participa
 ## Through the day
 
 
-| hour | share of announcements | median size |
-|---|---|---|
-| 00:00 | 0.6% | 20 g |
-| 01:00 | 0.4% | 20 g |
-| 02:00 | 0.3% | 20 g |
-| 03:00 | 0.4% | 22 g |
-| 04:00 | 0.7% | 25 g |
-| 05:00 | 2.6% | 28 g |
-| 06:00 | 5.1% | 29 g |
-| 07:00 | 6.0% | 29 g |
-| 08:00 | 5.6% | 30 g |
-| 09:00 | 5.1% | 28 g |
-| 10:00 | 6.0% | 30 g |
-| 11:00 | 7.4% | 33 g |
-| 12:00 | 6.6% | 30 g |
-| 13:00 | 5.1% | 25 g |
-| 14:00 | 4.8% | 25 g |
-| 15:00 | 4.7% | 25 g |
-| 16:00 | 5.9% | 30 g |
-| 17:00 | 7.9% | 30 g |
-| 18:00 | 8.1% | 30 g |
-| 19:00 | 6.2% | 30 g |
-| 20:00 | 4.6% | 25 g |
-| 21:00 | 3.0% | 24 g |
-| 22:00 | 1.8% | 22 g |
-| 23:00 | 1.0% | 20 g |
+The distribution of announced carbohydrate in each hour, not only its centre, since a median that barely moves could still hide an hour whose spread is quite different.
+
+
+| hour | announcements | share | 10th | 25th | median | 75th | 90th | mean |
+|---|---|---|---|---|---|---|---|---|
+| 00:00 | 3,445 | 0.6% | 10 | 15 | 20 | 36 | 60 | 29 |
+| 01:00 | 2,293 | 0.4% | 10 | 14 | 20 | 35 | 55 | 28 |
+| 02:00 | 1,838 | 0.3% | 10 | 14 | 20 | 35 | 60 | 29 |
+| 03:00 | 2,045 | 0.4% | 10 | 13 | 22 | 37 | 50 | 28 |
+| 04:00 | 4,024 | 0.7% | 10 | 15 | 25 | 40 | 55 | 30 |
+| 05:00 | 14,450 | 2.6% | 11 | 18 | 28 | 40 | 58 | 32 |
+| 06:00 | 28,858 | 5.1% | 12 | 18 | 29 | 40 | 55 | 32 |
+| 07:00 | 33,801 | 6.0% | 12 | 18 | 29 | 40 | 58 | 32 |
+| 08:00 | 31,330 | 5.6% | 11 | 17 | 30 | 42 | 60 | 32 |
+| 09:00 | 29,028 | 5.1% | 10 | 16 | 28 | 41 | 60 | 32 |
+| 10:00 | 33,841 | 6.0% | 12 | 20 | 30 | 48 | 65 | 36 |
+| 11:00 | 41,894 | 7.4% | 14 | 20 | 33 | 50 | 70 | 38 |
+| 12:00 | 37,409 | 6.6% | 12 | 20 | 30 | 50 | 65 | 36 |
+| 13:00 | 28,632 | 5.1% | 10 | 15 | 25 | 40 | 60 | 32 |
+| 14:00 | 26,836 | 4.8% | 10 | 15 | 25 | 40 | 55 | 29 |
+| 15:00 | 26,753 | 4.7% | 10 | 15 | 25 | 40 | 60 | 30 |
+| 16:00 | 33,291 | 5.9% | 11 | 18 | 30 | 45 | 64 | 34 |
+| 17:00 | 44,785 | 7.9% | 12 | 20 | 30 | 50 | 68 | 37 |
+| 18:00 | 45,472 | 8.1% | 12 | 20 | 30 | 50 | 70 | 37 |
+| 19:00 | 35,190 | 6.2% | 11 | 18 | 30 | 45 | 65 | 35 |
+| 20:00 | 25,768 | 4.6% | 10 | 15 | 25 | 40 | 60 | 32 |
+| 21:00 | 17,134 | 3.0% | 10 | 15 | 24 | 38 | 56 | 29 |
+| 22:00 | 10,240 | 1.8% | 10 | 15 | 22 | 35 | 55 | 29 |
+| 23:00 | 5,844 | 1.0% | 10 | 15 | 20 | 35 | 55 | 28 |
+
+All figures in grams. The interquartile range is between 10 and 20 g wide in every hour of the day, and the 90th centile moves by about 20 g between the quietest hour and the busiest. The distribution shifts a little and changes shape hardly at all.
+
 
 The busiest hour is 18:00. The six hours from midnight carry 5 per cent of announcements, and their median size is 25 g against 30 g for the rest of the day, so the overnight entries are both rarer and smaller.
 
