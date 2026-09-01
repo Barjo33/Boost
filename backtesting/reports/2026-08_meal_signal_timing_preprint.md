@@ -1,215 +1,287 @@
-# What a glucose trace tells a loop about a meal
+# Recovering meal information from continuous glucose monitoring: what is available to an automated insulin delivery system, and when
 
-## Summary
+## Abstract
 
-A loop that does not ask people to announce carbohydrate has to read the glucose instead. We
-measured what it can get from that, on 1.6 million announced meals and 2 million rises from 1,807
-people across seven studies.
+**Background.** Carbohydrate announcement remains the principal demand hybrid closed-loop systems
+make of the people using them. Systems that dispense with it must recover from the glucose trace
+whatever the announcement carried. It is not established how much of that information the trace
+holds, or at what point after a meal begins it becomes available.
 
-It can tell that food arrived. It cannot tell how much. Both answers are firm and neither improves
-with a better model.
+**Methods.** Announced meals and undeclared glucose rises were extracted from seven public research
+datasets. Meal detection and meal size were assessed on 492,440 announced meals from 839
+participants, with independent replication in 71,761 meals from 189 participants on earlier
+sensor-augmented pump therapy. A third question, whether a rise will become clinically consequential,
+was assessed on 1,986,123 rise onsets from 1,807 participants, since its outcome is readable from
+the trace and requires no announcement. Participants were held out as folds throughout and all
+intervals derive from resampling participants. The analysis plan and a decision margin of 0.05 in
+area under the receiver operating characteristic curve at twenty minutes or less were fixed in
+advance.
 
-There is a third question, and it is the useful one. Will this rise go somewhere that matters? That
-is answerable at the moment the loop has to act. Almost all of the answer comes from the glucose the
-rise started at and the time of day, both of which the loop already holds. Its own forecast is at
-chance on the same question.
+**Results.** A declared meal was distinguishable from an undeclared rise ten minutes after onset
+with an area under the curve of 0.843 (95% CI 0.841 to 0.846), with no participant below 0.60 of 815
+assessed. Meal size was not recoverable: against a matched comparator carrying participant identity
+and time of day with the glucose trace withheld, the trace contributed 0.002 at ten minutes and
+0.008 at sixty, against a pre-registered margin of 0.05. Predicting each participant's own median
+meal gave a mean absolute error of 13.02 g, which a model given trajectory, clock, participant scale
+and full announcement history did not improve upon (13.12 g at ten minutes). Whether a rise would
+exceed 10.0 mmol/L was predictable at 0.812 from onset glucose alone and 0.829 with time of day
+added; trajectory shape contributed a further 0.014 (0.013 to 0.016) at ten minutes, rising to
+between 0.049 and 0.082 by thirty minutes.
 
-A faster sensor does not help. There is nothing in glucose below five minutes to find.
+**Conclusions.** The fact of a meal is recoverable from continuous glucose monitoring early and
+reliably. Its carbohydrate content is not, at any horizon at which a prandial dose would be sized,
+and apparent success at this task reflects knowledge of the individual and the hour rather than of
+the meal. The clinically tractable question is whether an excursion will become consequential, which
+is answerable at onset from information a controller already holds.
 
-## One rise
+## Background
 
-A rise starts at breakfast time, from 138 mg/dL. Ten minutes later the loop has two or three new
-readings and has to decide.
+Automated insulin delivery has reduced but not removed the work of living with type 1 diabetes. The
+demand that remains most consistently is carbohydrate announcement: estimating the content of a meal
+and entering it before eating. Estimation is difficult, error is substantial, and the burden falls
+on the person at every meal for life.
 
-Can it tell food arrived? Yes. Glucose, its delta and the curvature of the trace do that about as
-well at ten minutes as they ever will.
+Systems that remove the announcement must obtain the information some other way, or establish that
+they do not need it. Unannounced-meal handling is not new, and most current systems respond to a
+rise once it is established. What has not been established is the ceiling: how much of what an
+announcement carries is present in the glucose trace at all, and at what point after a meal begins it
+becomes legible.
 
-Can it tell how big the meal was? No. Suppose it was 60 g rather than 20 g. Those extra 40 grams
-have lifted the ten-minute rise by less than 1 mg/dL. Ten-minute rises vary by about 10 mg/dL from
-meal to meal. The signal sits an order of magnitude under the noise.
+That second clause matters more than it may appear. Subcutaneous rapid-acting analogue is commonly
+assumed by delivery systems to reach peak action between 45 and 75 minutes after a dose, and
+glucose-derived estimates within our own work place it earlier. A decision taken thirty minutes into
+an excursion has therefore ceded much of its influence over the peak. Information that becomes
+legible at forty minutes is of limited use to a controller that had to act at fifteen.
 
-Will it matter? Probably. A rise starting at 138 at breakfast is more likely than not to pass
-180 mg/dL. That comes from where it started and what time it is. The shape of the first ten minutes
-barely adds to it.
+We separate three questions that are commonly treated as one. Whether food arrived. How much of it
+there was. Whether the resulting excursion will matter.
 
-## Telling that food arrived
+## Methods
 
-Detection works, and it works for everyone.
+### Data
 
-Ten minutes in, a declared meal separates from an undeclared rise at 0.843 (0.841 to 0.846). It
-gains about three points over the next twenty minutes, then falls back. Glucose and delta alone
-reach 0.809 of that. Add curvature and you get 0.821. A detector needs nothing the loop does not
-already compute.
+Seven public research datasets contributed. Two carry carbohydrate announcements and support the
+detection and size analyses: a large contemporary corpus from an open-source automated delivery
+system (492,440 meals, 839 participants) and an earlier sensor-augmented pump cohort (71,761 meals,
+189 participants), the latter serving as independent replication across therapy, era and
+de-identification scheme. The remaining five record no carbohydrate and contribute to the
+consequence analysis only.
 
-Scored inside each of 815 people, the tenth centile is 0.778. Nobody falls below 0.60. Fit it on one
-corpus and score it on another of different therapy and era, without refitting, and it loses about a
-hundredth of a point.
+Meals below 8 g and entries identifiable as rescue carbohydrate were excluded. Meal onset was
+inferred from the trace rather than observed.
 
-The catch is how often it fires when nobody ate. Meals happen about 0.55 times a day. Undeclared
-rises happen 1.74 times. The class you want is outnumbered three to one.
+### Definitions
 
-| sensitivity at ten minutes | false alarms per day | true detections per day |
-|---|---|---|
-| 70% | 0.35 | 0.39 |
-| 80% | 0.51 | 0.44 |
-| 90% | 0.77 | 0.50 |
+A rise onset is a rise of at least 1.4 mmol/L within thirty minutes, beginning above the
+hypoglycaemia threshold. This approximates the set of events on which a detector would fire, and it
+defines both the negative class for detection and the anchor for the consequence analysis.
 
-At 70 per cent the detector is right about half the times it fires. At 90 per cent it is wrong more
-often than right. Waiting until thirty minutes gets you two true detections per false alarm, and
-costs twenty minutes.
+For detection, the comparison is a declared meal against a rise nobody declared. An asymmetry
+arises here that materially affects the result. If undeclared rises must reach 1.4 mmol/L in thirty
+minutes while meals are admitted however flat their trace, the classes are separated partly by the
+inclusion rule rather than by physiology, and the artefact grows with horizon. We report the
+matched construction, in which both classes face the same bar. The unmatched construction inflates
+the thirty-minute figure from 0.873 to 0.952 and should not be quoted.
 
-Some undeclared rises are meals people forgot to log, and we count every one as a false alarm. The
-real operating point is better than the table by an unknown margin.
+### Analysis
 
-## Telling how much
+Discrimination is reported as area under the receiver operating characteristic curve, where 0.5 is
+chance. Participants were held out as folds, so every score comes from a model that never saw that
+participant. Intervals come from resampling participants rather than observations, since
+observations within a participant are not independent.
 
-Predict that someone eats their median meal every time. Look at no glucose at all. That gives a mean
-absolute error of 13.02 g.
+Where two models score the same events, we report the paired difference and its interval. Two areas
+under the curve each carrying their own interval do not establish that they differ, because their
+errors are correlated.
 
-Now give a model the whole trajectory, the clock, the person's scale and their entire history of
-announcements. It gives 13.12 g at ten minutes, and 13.01 g at sixty.
+The analysis plan and the decision margin of 0.05 at twenty minutes or less were pre-registered.
 
-The trajectory on its own is worse than guessing the population median.
+## Results
 
-Discrimination agrees. Hold the person and the clock constant, then add the glucose trace: it is
-worth 0.002 at ten minutes and 0.008 at sixty. We had pre-registered 0.05 by twenty minutes as the
-margin worth acting on.
+### Detection of a meal
 
-Now watch how those numbers move with time. An arm carrying information about
-the person sits at 0.833 at ten minutes and 0.838 at sixty. A full hour of glucose arrives and it
-barely shifts. An arm with only the trajectory climbs from 0.519 to 0.608, because it has nothing
-else to work with. If a model does not improve as the excursion unfolds, it was never reading the
-excursion. A model scoring 0.833 is reading the diner.
+Ten minutes after onset, a declared meal was distinguishable from an undeclared rise at 0.843 (0.841
+to 0.846). Discrimination improved by approximately three points over the following twenty minutes
+and then declined.
 
-The physiology is fine. Within one person, comparing their own unbolused meals
-against their own bolused ones, carbohydrate raises the trace when no insulin was given and lowers
-it when insulin was. In unbolused meals the slope is about 0.02 mg/dL per gram at ten minutes. That
-is how 40 grams comes to be worth 0.83 mg/dL against a spread of 9.71. A twelfth of the noise. It
-reaches a quarter of the noise only by the hour mark.
+Glucose value and its short-window delta reached 0.809 of that figure; adding curvature reached
+0.821. No quantity beyond those a controller already computes each cycle is required.
 
-Dosing to an inferred meal size is therefore closed. The quantity is not in the trace while a
-dose is still worth sizing, so a better model will not recover it.
+Performance was uniform across individuals. Assessed within each of 815 participants contributing at
+least twenty events of each class, the tenth centile was 0.778, the median 0.839 and the ninetieth
+0.887. No participant fell below 0.60. Fitted on the larger corpus and applied to the second without
+refitting, discrimination was 0.807 at ten minutes against 0.818 for a model fitted within that
+corpus, so transfer across therapy and era cost approximately one hundredth.
 
-## Telling whether it matters
+Discrimination is silent on how often a detector fires when nobody has eaten, which is the quantity
+that determines whether it can be deployed. Meals meeting the matched criterion occurred 0.55 times
+per participant-day; undeclared rises occurred 1.74 times.
 
-At the moment it acts, a loop does not need either previous answer. It needs to know whether this
-rise is worth treating.
-
-That question can be scored without anyone announcing anything, because the answer is written in the
-trace afterwards. Five studies that record no carbohydrate become usable.
-
-First, how much is there to explain? Once a rise clears 25 mg/dL in half an hour, between 0.833 and
-0.859 of them go on to reach 40 mg/dL above baseline. That holds across all seven studies, which
-differ in therapy, era and age. Five in six declared rises matter, whoever is wearing the sensor.
-
-Where the rise started carries most of the rest. Onset glucose alone reaches 0.812 for whether the
-excursion passes 180 mg/dL. Add the hour of the clock, which costs nothing, and it is 0.829.
-
-The shape of the trajectory does add on top. The addition is real, small, and late.
-
-| what the shape adds, over onset glucose and clock | 10 min | 20 min | 30 min |
+| sensitivity at ten minutes | false positive rate | false alarms per day | true detections per day |
 |---|---|---|---|
-| peak rise of 60 mg/dL or more | +0.014 | +0.032 | +0.049 to +0.082 |
-| glucose passes 180 mg/dL | +0.014 | +0.027 | +0.049 to +0.082 |
+| 70% | 0.202 | 0.35 | 0.39 |
+| 80% | 0.294 | 0.51 | 0.44 |
+| 90% | 0.442 | 0.77 | 0.50 |
 
-Every interval excludes zero, so this is not noise. It is the wrong shape to use, though. Meal size
-was flat across horizons, which is how we knew it never came from the excursion. Here it grows
-steadily, so information really is arriving from the trajectory. It just arrives late. Our 0.05
-margin is cleared at thirty minutes and not before, and by thirty minutes the decision has been
-taken.
+At 70% sensitivity a detector is correct on approximately half of the occasions it fires. At 90% it
+produces more false alarms than true detections. Deferring to thirty minutes improves this to
+approximately two true detections per false alarm.
 
-## What the loop already has
+One consideration runs the other way and cannot be resolved within these data. An unknown proportion
+of undeclared rises are meals the participant did not record, and each is counted here as a false
+alarm. The operating characteristics above are therefore conservative.
 
-Both useful quantities are free. We joined an engine record to outcomes to see what the loop actually
-computed, across 27,619 rise onsets.
+### Meal size
 
-| scored against the outcome | area under the curve |
+Meal size was not recoverable from the trajectory.
+
+Against a matched comparator carrying participant identity and time of day with the glucose trace
+withheld, the trace contributed 0.002 at ten minutes and 0.008 at sixty. The pre-registered margin
+was 0.05 at twenty minutes or less.
+
+Expressed as a quantity, predicting each participant's own median meal and disregarding glucose
+entirely gave a mean absolute error of 13.02 g. A model given the trajectory, the clock, participant
+scale and complete announcement history gave 13.12 g at ten minutes and 13.01 g at sixty. A model
+given the trajectory alone performed worse than the population median.
+
+The pattern across horizons identifies what the models were reading. Arms carrying participant
+information scored 0.833 at ten minutes and 0.838 at sixty, changing little as a full hour of
+glucose accrued, while a trajectory-only arm rose from 0.519 to 0.608. Discrimination that does not
+improve as an excursion unfolds did not derive from the excursion. A model scoring 0.833 is
+identifying the individual, not the meal.
+
+The underlying physiological relationship is present and correctly signed. Compared within
+participants, carbohydrate was associated with a rising trace where no insulin preceded the meal and
+a falling one where it did, a difference in slope of 0.0175 (0.0038 to 0.0317) at ten minutes across
+561 participants. Among unbolused meals the slope was approximately 0.001 mmol/L per gram at ten
+minutes. A difference of 40 g therefore displaces the ten-minute rise by 0.05 mmol/L, against a
+between-meal standard deviation of 0.54 mmol/L. The signal is approximately one twelfth of the
+variability in which it sits, reaching one quarter only by sixty minutes.
+
+Sizing a prandial dose to an inferred meal is therefore not achievable from the glucose trace at any
+horizon at which such a dose remains useful.
+
+### Whether an excursion will be consequential
+
+At the moment of decision a controller requires neither preceding answer. It requires an estimate of
+whether the excursion before it warrants intervention.
+
+Once a rise has cleared 1.4 mmol/L within thirty minutes, the proportion proceeding to a peak rise
+of 2.2 mmol/L above baseline was between 0.833 and 0.859 across all seven datasets, which differ in
+therapy, era and age. Five in six established rises are consequential on that definition.
+
+Onset glucose alone predicted whether the excursion would exceed 10.0 mmol/L at 0.812. Adding time
+of day gave 0.829.
+
+| additional discrimination from trajectory shape | 10 min | 20 min | 30 min |
+|---|---|---|---|
+| peak rise of 3.3 mmol/L or more | +0.014 | +0.032 | +0.049 to +0.082 |
+| glucose exceeds 10.0 mmol/L | +0.014 | +0.027 | +0.049 to +0.082 |
+
+All intervals excluded zero. The contribution is genuine and it accrues monotonically, which
+distinguishes it from the size result, where the flat profile across horizons indicated that the
+discrimination never derived from the excursion at all. Here information does arrive from the
+trajectory. It arrives after the point of decision: the pre-registered margin is met at thirty
+minutes and not before.
+
+### What a controller already encodes
+
+The two quantities carrying most of this discrimination are available without additional sensing or
+modelling. To establish whether a controller already exploits them, an engine record was joined to
+outcomes across 27,619 rise onsets from 36 participants.
+
+| model | area under the curve |
 |---|---|
 | base rate | 0.544 |
-| the loop's forward projection | 0.544 |
-| onset glucose and the clock | 0.625 |
-| the whole loop record plus those two | 0.625 |
+| controller's forward glucose projection | 0.544 |
+| onset glucose and time of day | 0.625 |
+| complete engine record added to the above | 0.625 |
 
-The forward projection is what every dosing decision rests on. It is at chance for whether the
-excursion it is projecting will matter. Two numbers the loop holds at the same instant reach 0.625.
-Adding the entire engine record on top of them is worth 0.001.
+The forward projection, on which dosing decisions rest, was at chance for whether the excursion it
+projected would prove consequential. Two quantities held at the same instant reached 0.625, and the
+remainder of the engine record contributed 0.001.
 
-So there is no new signal here. There is a reading of existing signal that nothing currently makes.
-It is the only lever in this programme that survived a control built to kill it.
+### Sampling interval
 
-## Whether a faster sensor helps
+If the useful discrimination accrues at around thirty minutes, a shorter sensor interval is an
+obvious remedy. It does not provide one.
 
-If the useful information turns up around thirty minutes, sample more often. That is the obvious
-move and it does not work.
+One participant wore a five-minute sensor for 83 days and a one-minute sensor for 61. Compared
+through the variogram, which is expressed in minutes of lag and therefore places both cadences on a
+single axis without resampling, the two records differed by a single scale factor of 1.602, varying
+by 6.6% of its mean across a twenty-four-fold range of lag, with no inflection at the short end.
+Log-log slopes matched in both shared bands. Below five minutes, where only the faster sensor
+observes, the slope contained the value obtained above. Neither record exhibited the flattening at
+short lag that additive measurement noise imposes.
 
-One person wore a five-minute sensor for 83 days, then a one-minute sensor for 61. Put both on one
-axis, without resampling either, and they differ by a single scale factor. It is flat to within 7
-per cent across a twenty-four-fold range of lag. No bend at the short end. Matching slopes in the
-bands they share. Below five minutes, where only the fast sensor can see, the slope contains the
-value from above.
+No additional structure exists below five minutes. What a shorter interval provides is scheduling.
+In four controller instances run in parallel on one participant, three sharing a single sensor, a
+one-minute cycle reached its first microbolus 1.8 minutes (0.8 to 2.9) earlier than a five-minute
+cycle, and its basal suspension at the onset of a fall was 2.6 minutes (1.1 to 3.0) older. Both
+intervals are of the order of the sampling interval from which they derive.
 
-The same power law runs from one minute to sixty. Neither record shows the flattening that
-measurement noise would impose. There is nothing under five minutes to find.
+## Discussion
 
-What a fast feed does buy is scheduling. A loop running every minute waits less for its next chance
-to act. Four instances running in parallel on one person, three of them sharing a sensor, put that
-at 1.8 minutes to the first microbolus on a rise, and about 2.6 minutes on a basal suspension. Both
-are the size of the sampling interval they came from.
+These findings bear directly on how mealtime management might be automated.
 
-## What to build
+The fact of a meal is recoverable early, reliably, and for everyone. A detector requires no
+quantities a controller does not already compute, transfers between populations at negligible cost,
+and has no identifiable subgroup in which it fails. Detection is not the obstacle to
+announcement-free operation.
 
-Detection is solved, so effort spent improving it is spent in the wrong place. Sizing a dose to an
-inferred meal cannot be done from the trace at all. Richer inference from the shape of an excursion
-is unlikely to repay the work, because what exists arrives after the decision.
+Meal size is not recoverable, and the strength of the evidence is worth stating plainly. This was
+tested on 830 times the meals and 140 times the participants of the preceding study in our own
+programme, held out by participant, replicated in an independent cohort on different therapy, and
+compared against a matched comparator rather than against chance. The physiological relationship
+exists and runs in the expected direction. It is an order of magnitude below the between-meal
+variability at the horizons at which a prandial dose would be given. Reports of meal size estimated
+from glucose should be interpreted against a comparator that carries participant identity and time
+of day, since in our data that comparator accounts for essentially all of the apparent performance.
 
-Two things are worth doing. Price consequence at the onset, from onset glucose and the hour. The
-loop holds both, does not combine them, and they beat its own forecast on that question by 0.08.
-Then shorten the gap between information and action, because what the loop will act on is largely
-settled by the time it acts. A faster decision cycle buys one to three minutes of that. It buys
-nothing else.
+The practical consequence is that a system cannot replace a carbohydrate entry with an inferred
+equivalent. It does not follow that it requires one. The question a controller must answer at the
+moment of action is whether the excursion before it will become consequential, and that is
+answerable at onset, principally from the glucose at which the rise began and the time of day. In
+the engine record examined here the controller's own forward projection performed at the base rate
+on that question while those two quantities did not, which suggests an available improvement that
+requires no new sensing.
 
-None of this shows that acting differently would improve an outcome. No observational corpus can
-show that. A dosing change here needs a within-participant randomised comparison first.
+The limits of a shorter sensor interval follow from the same analysis. The glucose signal contains
+no structure below five minutes, so a faster feed cannot make the missing information available
+earlier. It confers approximately one to three minutes of scheduling advantage, which is smaller
+than the onset of any available actuator.
 
-## How this was measured
-
-Two corpora of announced meals: 492,440 meals from 839 people on an open-source automated system,
-and 71,761 from 189 people on sensor-augmented pump therapy in an earlier era. The second is an
-independent replication. Rescue carbohydrate and entries below 8 g are excluded. Meal onset is
-inferred from the trace.
-
-The consequence work uses rise onsets instead of announcements, so it needs nobody to have logged
-anything, and draws on all seven studies: 1,986,123 onsets from 1,807 people. A rise onset is a
-climb of at least 25 mg/dL within thirty minutes, starting above the hypoglycaemia threshold. That
-is roughly the set of events a detector fires on.
-
-People are held out as folds throughout. Every interval comes from resampling people. The analysis
-plan, including the 0.05 margin at twenty minutes or less, was fixed before any of this was
-measured.
-
-Where two arms score the same events, we report the paired difference. Two areas under the curve
-each carrying their own interval tell you nothing about whether they differ, because their errors
-move together.
+None of this establishes that acting on a consequence estimate would improve glycaemic outcomes. No
+observational corpus can establish that, and a change to dosing behaviour requires a
+within-participant randomised comparison.
 
 ## Limitations
 
-Announced carbohydrate is somebody's own estimate. Its error caps the accuracy anything here can
-measure, and we cannot separate that cap from the one physiology imposes.
+Announced carbohydrate is an estimate made by the person eating. Its error imposes a ceiling on
+measurable accuracy that this design cannot separate from the ceiling imposed by physiology.
 
-Meal onset is inferred, not observed. A meal announced well after the eating is anchored badly.
+Meal onset was inferred from the trace rather than observed, so a meal announced at some distance
+from the eating is anchored imprecisely.
 
-The undeclared class holds dawn phenomenon, stress responses and rebounds. Those differ in shape for
-reasons unrelated to food, so the detection figures bound what a detector can do rather than
-isolating carbohydrate.
+The undeclared class contains dawn phenomenon, stress responses and post-hypoglycaemic rebound,
+which differ in trajectory for reasons unrelated to carbohydrate. The detection analysis therefore
+bounds achievable performance rather than isolating the response to food.
 
-Consequence outcomes come from traces produced under active insulin therapy. What gets predicted is
-the excursion that happened given the treatment given. The modelling uses 200 of the 1,807 available
-people; intervals are narrow and effect sizes stable across the sweep, but no full-corpus run has
-been done.
+Consequence outcomes were read from traces produced under active insulin therapy. What is predicted
+is the excursion that occurred given the treatment given, not the untreated excursion. The
+consequence modelling used 200 of the 1,807 available participants; intervals were narrow and effect
+sizes stable across the sweep, but a full-corpus analysis has not been performed.
 
-The cadence comparison rests on one person, two sensor eras that are not glycaemically matched, and
-four parallel instances of which three drove a virtual pump. Read its numbers as what controllers
-propose, not what they achieve.
+The sampling-interval comparison rests on a single participant across two sensor eras that are not
+glycaemically matched, and on four parallel controller instances of which three commanded a virtual
+pump. Its magnitudes describe what controllers propose rather than what they achieve.
 
-None of these people use the system this programme develops. What transfers is a statement about the
-information in a glucose trace, not about how any controller responds to it.
+Participants in these datasets do not use the system under development in this programme. What
+transfers is a statement about the information contained in a glucose trace, not about any
+particular controller's response to it.
+
+## Data and reproducibility
+
+All corpora are public research datasets. Extraction, modelling and interval estimation are
+performed by scripts committed alongside this report, against a local copy of the datasets. The
+pre-registered analysis plan is committed separately and predates the measurements.
