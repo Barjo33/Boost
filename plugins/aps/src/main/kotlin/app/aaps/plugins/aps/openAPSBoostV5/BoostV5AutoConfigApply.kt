@@ -106,6 +106,13 @@ internal object BoostV5AutoConfigApply {
         DoubleKey.ApsBoostV5ConfirmedCapU,
         DoubleKey.ApsBoostV5CommittedCapU,
         DoubleKey.ApsBoostCumulativeSmbCap60Min
+        // ApsBoostV5PrimerCapU is deliberately NOT here. It was briefly added on 2026-07-30 and then
+        // removed the same day: raise-guarding it meant a hypo-prone user at the 0.0 factory default had
+        // the cap withheld AND marked resolved, so the primer was never provisioned for them at all —
+        // including the retractable temp-basal route that is precisely their SAFE path. Auto-config
+        // RECOMMENDS the temp-basal routing for these users (ApsBoostV5PrimerTbrFallback) and the
+        // recommendation is recorded, but the user override always wins: auto-config may set a default,
+        // it may never make a setting unreachable.
     )
 
     /** The double-valued V5 knobs auto-config manages (stable order). */
@@ -117,7 +124,7 @@ internal object BoostV5AutoConfigApply {
         DoubleKey.ApsBoostCumulativeSmbCap60Min,
         DoubleKey.ApsBoostMaxIob,
         DoubleKey.ApsBoostBolus,
-        DoubleKey.ApsBoostV5PrimerCapU   // 2026-07-20 — NOT in doseCapKeys (routing is the safety, see BoostV5AutoConfig)
+        DoubleKey.ApsBoostV5PrimerCapU   // NOT raise-guarded — safety is the locked TBR delivery, see doseCapKeys
     )
 
     /** [managedDoubleKeys] paired with their suggested values (same stable order). */
@@ -238,9 +245,10 @@ internal object BoostV5AutoConfigApply {
         )
         resolve(DoubleKey.ApsBoostMaxIob, suggestion.maxIobU)
         resolve(DoubleKey.ApsBoostBolus, suggestion.bolusCapU)
-        // 2026-07-20 V1-acceleration primer cap. NOT in doseCapKeys, so the raise-guard does not block
-        // it — the bolus-vs-temp-basal routing is the safety differentiator, and a tbr-routed
-        // (non-well-controlled) user still needs a non-zero cap to size the retractable temp-basal.
+        // 2026-07-20 V1-acceleration primer cap. NOT raise-guarded (see doseCapKeys): a hypo-prone user
+        // must still be PROVISIONED a non-zero size, because their recommended delivery route — a
+        // retractable temp basal — needs one. The routing is a recommendation the user may override; an
+        // override is logged at the delivery seam (primerRoute) so it is visible in the data.
         resolve(DoubleKey.ApsBoostV5PrimerCapU, suggestion.primerCapU)
         return resolutions
     }

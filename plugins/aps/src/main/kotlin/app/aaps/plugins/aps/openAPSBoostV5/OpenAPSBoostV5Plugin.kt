@@ -610,6 +610,10 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             // 2026-07-20 V1-acceleration primer (LIVE). Mode = auto-config's temp-basal routing UNLESS
             // the user override (ApsBoostV5PrimerBolusMode) forces the bolus. Only active while V6 doses.
             primerCapU = if (activeMode) preferences.getBoostDosing(DoubleKey.ApsBoostV5PrimerCapU) else 0.0,
+            // 2026-07-30: the USER OVERRIDE ALWAYS WINS. A brief attempt to hard-lock hypo-prone users
+            // to the temp basal was reverted: auto-config may recommend a routing, it may never make a
+            // setting unreachable. The safety response to an override is to make it VISIBLE (see the
+            // primerRoute breadcrumb at the delivery seam), not to block it.
             primerUseTempBasal = preferences.getBoostDosing(BooleanKey.ApsBoostV5PrimerTbrFallback) &&
                 !preferences.getBoostDosing(BooleanKey.ApsBoostV5PrimerBolusMode),
             nowMs = dateUtil.now(),   // 2026-07-21 wall-clock for the primer-IOB accumulator decay
