@@ -67,8 +67,21 @@ system (492,440 meals, 839 participants) and an earlier sensor-augmented pump co
 de-identification scheme. The remaining five record no carbohydrate and contribute to the
 consequence analysis only.
 
-Meals below 8 g and entries identifiable as rescue carbohydrate were excluded. Meal onset was
-inferred from the trace rather than observed.
+Meals below 8 g were excluded, as were entries made at or below 4.4 mmol/L, which are treated as
+rescue carbohydrate. Entries close in time were merged, since a single meal is often entered in
+parts. Meal onset was inferred from the trace rather than observed.
+
+What remains is an announcement rather than a meal, and its distribution should be stated because it
+conditions everything that follows. Participants announced a median of 2.1 times per day, with a
+median announcement of 28 g and an interquartile range of 16 to 44 g. Just under half were 30 g or
+more and a fifth were 50 g or more.
+
+Announced carbohydrate totalled a median of 63 g per participant-day, with 92% of participants below
+100 g. That is well under typical intake, so a substantial part of what these participants ate was
+not announced. Two consequences follow. The undeclared class used as the comparison for detection
+contains genuine unannounced meals, which makes the false-alarm figures reported below conservative
+by an unknown margin. And the size analysis concerns the size of announced meals, which may differ
+systematically from the size of all meals.
 
 ### Definitions
 
@@ -258,7 +271,9 @@ within-participant randomised comparison.
 ## Limitations
 
 Announced carbohydrate is an estimate made by the person eating. Its error imposes a ceiling on
-measurable accuracy that this design cannot separate from the ceiling imposed by physiology.
+measurable accuracy that this design cannot separate from the ceiling imposed by physiology. The
+announcement is also incomplete: at a median of 63 g per participant-day it accounts for a fraction
+of likely intake, so these are the meals people chose to record rather than the meals they ate.
 
 Meal onset was inferred from the trace rather than observed, so a meal announced at some distance
 from the eating is anchored imprecisely.
