@@ -68,8 +68,17 @@ de-identification scheme. The remaining five record no carbohydrate and contribu
 consequence analysis only.
 
 Meals below 8 g were excluded, as were entries made at or below 4.4 mmol/L, which are treated as
-rescue carbohydrate. Entries close in time were merged, since a single meal is often entered in
-parts. Meal onset was inferred from the trace rather than observed.
+rescue carbohydrate. Where entries fell within ninety minutes of one another the first was kept
+as the meal and the rest were not counted, so a meal entered in parts is recorded at the size of
+its first part. Meal onset was inferred from the trace rather than observed.
+
+That rule sets aside 26 per cent of entries and 22 per cent of all carbohydrate. For the 28 per
+cent of meals that lose something, the recorded size is a median 25 g against 55 g for the
+eating occasion it belongs to. Re-extracting with those entries added to the meal rather than
+set aside raises the median meal from 28 g to 34 g and leaves every result below unchanged: the
+trace then adds 0.006 at ten minutes over the clock rather than 0.008, and 0.032 rather than
+0.021 over the fuller baseline, both still short of the 0.05 margin. On quantity the model
+matches each participant's own median on either definition.
 
 What remains is an announcement rather than a meal, and its distribution should be stated because it
 conditions everything that follows. Participants announced a median of 2.1 times per day, with a
@@ -277,6 +286,11 @@ of likely intake, so these are the meals people chose to record rather than the 
 
 Meal onset was inferred from the trace rather than observed, so a meal announced at some distance
 from the eating is anchored imprecisely.
+
+A meal here is the first entry of a cluster rather than the cluster itself, which understates a
+quarter of eating occasions by roughly half. The size analyses were re-run against the
+corrected definition and did not move, but every size quoted in this paper is a first entry and
+not an eating occasion.
 
 The undeclared class contains dawn phenomenon, stress responses and post-hypoglycaemic rebound,
 which differ in trajectory for reasons unrelated to carbohydrate. The detection analysis therefore
