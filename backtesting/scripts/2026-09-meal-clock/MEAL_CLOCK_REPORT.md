@@ -7,7 +7,7 @@
 ## What an announcement is
 
 
-At least 8 g, not entered at or below 4.4 mmol/L, entries close in time merged. That leaves a median of 2.0 announcements per participant-day.
+At least 8 g and not entered at or below 4.4 mmol/L. Where entries fall within ninety minutes of one another the extraction keeps the first and does not count the rest, so a meal entered in parts is recorded at the size of its first part. That leaves a median of 2.0 announcements per participant-day, and understates a quarter of eating occasions by roughly half.
 
 
 | quantity | value |
