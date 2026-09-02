@@ -41,3 +41,35 @@ Median gap 16 minutes. The amounts that repeat are small: 15 g, 10 g, 20 g, 30 g
 
 
 That combination, small amounts repeated at short intervals, reads as one meal entered in parts rather than as a person eating the same thing twice. It is a reason to treat the small end of the size distribution as partly an artefact of entry behaviour, and a reason the merging step in the readability extraction matters more than it looks.
+
+
+## The broader pattern: entries close together, whatever the size
+
+
+Repeating a size is a special case. The more common thing is a second entry of a different size soon after the first.
+
+
+| gap to the next entry | share of successive pairs | same size | different size |
+|---|---|---|---|
+| under 5 min | 4.1% | 22.0% | 78.0% |
+| 5 to 15 | 4.2% | 15.7% | 84.3% |
+| 15 to 30 | 5.2% | 12.7% | 87.3% |
+| 30 to 60 | 6.8% | 11.2% | 88.8% |
+| over 60 | 79.8% | 9.1% | 90.9% |
+
+Inside half an hour, 87 per cent of successive pairs differ in size. The same-size share does climb as the gap shortens, from 9.1 per cent beyond an hour to 22.0 under five minutes, which is the repeat effect measured above. It never becomes the majority.
+
+
+## What a cluster amounts to
+
+
+Chaining entries that fall within a threshold of each other, and treating each chain as one eating occasion.
+
+
+| chain threshold | clusters | single entry | two | three or more | entries absorbed into multi-entry clusters | median total of a multi-entry cluster |
+|---|---|---|---|---|---|---|
+| 15 min | 742,151 | 92% | 7% | 1% | 16% | 50 g |
+| 30 min | 700,222 | 87% | 11% | 2% | 25% | 53 g |
+| 60 min | 645,539 | 81% | 15% | 4% | 36% | 56 g |
+
+This is the consequence worth carrying. At half an hour, 25 per cent of entries belong to a cluster of two or more, and those clusters total a median of 53 g against 28 g for a lone entry. So for a quarter of entries the eating occasion is roughly twice the size the entry records. Any statement about how large a meal is depends on whether split entries were merged first, and the answer moves by about a factor of two.

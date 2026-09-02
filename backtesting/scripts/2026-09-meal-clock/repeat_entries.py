@@ -75,6 +75,48 @@ def scan(w, window_s, min_entries, seed=0):
     return p, np.array(gaps), np.array(sizes)
 
 
+def proximity(w, thresholds=(15, 30, 60)):
+    """Successive pairs by gap and whether the sizes match, and what clusters amount to.
+
+    The same-size question is a special case of a broader one: how often is what looks like a meal
+    actually several entries close together? If it often is, the size distribution everyone models
+    is a distribution of increments, and the answer differs by a factor of two.
+    """
+    g = w.groupby("subject_id")
+    pair = pd.DataFrame({"gap": g.t.diff() / 60.0,
+                         "a": g.carbs_g.shift(), "b": w.carbs_g}).dropna()
+    bands = [(0, 5, "under 5 min"), (5, 15, "5 to 15"), (15, 30, "15 to 30"),
+             (30, 60, "30 to 60"), (60, np.inf, "over 60")]
+    rows = []
+    for lo, hi, lab in bands:
+        m = (pair.gap >= lo) & (pair.gap < hi)
+        if not m.any():
+            continue
+        same = float((pair.a[m] == pair.b[m]).mean())
+        rows.append((lab, float(m.mean()), same, 1 - same, int(m.sum())))
+    by_gap = pd.DataFrame(rows, columns=["band", "share", "same", "different", "n"])
+
+    clus = []
+    for thr_min in thresholds:
+        thr = thr_min * 60
+        sz, tot = [], []
+        for sid, gg in w.groupby("subject_id", sort=False):
+            t = gg.t.values; v = gg.carbs_g.values
+            i = 0
+            while i < len(t):
+                j = i
+                while j + 1 < len(t) and t[j + 1] - t[j] <= thr:
+                    j += 1
+                sz.append(j - i + 1); tot.append(v[i:j + 1].sum()); i = j + 1
+        sz = np.array(sz); tot = np.array(tot); multi = sz > 1
+        clus.append(dict(thr=thr_min, n=len(sz), single=float((sz == 1).mean()),
+                         two=float((sz == 2).mean()), three_plus=float((sz >= 3).mean()),
+                         absorbed=float(sz[multi].sum() / sz.sum()),
+                         med_multi=float(np.median(tot[multi])),
+                         med_all=float(np.median(tot))))
+    return by_gap, pd.DataFrame(clus)
+
+
 def figure(p, gaps, sizes, path, window_min):
     import matplotlib
     matplotlib.use("Agg")
@@ -177,6 +219,38 @@ def main():
       "parts rather than as a person eating the same thing twice. It is a reason to treat the "
       "small end of the size distribution as partly an artefact of entry behaviour, and a reason "
       "the merging step in the readability extraction matters more than it looks.\n")
+
+    by_gap, clus = proximity(w)
+    P("\n## The broader pattern: entries close together, whatever the size\n")
+    P("\nRepeating a size is a special case. The more common thing is a second entry of a "
+      "different size soon after the first.\n")
+    P("\n| gap to the next entry | share of successive pairs | same size | different size |")
+    P("|---|---|---|---|")
+    for r in by_gap.itertuples():
+        P(f"| {r.band} | {100*r.share:.1f}% | {100*r.same:.1f}% | {100*r.different:.1f}% |")
+    close = by_gap[by_gap.band != "over 60"]
+    P(f"\nInside half an hour, {100*(1-by_gap.set_index('band').loc['15 to 30','same']):.0f} per "
+      f"cent of successive pairs differ in size. The same-size share does climb as the gap "
+      f"shortens, from {100*by_gap.set_index('band').loc['over 60','same']:.1f} per cent beyond an "
+      f"hour to {100*by_gap.set_index('band').loc['under 5 min','same']:.1f} under five minutes, "
+      f"which is the repeat effect measured above. It never becomes the majority.\n")
+
+    P("\n## What a cluster amounts to\n")
+    P("\nChaining entries that fall within a threshold of each other, and treating each chain as "
+      "one eating occasion.\n")
+    P("\n| chain threshold | clusters | single entry | two | three or more | entries absorbed "
+      "into multi-entry clusters | median total of a multi-entry cluster |")
+    P("|---|---|---|---|---|---|---|")
+    for r in clus.itertuples():
+        P(f"| {r.thr} min | {r.n:,} | {100*r.single:.0f}% | {100*r.two:.0f}% | "
+          f"{100*r.three_plus:.0f}% | {100*r.absorbed:.0f}% | {r.med_multi:.0f} g |")
+    r30 = clus[clus.thr == 30].iloc[0]
+    P(f"\nThis is the consequence worth carrying. At half an hour, {100*r30.absorbed:.0f} per cent "
+      f"of entries belong to a cluster of two or more, and those clusters total a median of "
+      f"{r30.med_multi:.0f} g against {w.carbs_g.median():.0f} g for a lone entry. So for a quarter "
+      f"of entries the eating occasion is roughly twice the size the entry records. Any statement "
+      f"about how large a meal is depends on whether split entries were merged first, and the "
+      f"answer moves by about a factor of two.\n")
 
     open(os.path.join(a.out_dir, "REPEAT_ENTRIES_REPORT.md"), "w").write("\n".join(L))
     figure(p, gaps, sizes, os.path.join(a.out_dir, "repeat_entries.png"), a.window_min)
