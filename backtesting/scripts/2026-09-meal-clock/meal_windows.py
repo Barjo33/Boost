@@ -34,8 +34,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def load(exclude_rescue):
-    q = """select extract(hour from c.ts_local)::int hr, c.carbs_g
-           from studies.carbs c where c.carbs_g > 0"""
+    q = """select s.study_name, extract(hour from c.ts_local)::int hr, c.carbs_g
+           from studies.carbs c join studies.subject s using (subject_id)
+           where c.carbs_g > 0"""
     with psycopg2.connect(DSN) as con:
         d = pd.read_sql(q, con)
     if exclude_rescue:
@@ -46,19 +47,19 @@ def load(exclude_rescue):
 
 
 def curves(d, max_carbs, sigma):
-    """One-gram histogram per window, Gaussian-smoothed, normalised to a density."""
+    """One-gram histogram per window, Gaussian-smoothed, as a percentage of that window."""
     grid = np.arange(0, max_carbs + 1)
     out = {}
     for name, lo, hi, colour in WINDOWS:
         v = d.carbs_g[(d.hr >= lo) & (d.hr < hi)].values.astype(float)
         h, _ = np.histogram(v[v <= max_carbs], bins=np.arange(0, max_carbs + 2))
         y = gaussian_filter1d(h.astype(float), sigma)
-        y = y / y.sum()
+        y = 100.0 * y / y.sum()
         out[name] = dict(grid=grid, y=y, v=v, colour=colour, lo=lo, hi=hi)
     return out
 
 
-def report(d, cur, path, max_carbs, sigma, exclude_rescue):
+def report(d, cur, by_study, path, max_carbs, sigma, exclude_rescue):
     L, P = [], None
     P = L.append
     tot = len(d)
@@ -81,10 +82,10 @@ def report(d, cur, path, max_carbs, sigma, exclude_rescue):
     iqr = {n: st[n]["75%"] - st[n]["25%"] for n in st}
     P("\n## What differs between the windows, and what does not\n")
     if len(set(meds.values())) == 1:
-        P(f"\nThe median is the same {list(meds.values())[0]:.0f} g in all three windows. Not "
-          f"close: identical. Against an interquartile range of {min(iqr.values()):.0f} to "
-          f"{max(iqr.values()):.0f} g inside each window, knowing which meal it is tells you "
-          f"nothing about the middle of the distribution.\n")
+        P(f"\nPooled, the median is the same {list(meds.values())[0]:.0f} g in all three "
+          f"windows, against an interquartile range of {min(iqr.values()):.0f} to "
+          f"{max(iqr.values()):.0f} g inside each. That pooled figure is misleading and the "
+          f"by-study section below shows why.\n")
     else:
         big = max(meds, key=meds.get); small = min(meds, key=meds.get)
         P(f"\nMedians run from {meds[small]:.0f} g at {small} to {meds[big]:.0f} g at {big}, a "
@@ -100,57 +101,101 @@ def report(d, cur, path, max_carbs, sigma, exclude_rescue):
     P(f"\nThe curves are a one-gram histogram smoothed with a Gaussian kernel of "
       f"{sigma:.0f} g. Without smoothing each is a comb, because two thirds of announcements are "
       f"a multiple of five.\n")
+    P("\n## By study\n")
+    P("\nCarbohydrate is recorded by two of the seven corpora, and the pooled figures above are "
+      "not a description of both. Loop contributes 90 per cent of the entries, so pooling reports "
+      "Loop's behaviour with a little ReplaceBG mixed in.\n")
+    P("\n| study | window | announcements | 25th | median | 75th | mean |")
+    P("|---|---|---|---|---|---|---|")
+    for st in sorted(by_study):
+        for name, lo, hi, _ in WINDOWS:
+            v = pd.Series(by_study[st][name]["v"])
+            q = v.quantile([.25, .5, .75])
+            P(f"| {st} | {name} | {len(v):,} | {q[.25]:.0f} | {q[.5]:.0f} | {q[.75]:.0f} | "
+              f"{v.mean():.0f} |")
+    P("\nAll sizes in grams.\n")
+    lo_s, hi_s = sorted(by_study)
+    def med(st, w):
+        return float(pd.Series(by_study[st][w]["v"]).median())
+    for st in sorted(by_study):
+        ms = [med(st, w[0]) for w in WINDOWS]
+        span = max(ms) - min(ms)
+        P(f"\nIn {st} the medians run "
+          + ", ".join(f"{w[0]} {m:.0f} g" for w, m in zip(WINDOWS, ms))
+          + f", a span of {span:.0f} g across the day.\n")
+    P("\nSo the two corpora disagree about the thing the windows were meant to test. Loop is "
+      "flat across the day and peaks near 15 g. ReplaceBG rises steadily from breakfast to dinner "
+      "and peaks near 30 g. Any statement about whether meal windows carry size information "
+      "depends on which population is being described, and the pooled answer is Loop's.\n")
+    P("\nThe likely reason is what the two groups were doing. Loop participants ran a closed "
+      "loop and entered carbohydrate about twice as often per person, in smaller amounts, which "
+      "is the pattern of announcing snacks and corrections as well as meals. ReplaceBG "
+      "participants, on sensor-augmented pump therapy a decade earlier, appear to have announced "
+      "meals. That is an interpretation of the difference rather than a measurement of it.\n")
     open(path, "w").write("\n".join(L))
     return "\n".join(L)
 
 
-def figure(cur, path, max_carbs, sigma, n_total):
+def figure(by_study, path, max_carbs, sigma, n_total):
+    """One panel per study. Carbohydrate is recorded by two of the seven corpora, so this is a
+    two-panel small multiple rather than six curves on one axis, where the studies would be told
+    apart only by line style and the comparison the reader wants, window against window, would be
+    the harder of the two to make."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    fig, ax = plt.subplots(figsize=(10.5, 5.6), facecolor=SURFACE)
-    ax.set_facecolor(SURFACE)
-    for s in ax.spines.values():
-        s.set_visible(False)
-    ax.tick_params(colors=MUTED, labelsize=9, length=0)
-    ax.grid(axis="y", color=AXIS, linewidth=0.6, alpha=0.5)
-    ax.set_axisbelow(True)
+    studies = list(by_study)
+    fig, axes = plt.subplots(1, len(studies), figsize=(6.0 * len(studies), 5.4),
+                             facecolor=SURFACE, sharey=True)
+    axes = np.atleast_1d(axes)
+    ymax = max(c["y"].max() for cur in by_study.values() for c in cur.values())
 
-    for name, lo, hi, colour in WINDOWS:
-        c = cur[name]
-        ax.plot(c["grid"], c["y"], color=colour, linewidth=2.2, solid_capstyle="round",
-                label=f"{name}, {lo:02d}:00-{hi:02d}:00")
-        ax.fill_between(c["grid"], c["y"], color=colour, alpha=0.10, linewidth=0)
+    for ax, study in zip(axes, studies):
+        cur = by_study[study]
+        ax.set_facecolor(SURFACE)
+        for sp in ax.spines.values():
+            sp.set_visible(False)
+        ax.tick_params(colors=MUTED, labelsize=9, length=0)
+        ax.grid(axis="y", color=AXIS, linewidth=0.6, alpha=0.5)
+        ax.set_axisbelow(True)
+        for name, lo, hi, colour in WINDOWS:
+            c = cur[name]
+            ax.plot(c["grid"], c["y"], color=colour, linewidth=2.2, solid_capstyle="round",
+                    label=f"{name}, {lo:02d}:00-{hi:02d}:00")
+            ax.fill_between(c["grid"], c["y"], color=colour, alpha=0.10, linewidth=0)
+        # label where the curves are furthest apart, staggered by rank so the closest two
+        # cannot overlap; labelling at the mode stacks all three, since they peak together
+        ys = np.vstack([cur[n]["y"] for n, _, _, _ in WINDOWS])
+        xk = int(np.argmax(ys.max(axis=0) - ys.min(axis=0)))
+        order = sorted(WINDOWS, key=lambda w: -cur[w[0]]["y"][xk])
+        for i, (name, lo, hi, colour) in enumerate(order):
+            c = cur[name]
+            ax.annotate(name, (c["grid"][xk], c["y"][xk]), xytext=(16, 11 - 11 * i),
+                        textcoords="offset points", color=colour, fontsize=9.5,
+                        fontweight="bold", va="center", ha="left",
+                        arrowprops=dict(arrowstyle="-", color=colour, linewidth=1,
+                                        shrinkA=1, shrinkB=2, alpha=0.75))
+        n = sum(len(cur[w[0]]["v"]) for w in WINDOWS)
+        ax.set_title(f"{study}   ({n:,} announcements in the three windows)",
+                     color=INK, fontsize=11.5, loc="left", pad=8)
+        ax.set_xlim(0, max_carbs)
+        ax.set_ylim(0, ymax * 1.12)
+        ax.set_xlabel("announced carbohydrate (g)", color=INK2, fontsize=10)
+    axes[0].set_ylabel("% of that window's announcements", color=INK2, fontsize=10)
 
-    # All three peak within a few grams of each other, so labelling at the mode stacks them.
-    # Label instead where the curves are furthest apart, which is where a reader is trying to
-    # tell them apart anyway.
-    ys = np.vstack([cur[n]["y"] for n, _, _, _ in WINDOWS])
-    xk = int(np.argmax(ys.max(axis=0) - ys.min(axis=0)))
-    # two of the three can still be within a few pixels at that x, so stagger by rank rather
-    # than trust the gap: ordered top to bottom, each label is pushed clear of the one above
-    order = sorted(WINDOWS, key=lambda w: -cur[w[0]]["y"][xk])
-    for i, (name, lo, hi, colour) in enumerate(order):
-        c = cur[name]
-        ax.annotate(name, (c["grid"][xk], c["y"][xk]), xytext=(16, 11 - 11 * i),
-                    textcoords="offset points", color=colour, fontsize=9.5,
-                    fontweight="bold", va="center", ha="left",
-                    arrowprops=dict(arrowstyle="-", color=colour, linewidth=1,
-                                    shrinkA=1, shrinkB=2, alpha=0.75))
-
-    ax.set_xlim(0, max_carbs); ax.set_ylim(0, None)
-    ax.set_xlabel("announced carbohydrate (g)", color=INK2, fontsize=10)
-    ax.set_ylabel("share of that window's announcements", color=INK2, fontsize=10)
-    ax.set_title("Announcement size in the three meal windows", color=INK, fontsize=13,
-                 loc="left", pad=14)
-    leg = ax.legend(frameon=False, fontsize=9, loc="upper right")
+    leg = axes[-1].legend(frameon=False, fontsize=9, loc="upper right")
     for t in leg.get_texts():
         t.set_color(INK2)
-    fig.text(0.007, -0.03,
+    fig.suptitle("Announcement size in the three meal windows, by study",
+                 color=INK, fontsize=13, x=0.007, ha="left", y=1.02)
+    fig.text(0.007, -0.04,
              f"{n_total:,} entries. One-gram histogram smoothed with a Gaussian kernel of "
-             f"{sigma:.0f} g,\nnormalised within each window. Unsmoothed, each curve is a comb: "
-             f"two thirds of announcements are a multiple of five.", color=MUTED, fontsize=8.5)
+             f"{sigma:.0f} g, normalised within each window so the curves are comparable "
+             f"between studies of different size.\nUnsmoothed, each curve is a comb: two thirds "
+             f"of announcements are a multiple of five. Panels share a vertical scale.",
+             color=MUTED, fontsize=8.5)
+    fig.tight_layout()
     fig.savefig(path, dpi=170, bbox_inches="tight", facecolor=SURFACE)
     plt.close(fig)
 
@@ -165,9 +210,12 @@ def main():
 
     d = load(a.exclude_rescue)
     cur = curves(d, int(a.max_carbs), a.sigma)
-    txt = report(d, cur, os.path.join(a.out_dir, "MEAL_WINDOWS_REPORT.md"),
+    by_study = {st: curves(g, int(a.max_carbs), a.sigma)
+                for st, g in d.groupby("study_name")}
+    txt = report(d, cur, by_study, os.path.join(a.out_dir, "MEAL_WINDOWS_REPORT.md"),
                  a.max_carbs, a.sigma, a.exclude_rescue)
-    figure(cur, os.path.join(a.out_dir, "meal_windows.png"), int(a.max_carbs), a.sigma, len(d))
+    figure(by_study, os.path.join(a.out_dir, "meal_windows.png"),
+           int(a.max_carbs), a.sigma, len(d))
     print(txt)
     print(f"\nwritten to {a.out_dir}/MEAL_WINDOWS_REPORT.md and meal_windows.png")
 
