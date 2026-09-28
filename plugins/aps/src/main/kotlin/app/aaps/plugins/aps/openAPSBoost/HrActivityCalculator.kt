@@ -280,4 +280,15 @@ object HrActivityCalculator {
      */
     fun inactivitySuppressedByElevatedHr(result: HrClassificationResult?): Boolean =
         result != null && result.hrZone >= HrZone.ZONE_3_MODERATE
+
+    /**
+     * 2026-09-28 guard below [inactivitySuppressedByElevatedHr]: blocks the inactivity profile-raise
+     * from zone 2 (HRR >= 30%) upward. Easy endurance work such as cycling sits in zone 2 with almost
+     * no steps, so it passed the zone-3 guard, read as sedentary and got the insulin-adding raise for
+     * as long as the rider stayed easy. At zone 2 only the raise is withheld: the target and the
+     * activity state are left alone, because ordinary daily HR (stress, caffeine, digestion) also
+     * reaches zone 2 and should not start exercise handling. Zone 3 and above keep the full guard.
+     */
+    fun inactivityRaiseBlockedByHr(result: HrClassificationResult?): Boolean =
+        result != null && result.hrZone >= HrZone.ZONE_2_LIGHT
 }

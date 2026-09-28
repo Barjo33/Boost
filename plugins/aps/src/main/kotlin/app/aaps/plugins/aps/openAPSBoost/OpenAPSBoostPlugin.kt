@@ -1060,6 +1060,11 @@ open class OpenAPSBoostPlugin @Inject constructor(
                     }
                     aapsLogger.debug(LTag.APS, "Stress/illness detected (HR ${String.format("%.0f", hrClassification.averageHrBpm)} bpm, no steps): raising target to $stressBgTarget, profile unchanged")
                     debug.append("\nStress/illness (HR ${String.format("%.0f", hrClassification.averageHrBpm)} bpm, ${hrClassification.hrZone.label}, no movement) → target $activityTargetBg, profile unchanged")
+                } else if (hrIntegrationEnabled && HrActivityCalculator.inactivityRaiseBlockedByHr(hrClassification)) {
+                    // 2026-09-28: HR in zone 2 with low steps (easy cycling, rowing) is not sedentary.
+                    // Withhold the inactivity raise; leave target and profile as they are.
+                    activityState = "HR_ELEVATED"
+                    debug.append("\nInactivity raise WITHHELD (HR ${hrClassification?.hrZone?.label}, 60m steps $recentSteps60Min) → profile unchanged")
                 } else {
                     activityState = "INACTIVE"
                     currentProfileSwitch = inactivityPct.toInt()

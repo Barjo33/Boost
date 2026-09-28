@@ -364,6 +364,19 @@ class HrActivityCalculatorTest {
         assertThat(result.exerciseState).isEqualTo(HrActivityCalculator.ExerciseState.RESISTANCE)
     }
 
+    @Test fun `inactivityRaiseBlockedByHr - true from zone 2, false for zone 1 and null`() {
+        fun classForBpm(bpm: Double) = HrActivityCalculator.classify(
+            hrReadings = makeReadings(bpm), nowMillis = NOW, hrWindowMinutes = WINDOW_MIN,
+            hrMax = 180, hrResting = 60, stepsLast15Min = 5, stressDetection = false
+        )
+        // HRR with rest 60 and max 180: 100 bpm is 33% (zone 2), 65 bpm is 4% (zone 1)
+        assertThat(HrActivityCalculator.inactivityRaiseBlockedByHr(classForBpm(100.0))).isTrue()
+        assertThat(HrActivityCalculator.inactivityRaiseBlockedByHr(classForBpm(110.0))).isTrue()
+        assertThat(HrActivityCalculator.inactivityRaiseBlockedByHr(classForBpm(160.0))).isTrue()
+        assertThat(HrActivityCalculator.inactivityRaiseBlockedByHr(classForBpm(65.0))).isFalse()
+        assertThat(HrActivityCalculator.inactivityRaiseBlockedByHr(null)).isFalse()
+    }
+
     @Test fun `inactivitySuppressedByElevatedHr - true for zone 3+, false for zone 1-2 and null`() {
         fun classForBpm(bpm: Double) = HrActivityCalculator.classify(
             hrReadings = makeReadings(bpm), nowMillis = NOW, hrWindowMinutes = WINDOW_MIN,
