@@ -103,7 +103,7 @@ know what they are when a dose looks smaller than you expected.
 
 | Setting (as named in the app) | Where | Range (default) | What it does |
 |---|---|---|---|
-| **Boost Bolus Cap** | Boost V6 | 0.1–10 U (2.5) | The largest single bolus Boost will give outside the UAM basal-minutes limit below. Auto-config sets it from your own dosing history. With carbs on board Boost may exceed it, up to the greater of this cap or your carbs on board divided by your carb ratio. |
+| **Boost Bolus Cap** | Boost (the base engine plugin) → Boost base-engine SMB sizing; not shown on the Boost V6 screen | 0.1–10 U (2.5) | The largest single bolus Boost will give outside the UAM basal-minutes limit below. Auto-config sets it to your AAPS maximum bolus. With carbs on board Boost may exceed it, up to the greater of this cap or your carbs on board divided by your carb ratio. |
 | **Max minutes of basal to limit SMB to for UAM** | Preferences → SMB settings | 15–120 min (15) | Sets the ceiling on a single microbolus as a number of minutes of your own basal: the limit is your current basal rate times these minutes, divided by 60. At a basal of 0.6 U/h, 15 minutes is a ceiling of 0.15 U. It applies when the loop is dosing on unannounced meals rather than carbs, so it is mostly an overnight limit and does not need to be large. |
 
 The companion setting **Max Minutes of basal to limit SMB to**, on the same screen and with the same
@@ -134,9 +134,12 @@ over the target changes below.
 | Inactive | fewer than 500 steps in the last hour, awake, outside the night window | profile to 130% (Inactivity percentage), which adds insulin |
 | No step data | the step feed has gone quiet | nothing changes; a dark feed is not read as inactivity |
 
-The inactive row is the only one that adds insulin, and raised heart rate blocks it: cycling,
-rowing or weights produce few steps, and without that check a hard session could read as sitting
-still.
+The inactive row is the only one that adds insulin. With heart-rate integration on, heart rate in
+zone 2 or above blocks it: cycling, rowing or weights produce few steps, and without that check an
+effort could read as sitting still. At zone 2 only the raise is withheld; the resistance target
+starts at zone 3. Without heart-rate integration nothing can block it, so a long ride reads as
+inactivity. For a planned ride, set a high temporary target: with Allow Boost with high temp target
+off, the default, Boost stands aside for the length of the target, including the inactivity raise.
 
 Heart rate is turned into a zone by the Karvonen method, which measures effort as a share of your
 heart-rate reserve, the gap between your resting and maximum heart rates. Boost averages the last 15

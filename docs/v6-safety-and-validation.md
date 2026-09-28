@@ -9,16 +9,19 @@ essentials and the honest evidence picture.*
 This is the point people most often get wrong about Boost, so it is stated plainly:
 
 - **The dose decision is a deterministic, rule-based state machine.** It is *not* a model trained to
-  output insulin. Nothing in the dosing path is fit to data, learned online, or a black box. Given
-  the same inputs it produces the same dose, and every branch is readable in source.
-- **Two small on-device trained models feed the decision — neither outputs insulin.** The
-  hypo-risk score (a gradient-boosted tree validated *leave-one-user-out*, so it is scored on
-  users it never saw in training) throttles the aggression budget and can only ever *reduce*
-  delivery. The meal-likelihood score is one bounded input (weight 0.20, renormalised away when
-  the model is unavailable) into the otherwise rule-based meal-confirm score — it can help recognise
-  a meal *earlier* (which necessarily means acting on more speculative CGM evidence), but every dose
-  that follows passes the same caps and gates, and in non-meal states Boost stays capped at what the
-  base engine would do. Neither model can *add* a dose or relax a limit.
+  output insulin, and nothing in it learns online. Given the same inputs it produces the same dose,
+  and every branch is readable in source.
+- **Two small trained models feed the decision; neither outputs insulin.** Both are gradient-boosted
+  trees trained offline on other people's records, validated with participants held out, and
+  shipped as fixed trees that run on the phone. The hypo-risk score throttles the aggression budget
+  and can only ever *reduce* delivery. The meal-likelihood score can *increase* it, on three paths:
+  it carries a weight of 0.20 in the meal-confirm score, so a high score can confirm a meal earlier
+  and bring the larger doses sooner; above 0.50 it releases the base engine's pre-meal hold on its
+  four aggressive tiers; and above 0.30 it keeps the sleep detector from classifying you as asleep,
+  which keeps overnight restraint off. Every dose that follows still passes the same caps and gates,
+  and in non-meal states Boost stays capped at what the base engine would do; those limits, not the
+  model, bound what it can cause. See
+  [the methods report](../backtesting/reports/2026-09_boost_lgbm_methods.md).
 - **Personalisation ≠ training.** Auto-config and the learned baselines derive *suggestions* from
   your own history — they tune settings, they do not learn the dose.
 - **Validation is replay on real history, not curve-fitting.** Candidate changes are scored against
