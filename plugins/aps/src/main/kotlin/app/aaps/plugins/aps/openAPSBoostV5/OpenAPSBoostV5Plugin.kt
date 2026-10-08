@@ -283,6 +283,19 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         return composedFloorAllowedByTbr(cachedTbrBelow63Pct, cachedTbrBelow70Pct)
     }
 
+    /**
+     * Aggressive early confirm as the engine should see it: the switch, AND the same fail-closed
+     * trailing-14-day TBR gate the composed floor and the velocity-budget floor use. The switch is
+     * insulin-adding and auto-config only revisits it weekly, so this is the live backstop for a
+     * person whose time below range rises between re-derivations, or who turned it on by hand.
+     * The 14-day read is skipped while the switch is off.
+     */
+    internal fun aggressiveEarlyConfirmLive(now: Long): Boolean {
+        if (!preferences.getBoostDosing(BooleanKey.ApsBoostV5AggressiveEarlyConfirm)) return false
+        composedFloorTbrAllowed(now)   // refreshes the hourly cache
+        return aggressiveEarlyConfirmAllowed(true, cachedTbrBelow63Pct, cachedTbrBelow70Pct)
+    }
+
     // ── small JSON ledgers: what auto-config wrote, and what it is waiting to confirm ─────────
     // Read unmasked (AutoConfigLedger): the keys are defaultedBySM, and a masked read in Simple Mode
     // made every re-derivation a first sight that never moved anything.
@@ -1019,7 +1032,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             // 2026-07-17 aggressive early-confirm — opt-in + auto-config managed (age −2). Read raw
             // (mask-bypassed) like the other dosing toggles; applies in BOTH shadow and active modes
             // (it changes the state transition, not the delivered dose directly).
-            aggressiveEarlyConfirmEnabled = preferences.getBoostDosing(BooleanKey.ApsBoostV5AggressiveEarlyConfirm),
+            aggressiveEarlyConfirmEnabled = aggressiveEarlyConfirmLive(dateUtil.now()),
             sensorQualityOk = if (activeMode) !flatBGsDetected else true,
             // 2026-10-08 (audit item 17): reset triggers wired to the running mode and the profile
             // switch record. The time jump is derived in decide() from the persisted state's own clock.
@@ -1203,3 +1216,11 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         category.addPreference(advanced)
     }
 }
+
+/**
+ * Whether aggressive early confirm may run: the user's or auto-config's switch, gated on the
+ * composed floor's fail-closed 14-day TBR test (TBR<63 under 2.0% and TBR<70 under 3.5%; a null
+ * percentage, meaning too little CGM history, blocks it).
+ */
+internal fun aggressiveEarlyConfirmAllowed(switchOn: Boolean, tbrBelow63Pct: Double?, tbrBelow70Pct: Double?): Boolean =
+    switchOn && composedFloorAllowedByTbr(tbrBelow63Pct, tbrBelow70Pct)
