@@ -277,20 +277,12 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
     }
 
     // ── small JSON ledgers: what auto-config wrote, and what it is waiting to confirm ─────────
-    private fun ledger(key: StringKey): MutableMap<String, Double> {
-        val raw = preferences.get(key)
-        if (raw.isEmpty()) return mutableMapOf()
-        return runCatching {
-            val o = JSONObject(raw)
-            o.keys().asSequence().associateWith { o.getDouble(it) }.toMutableMap()
-        }.getOrElse { mutableMapOf() }
-    }
+    // Read unmasked (AutoConfigLedger): the keys are defaultedBySM, and a masked read in Simple Mode
+    // made every re-derivation a first sight that never moved anything.
+    private fun ledger(key: StringKey): MutableMap<String, Double> = AutoConfigLedger.read(preferences, key)
 
-    private fun ledgerPut(key: StringKey, prefKey: String, value: Double?) {
-        val m = ledger(key)
-        if (value == null) m.remove(prefKey) else m[prefKey] = value
-        preferences.put(key, JSONObject(m as Map<*, *>).toString())
-    }
+    private fun ledgerPut(key: StringKey, prefKey: String, value: Double?) =
+        AutoConfigLedger.put(preferences, key, prefKey, value)
 
     /**
      * Record a re-derivation that did NOT change anything, and why. rev 1 returned silently from two
@@ -412,7 +404,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
                 (if (routeChanged) listOf("PrimerRoute ${if (route.tbrFallback) "temp basal" else "bolus"}") else emptyList()))
                 .joinToString("; ")
             val entry = "${dateUtil.toISOString(now)} ${if (line.isEmpty()) "held only" else line}"
-            val hist = (listOf(entry) + preferences.get(StringKey.ApsBoostV5RedriveHistory)
+            val hist = (listOf(entry) + AutoConfigLedger.text(preferences, StringKey.ApsBoostV5RedriveHistory)
                 .split("\n").filter { it.isNotBlank() }).take(10)
             preferences.put(StringKey.ApsBoostV5RedriveHistory, hist.joinToString("\n"))
 

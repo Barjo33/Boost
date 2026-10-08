@@ -1,6 +1,10 @@
 package app.aaps.plugins.aps.openAPSBoostV5
 
 import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.plugins.aps.getBoostDosing
+import org.json.JSONObject
 import kotlin.math.abs
 
 /**
@@ -766,4 +770,49 @@ internal object BoostV5AutoConfigApply {
         markResolved: (DoubleKey) -> Unit
     ): List<DoubleKey> =
         keys.filter { isUserTuned(it, storedValue(it)) }.onEach(markResolved)
+}
+
+/**
+ * Auto-config's own string state: the JSON ledgers (re-derivation baselines, pending
+ * confirmations, last-written values), the rolling history and the breadcrumbs the engine replays
+ * into the reason.
+ *
+ * Every one of these StringKeys is declared `defaultedBySM = true`, so `Preferences.get` returns
+ * the empty default while Simple Mode is on. Read that way, each weekly re-derivation saw no
+ * baseline, recorded one, and changed nothing, indefinitely; the written ledger read empty, so a
+ * value auto-config had written looked like the user's; and the autocfg= and autordv= breadcrumbs
+ * vanished from the reason. All reads here go through [getBoostDosing], which reads the stored
+ * value whatever the mode. Writes were never masked.
+ */
+internal object AutoConfigLedger {
+
+    /** The ledger stored under [key] as prefKey to value; empty when unset or unparsable. */
+    fun read(preferences: Preferences, key: StringKey): MutableMap<String, Double> {
+        val raw = preferences.getBoostDosing(key)
+        if (raw.isEmpty()) return mutableMapOf()
+        return runCatching {
+            val o = JSONObject(raw)
+            o.keys().asSequence().associateWith { o.getDouble(it) }.toMutableMap()
+        }.getOrElse { mutableMapOf() }
+    }
+
+    /** Sets (or, with a null [value], removes) one entry of the ledger under [key]. */
+    fun put(preferences: Preferences, key: StringKey, prefKey: String, value: Double?) {
+        val m = read(preferences, key)
+        if (value == null) m.remove(prefKey) else m[prefKey] = value
+        preferences.put(key, JSONObject(m as Map<*, *>).toString())
+    }
+
+    /** A stored string such as the redrive history, unmasked. */
+    fun text(preferences: Preferences, key: StringKey): String = preferences.getBoostDosing(key)
+
+    /**
+     * The autocfg=, autordv= and histsync= breadcrumbs as the engine appends them to the reason,
+     * each followed by "; ", or an empty string when none has been written.
+     */
+    fun reasonBreadcrumbs(preferences: Preferences): String = buildString {
+        text(preferences, StringKey.ApsBoostV5AutoConfigSummary).let { if (it.isNotEmpty()) append("autocfg=$it; ") }
+        text(preferences, StringKey.ApsBoostV5RedriveSummary).let { if (it.isNotEmpty()) append("autordv=$it; ") }
+        text(preferences, StringKey.ApsBoostHistorySyncSummary).let { if (it.isNotEmpty()) append("histsync=$it; ") }
+    }
 }

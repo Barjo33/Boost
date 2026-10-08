@@ -95,6 +95,7 @@ import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
+import app.aaps.plugins.aps.openAPSBoostV5.AutoConfigLedger
 import app.aaps.plugins.aps.openAPSBoostV5.MealHypothesis
 
 /**
@@ -2301,21 +2302,14 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 // boost_decisions.reason_text. Written by the V5 onboarding path (see
                 // StringKey.ApsBoostV5AutoConfigSummary); read-only here. Empty = the onboarding path has
                 // not reached a decision yet on this install. Display-only, never consulted for dosing.
-                preferences.get(StringKey.ApsBoostV5AutoConfigSummary).let { acs ->
-                    if (acs.isNotEmpty()) it.reason.append("autocfg=$acs; ")
-                }
-                // 2026-08-03 periodic re-derivation breadcrumb, same contract: replayed EVERY cycle
-                // so Nightscout and boost_decisions always show the CURRENT auto-config state, not
+                // 2026-08-03 periodic re-derivation breadcrumb (autordv=), same contract: replayed EVERY
+                // cycle so Nightscout and boost_decisions always show the CURRENT auto-config state, not
                 // just the one cycle in seven when the re-derivation actually ran. Written by
-                // OpenAPSBoostV5Plugin.maybeRedrive; display-only, never consulted for dosing.
-                preferences.get(StringKey.ApsBoostV5RedriveSummary).let { rds ->
-                    if (rds.isNotEmpty()) it.reason.append("autordv=$rds; ")
-                }
-                // 2026-07-30 install-time history-gap breadcrumb, same contract (see BoostHistorySync).
-                // Empty = adequate local history, so nothing to say — the common case writes nothing.
-                preferences.get(StringKey.ApsBoostHistorySyncSummary).let { hss ->
-                    if (hss.isNotEmpty()) it.reason.append("histsync=$hss; ")
-                }
+                // OpenAPSBoostV5Plugin.maybeRedrive. 2026-07-30 install-time history-gap breadcrumb
+                // (histsync=), same contract (see BoostHistorySync); empty in the common case.
+                // Read unmasked: the keys are defaultedBySM, so a plain get() dropped all three in
+                // Simple Mode.
+                it.reason.append(AutoConfigLedger.reasonBreadcrumbs(preferences))
                 it.reason.append("sleep=${sleepResult.newState.state}")
                 if (agg.sleepStartMinAvg != null) {
                     it.reason.append(" learned=${formatClockMin(agg.sleepStartMinAvg!!)}→${formatClockMin(agg.wakeMinAvg ?: 0)}/${agg.sessionCount}d")
