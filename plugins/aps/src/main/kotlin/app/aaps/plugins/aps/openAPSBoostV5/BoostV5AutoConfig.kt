@@ -96,6 +96,12 @@ object BoostV5AutoConfig {
      */
     const val CUMULATIVE_CAP_MAX_U = 10.0
 
+    /** Primer ceiling as a fraction of committedCap, by control class (see [compute]). */
+    const val PRIMER_FRAC_HYPO_PRONE = 0.375
+    const val PRIMER_FRAC_DEFAULT = 0.6
+    const val PRIMER_FRAC_WELL_CONTROLLED = 0.75
+    val PRIMER_FRACTIONS: List<Double> = listOf(PRIMER_FRAC_HYPO_PRONE, PRIMER_FRAC_DEFAULT, PRIMER_FRAC_WELL_CONTROLLED)
+
     /** Range of DoubleKey.ApsBoostV5TrancheThreshold; the derivation's grid spans the same. */
     const val TRANCHE_THRESHOLD_MIN = 0.20
     const val TRANCHE_THRESHOLD_MAX = 0.80
@@ -224,9 +230,9 @@ object BoostV5AutoConfig {
         // larger cut everywhere below it (measured ~85% less primer insulin overall, concentrated on
         // genuine rises). See backtesting/scripts/2026-07-primer-scaling.
         val primerFrac = when {
-            hypoProne       -> 0.375
-            wellControlled  -> 0.75
-            else            -> 0.6
+            hypoProne       -> PRIMER_FRAC_HYPO_PRONE
+            wellControlled  -> PRIMER_FRAC_WELL_CONTROLLED
+            else            -> PRIMER_FRAC_DEFAULT
         }
         // Clamp is now SELF-SCALING instead of a flat constant. The old flat 0.6 (and the 0.9 that
         // briefly replaced it) clipped high-need users: a well-controlled user with committedCapU 2.5

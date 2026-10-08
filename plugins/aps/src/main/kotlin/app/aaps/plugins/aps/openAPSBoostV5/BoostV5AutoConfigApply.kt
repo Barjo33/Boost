@@ -378,7 +378,9 @@ internal object BoostV5AutoConfigApply {
      *        proposed = current + (derivedNow − baseline)
      *  - COMPUTED knobs (cumulative60, primerCap) are not tracked at all — they are recomputed from
      *    the operative per-shot caps exactly as the derivation itself computes them, so they follow
-     *    automatically and can never drift out of step with the caps they bound.
+     *    automatically. Because a recomputation overwrites, these two do need ownership: a value
+     *    the user set (a lowered cumulative cap, a primer set to 0 to turn it off) is kept, by the
+     *    rule in [computedKnobOwned], and a stored primer of 0 is never overwritten.
      *
      * The baseline is the DERIVED value at the last write, and is only advanced WHEN we write, so
      * movement suppressed by the deadband or held by the raise-guard accumulates rather than being
@@ -439,6 +441,39 @@ internal object BoostV5AutoConfigApply {
      */
     val REDRIVE_CONFIRM_TWICE: Set<DoubleKey> = REDRIVE_OFFSET_KEYS.toSet()
 
+    /** Smallest primer change re-derivation writes (U); below it a rewrite is rounding noise. */
+    const val PRIMER_REWRITE_BAND = 0.056
+
+    /** Every fraction of committedCap the derivation has sized the primer with since 2026-07-30. */
+    val PRIMER_FRACTIONS: List<Double> = BoostV5AutoConfig.PRIMER_FRACTIONS
+
+    /**
+     * Whether a COMPUTED knob (the cumulative cap, the primer cap) is still auto-config's to
+     * recompute, by the rule onboarding uses for every knob: a value nobody has set, or one still at
+     * a factory default, is auto-config's ([isUserTuned]); so is the value auto-config last wrote
+     * ([lastWritten], from the written ledger). Anything else was set by the user and is kept.
+     *
+     * Installs that ran re-derivation before the written ledger recorded these knobs have no
+     * [lastWritten]. For them a stored value is taken as auto-config's only when it is one
+     * auto-config would have left there: within [tolerance] of one of [autoValues], the values the
+     * recomputation gives from the caps as they stood when this run began. Re-derivation has
+     * recomputed both knobs on every run since 2026-08-03, so on such an install an auto-config
+     * value sits at one of these, and a value elsewhere was set by hand. The one value this
+     * misreads is a cumulative cap that an earlier run held below its recomputation under the TBR
+     * guard: it is kept as though set by hand, which leaves the lower budget in place.
+     */
+    fun computedKnobOwned(
+        key: DoubleKey,
+        stored: Double?,
+        lastWritten: Double?,
+        autoValues: List<Double>,
+        tolerance: Double
+    ): Boolean = when {
+        stored == null || !isUserTuned(key, stored) -> true
+        lastWritten != null                         -> abs(stored - lastWritten) <= DEFAULT_EPS
+        else                                        -> autoValues.any { abs(stored - it) <= tolerance + DEFAULT_EPS }
+    }
+
     /** Why a re-derivation did nothing — logged and surfaced so a silent no-op is impossible. */
     enum class RedriveSkip { NOT_DUE, ONBOARDING_INCOMPLETE, INSUFFICIENT_HISTORY, BASELINE_SEEDED }
 
@@ -464,6 +499,7 @@ internal object BoostV5AutoConfigApply {
         val derivedFor = managedDoubleKnobs(suggestion).toMap()
         val operative = mutableMapOf<DoubleKey, Double>()
         for (k in managedDoubleKeys) operative[k] = storedValue(k) ?: k.defaultValue
+        val start = operative.toMap()   // as stored before this run moved anything
 
         for (key in REDRIVE_KEYS) {
             val current = operative.getValue(key)
@@ -548,6 +584,7 @@ internal object BoostV5AutoConfigApply {
             }
 
             put(key, proposed)
+            recordWritten(key, proposed)
             // Advance the baseline by the movement ACTUALLY APPLIED, not by the movement derived.
             // When the step cap clips a large move, advancing to derivedNow here would DISCARD the
             // remainder and strand the knob permanently short of its target — e.g. an insulin
@@ -566,21 +603,33 @@ internal object BoostV5AutoConfigApply {
                               "tracked $current → $proposed (derivation moved $baseline → $derivedNow)")
         }
 
-        // COMPUTED knobs follow the operative caps, exactly as the derivation computes them.
+        // COMPUTED knobs follow the operative caps, exactly as the derivation computes them, but
+        // only while auto-config still owns them (computedKnobOwned). A value the user set is kept.
         val cum = DoubleKey.ApsBoostCumulativeSmbCap60Min
         val curCum = operative.getValue(cum)
         val newCum = BoostV5AutoConfig.cumulativeCap60Min(
             operative.getValue(DoubleKey.ApsBoostV5ConfirmedCapU),
             operative.getValue(DoubleKey.ApsBoostV5CommittedCapU))
-        if (abs(newCum - curCum) > DEFAULT_EPS) {
+        val cumAtStart = BoostV5AutoConfig.cumulativeCap60Min(
+            start.getValue(DoubleKey.ApsBoostV5ConfirmedCapU), start.getValue(DoubleKey.ApsBoostV5CommittedCapU))
+        val cumStored = storedValue(cum)
+        if (!computedKnobOwned(cum, cumStored, lastWritten(cum), listOf(cumAtStart), DEFAULT_EPS)) {
+            out += Resolution(cum, Outcome.KEPT_USER_TUNED, newCum, curCum,
+                              "kept:user-set $curCum (recomputed $newCum not written)")
+        } else if (abs(newCum - curCum) > DEFAULT_EPS) {
             if (newCum > curCum && raiseGuard) {
                 out += Resolution(cum, Outcome.SUGGESTED_NOT_APPLIED_TBR, newCum, curCum,
                                   "raise held: $curCum → $newCum; TBR<70=$tbrBelow70Pct% <54=$timeBelow54Pct%")
             } else {
                 put(cum, newCum)
+                recordWritten(cum, newCum)
                 out += Resolution(cum, Outcome.REDRIVEN, newCum, newCum,
                                   "recomputed $curCum → $newCum from the operative caps")
             }
+        } else if (cumStored != null && lastWritten(cum) == null) {
+            // Owned, unchanged, and no record of a write yet: record it, so a later edit by the
+            // user is recognised exactly rather than by the legacy heuristic.
+            recordWritten(cum, cumStored)
         }
         // primerCap is a fraction of committedCap; take the fraction from the derivation so the
         // hypo-prone / well-controlled policy is never duplicated here.
@@ -590,16 +639,31 @@ internal object BoostV5AutoConfigApply {
             val curPrimer = operative.getValue(primer)
             val newPrimer = round2((operative.getValue(DoubleKey.ApsBoostV5CommittedCapU) * frac)
                                        .coerceIn(primer.min, primer.max))
-            if (abs(newPrimer - curPrimer) > 0.056 && newPrimer > curPrimer && raiseGuard) {
-                // Not raise-guarded at onboarding, where a hypo-prone person must still be
-                // provisioned a primer for the temp-basal route. Once provisioned, a larger primer is
-                // an insulin-adding move like any other and waits for the guard to clear.
-                out += Resolution(primer, Outcome.SUGGESTED_NOT_APPLIED_TBR, newPrimer, curPrimer,
-                                  "raise held: $curPrimer → $newPrimer; TBR<70=$tbrBelow70Pct% <54=$timeBelow54Pct%")
-            } else if (abs(newPrimer - curPrimer) > 0.056) {
-                put(primer, newPrimer)
-                out += Resolution(primer, Outcome.REDRIVEN, newPrimer, newPrimer,
-                                  "recomputed $curPrimer → $newPrimer from committedCap")
+            val primerStored = storedValue(primer)
+            val primerAtStart = PRIMER_FRACTIONS.map { round2(start.getValue(DoubleKey.ApsBoostV5CommittedCapU) * it) }
+            when {
+                // A stored 0 is the primer's only off switch. Auto-config never writes 0 (the
+                // derivation's smallest primer is 0.375 x a committed cap of at least 0.25), so a
+                // stored 0 was set by the user and is never overwritten by a primer above 0.
+                primerStored != null && abs(primerStored) <= DEFAULT_EPS ->
+                    out += Resolution(primer, Outcome.KEPT_USER_TUNED, newPrimer, 0.0,
+                                      "kept:user-set 0 (primer off; recomputed $newPrimer not written)")
+                !computedKnobOwned(primer, primerStored, lastWritten(primer), primerAtStart, PRIMER_REWRITE_BAND) ->
+                    out += Resolution(primer, Outcome.KEPT_USER_TUNED, newPrimer, curPrimer,
+                                      "kept:user-set $curPrimer (recomputed $newPrimer not written)")
+                abs(newPrimer - curPrimer) > PRIMER_REWRITE_BAND && newPrimer > curPrimer && raiseGuard ->
+                    // Not raise-guarded at onboarding, where a hypo-prone person must still be
+                    // provisioned a primer for the temp-basal route. Once provisioned, a larger
+                    // primer is an insulin-adding move like any other and waits for the guard.
+                    out += Resolution(primer, Outcome.SUGGESTED_NOT_APPLIED_TBR, newPrimer, curPrimer,
+                                      "raise held: $curPrimer → $newPrimer; TBR<70=$tbrBelow70Pct% <54=$timeBelow54Pct%")
+                abs(newPrimer - curPrimer) > PRIMER_REWRITE_BAND -> {
+                    put(primer, newPrimer)
+                    recordWritten(primer, newPrimer)
+                    out += Resolution(primer, Outcome.REDRIVEN, newPrimer, newPrimer,
+                                      "recomputed $curPrimer → $newPrimer from committedCap")
+                }
+                primerStored != null && lastWritten(primer) == null -> recordWritten(primer, primerStored)
             }
         }
         // Confirm-tranche threshold: re-derived from the person's own episodes on every run and
@@ -692,6 +756,7 @@ internal object BoostV5AutoConfigApply {
                 return
             }
             put(key, derived)
+            recordWritten(key, derived)                     // lets re-derivation tell its own value from the user's
             markResolved(key)
             operative[key] = derived
             resolutions += Resolution(key, Outcome.APPLIED, derived, derived, "applied $derived")

@@ -384,6 +384,9 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         val changed = res.filter { it.outcome == BoostV5AutoConfigApply.Outcome.REDRIVEN }
         val held = res.filter { it.outcome == BoostV5AutoConfigApply.Outcome.SUGGESTED_NOT_APPLIED_TBR }
         val retired = res.filter { it.outcome == BoostV5AutoConfigApply.Outcome.RETIRED_USER_EDITED }
+        // Computed knobs (cumulative cap, primer) the user set and the re-derivation therefore left
+        // alone. The tranche threshold reports its own kept outcome inside tr=.
+        val kept = res.filter { it.outcome == BoostV5AutoConfigApply.Outcome.KEPT_USER_TUNED && it.key != trancheKey }
         val tranche = res.lastOrNull { it.key == trancheKey }
 
         // Breadcrumb replayed into the reason every cycle (see OpenAPSBoostPlugin autordv=).
@@ -394,6 +397,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
                 changed.joinToString("") { ",${shortName(it.key)}:${it.operativeValue}" } +
                 (if (held.isEmpty()) "" else held.joinToString("") { ",held-${shortName(it.key)}:${it.suggestedValue}" }) +
                 (if (retired.isEmpty()) "" else retired.joinToString("") { ",retired-${shortName(it.key)}" }) +
+                (if (kept.isEmpty()) "" else kept.joinToString("") { ",kept-${shortName(it.key)}:${it.operativeValue}" }) +
                 (if (tranche == null) "" else "," + BoostV5AutoConfigApply.trancheBreadcrumb(tranche, suggestion.tranche)) +
                 "," + BoostV5AutoConfigApply.primerRouteBreadcrumb(route, windowWellControlled)
         )
