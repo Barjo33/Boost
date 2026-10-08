@@ -220,12 +220,13 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
     private fun markResolved(prefKey: String) = preferences.put(BooleanComposedKey.BoostV5AutoConfigResolved, prefKey, value = true)
 
     /** Auto-config-managed boolean dosing switches (2026-07-17 convention: every new dosing switch is
-     *  auto-config managed). Each resolves once, suggestion-only, exactly like the double knobs. */
+     *  auto-config managed). Each resolves once at onboarding, suggestion-only, like the double knobs.
+     *  The primer route is the exception: maybeRedrive re-evaluates it on every scheduled run. */
     private val managedBooleanKeys = listOf(
         BooleanKey.ApsBoostV5FastCarbConfirm,
         BooleanKey.ApsBoostV5AggressiveEarlyConfirm,
         BooleanKey.ApsBoostV5VelocityBudgetActive,
-        BooleanKey.ApsBoostV5PrimerTbrFallback,   // 2026-07-20 primer routing (NOT the user override, which is unmanaged)
+        BooleanKey.ApsBoostV5PrimerTbrFallback,   // primer routing; also re-evaluated weekly in maybeRedrive (NOT the user override, which is unmanaged)
     )
 
     private fun suggestionBoolean(s: BoostV5AutoConfig.V5Suggestion, key: BooleanKey): Boolean = when (key) {
@@ -352,6 +353,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
 
         val baselines = redriveBaselines()
         val pending = ledger(StringKey.ApsBoostV5AutoConfigPending)
+        val written = writtenLedger()
         val res = synchronized(configLock) { BoostV5AutoConfigApply.redrive(
             suggestion, tbrBelow70Pct = g.tbr70, timeBelow54Pct = g.sev54,
             storedValue = { preferences.getIfExists(it) },
@@ -359,14 +361,38 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             pendingValue = { pending[it.key] },
             put = { key, value -> preferences.put(key, value) },
             setBaseline = { key, value -> setRedriveBaseline(key, value) },
-            setPending = { key, value -> ledgerPut(StringKey.ApsBoostV5AutoConfigPending, key.key, value) }
+            setPending = { key, value -> ledgerPut(StringKey.ApsBoostV5AutoConfigPending, key.key, value) },
+            lastWritten = { written[it.key] },
+            recordWritten = { key, value -> recordWritten(key, value) }
         ) }
         res.forEach { aapsLogger.info(LTag.APS, "BoostV5 re-derivation: ${it.key.key} → ${it.reason}") }
 
+        // Primer delivery route, from this window's well-controlled verdict (the derivation's own
+        // primerTbrFallback is its negation). See BoostV5AutoConfigApply.resolvePrimerRoute.
+        val routeKey = BooleanKey.ApsBoostV5PrimerTbrFallback
+        val windowWellControlled = !suggestion.primerTbrFallback
+        val route = synchronized(configLock) { BoostV5AutoConfigApply.resolvePrimerRoute(
+            wellControlled = windowWellControlled,
+            bgReadings = g.bgCount,
+            previousWellControlled = pending[BoostV5AutoConfigApply.PRIMER_ROUTE_PREV_WC_KEY]?.let { it >= 0.5 },
+            stored = preferences.getIfExists(routeKey),
+            lastWritten = written[routeKey.key]?.let { it >= 0.5 },
+            put = { preferences.put(routeKey, it) },
+            recordWritten = { ledgerPut(StringKey.ApsBoostV5AutoConfigWritten, routeKey.key, if (it) 1.0 else 0.0) },
+            recordWellControlled = { wc ->
+                ledgerPut(StringKey.ApsBoostV5AutoConfigPending, BoostV5AutoConfigApply.PRIMER_ROUTE_PREV_WC_KEY, wc?.let { if (it) 1.0 else 0.0 })
+            }
+        ) }
+        aapsLogger.info(LTag.APS, "BoostV5 re-derivation: ${routeKey.key} → ${route.reason}")
+        val routeChanged = route.outcome == BoostV5AutoConfigApply.Outcome.REDRIVEN
+
+        val trancheKey = DoubleKey.ApsBoostV5TrancheThreshold
         fun shortName(k: DoubleKey) = k.name.removePrefix("ApsBoostV5").removePrefix("ApsBoost")
+        fun unit(k: DoubleKey) = if (k == trancheKey) "" else " U"
         val changed = res.filter { it.outcome == BoostV5AutoConfigApply.Outcome.REDRIVEN }
         val held = res.filter { it.outcome == BoostV5AutoConfigApply.Outcome.SUGGESTED_NOT_APPLIED_TBR }
         val retired = res.filter { it.outcome == BoostV5AutoConfigApply.Outcome.RETIRED_USER_EDITED }
+        val tranche = res.lastOrNull { it.key == trancheKey }
 
         // Breadcrumb replayed into the reason every cycle (see OpenAPSBoostPlugin autordv=).
         preferences.put(
@@ -375,12 +401,16 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
                 ",ev=${res.size},ch=${changed.size}" +
                 changed.joinToString("") { ",${shortName(it.key)}:${it.operativeValue}" } +
                 (if (held.isEmpty()) "" else held.joinToString("") { ",held-${shortName(it.key)}:${it.suggestedValue}" }) +
-                (if (retired.isEmpty()) "" else retired.joinToString("") { ",retired-${shortName(it.key)}" })
+                (if (retired.isEmpty()) "" else retired.joinToString("") { ",retired-${shortName(it.key)}" }) +
+                (if (tranche == null) "" else "," + BoostV5AutoConfigApply.trancheBreadcrumb(tranche, suggestion.tranche)) +
+                "," + BoostV5AutoConfigApply.primerRouteBreadcrumb(route, windowWellControlled)
         )
 
-        if (changed.isNotEmpty() || held.isNotEmpty()) {
+        if (changed.isNotEmpty() || held.isNotEmpty() || routeChanged) {
             // Rolling in-app history so this is answerable after the notification is dismissed.
-            val line = changed.joinToString("; ") { "${shortName(it.key)} ${it.suggestedValue} (was ${it.operativeValue})" }
+            val line = (changed.map { "${shortName(it.key)} ${it.suggestedValue} (was ${it.operativeValue})" } +
+                (if (routeChanged) listOf("PrimerRoute ${if (route.tbrFallback) "temp basal" else "bolus"}") else emptyList()))
+                .joinToString("; ")
             val entry = "${dateUtil.toISOString(now)} ${if (line.isEmpty()) "held only" else line}"
             val hist = (listOf(entry) + preferences.get(StringKey.ApsBoostV5RedriveHistory)
                 .split("\n").filter { it.isNotBlank() }).take(10)
@@ -388,11 +418,18 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
 
             val body = buildString {
                 append("Boost re-checked your settings against the last ${BoostV5AutoConfig.REDRIVE_LOOKBACK_DAYS} days")
-                if (changed.isNotEmpty()) {
-                    append(" and changed ${changed.size}:\n")
-                    append(changed.joinToString("\n") { "• ${shortName(it.key)} → ${it.operativeValue} U" })
+                if (changed.isNotEmpty() || routeChanged) {
+                    append(" and changed ${changed.size + if (routeChanged) 1 else 0}:\n")
+                    append(changed.joinToString("\n") { "• ${shortName(it.key)} → ${it.operativeValue}${unit(it.key)}" })
+                    if (routeChanged) {
+                        if (changed.isNotEmpty()) append("\n")
+                        append(
+                            if (route.tbrFallback) "• Primer now given as a temp basal: time below range is above the well-controlled cut"
+                            else "• Primer now given as a bolus: two consecutive windows within the well-controlled cut"
+                        )
+                    }
                 }
-                held.forEach { append("\n• ${shortName(it.key)}: ${it.suggestedValue} U suggested, held back (time-below-range)") }
+                held.forEach { append("\n• ${shortName(it.key)}: ${it.suggestedValue}${unit(it.key)} suggested, held back (time-below-range)") }
             }
             uiInteraction.addNotification(Notification.USER_MESSAGE, body, Notification.INFO)
         }
@@ -445,12 +482,42 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
                 manualBolusesU = manual, smbAmountsU = smb,
                 tbrBelow70Pct = tbr70, timeBelow54Pct = sev54, meanGlucoseMgdl = meanBg,
                 currentMaxIobU = constraintsChecker.getMaxIOBAllowed().value(),
-                currentMaxBolusU = constraintsChecker.getMaxBolusAllowed().value()
+                currentMaxBolusU = constraintsChecker.getMaxBolusAllowed().value(),
+                tranche = runCatching { gatherTrancheDerivation(now) }
+                    .onFailure { aapsLogger.error(LTag.APS, "BoostV5 tranche derivation failed (non-fatal)", it) }
+                    .getOrNull()
             ),
             daysWithData = tddValues.size, bgCount = n, bolusCount = boluses.size,
             tbr70 = tbr70, sev54 = sev54
         )
     }
+
+    /**
+     * The person's confirm episodes over [TrancheThresholdDeriver.LOOKBACK_DAYS], scored for the
+     * tranche threshold. The cycle stream is the stored APS results: every cycle on which the V6
+     * override was active carries its meal-hypothesis state, so confirm onsets are counted cycle by
+     * cycle at whatever cadence the loop runs. The results are read a day at a time because each
+     * one decodes several JSON blobs and a one-minute loop stores 1,440 a day.
+     */
+    private fun gatherTrancheDerivation(now: Long): TrancheThresholdDeriver.Derivation {
+        val dayMs = 24L * 60 * 60 * 1000
+        val start = now - TrancheThresholdDeriver.LOOKBACK_DAYS * dayMs
+        val cycles = ArrayList<Pair<Long, String?>>()
+        var from = start
+        while (from < now) {
+            val to = minOf(from + dayMs, now)
+            for (r in persistenceLayer.getApsResults(from, to - 1)) {
+                val rt = r.rawData() as? RT ?: continue
+                if (rt.boostV5_active == true && rt.boostV5_state != null) cycles += r.date to rt.boostV5_state
+            }
+            from = to
+        }
+        val glucose = persistenceLayer.getBgReadingsDataFromTimeToTime(start, now, true).map { it.timestamp to it.value }
+        return TrancheThresholdDeriver.derive(TrancheThresholdDeriver.confirmOnsets(cycles), glucose)
+    }
+
+    private fun writtenLedger() = ledger(StringKey.ApsBoostV5AutoConfigWritten)
+    private fun recordWritten(key: DoubleKey, value: Double) = ledgerPut(StringKey.ApsBoostV5AutoConfigWritten, key.key, value)
 
     private fun maybeAutoConfigure() {
         // Migration from the legacy global one-shot flag (raw read — get() would mask it in simple
@@ -530,6 +597,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         // suggested-not-applied) exactly once (see BoostV5AutoConfigApply, unit-tested). Dose-cap
         // RAISES are held back (suggestion-only) when TBR<70 exceeds the guard threshold; the
         // cumulative cap is recomputed inside from the final operative per-shot caps.
+        val written = writtenLedger()
         val resolutions = synchronized(configLock) { BoostV5AutoConfigApply.applyAutoConfig(
             suggestion,
             tbrBelow70Pct = tbr70,
@@ -537,7 +605,9 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             isResolved = { isResolved(it.key) },
             storedValue = { preferences.getIfExists(it) },
             put = { key, value -> preferences.put(key, value) },
-            markResolved = { markResolved(it.key) }
+            markResolved = { markResolved(it.key) },
+            lastWritten = { written[it.key] },
+            recordWritten = { key, value -> recordWritten(key, value) }
         ) }
         // Log every classification verbatim so field diagnosis never needs inference.
         fun shortName(key: DoubleKey) = key.name.removePrefix("ApsBoostV5").removePrefix("ApsBoost")
@@ -553,7 +623,10 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             val stored = preferences.getIfExists(bk)
             if (stored == null || stored == bk.defaultValue) {
                 preferences.put(bk, value)
-                if (value != bk.defaultValue) applied += "${bk.name.removePrefix("ApsBoostV5")}=$value"
+                // Recorded so the re-derivation can tell its own value from one set by someone else
+                // (used by the primer route, see BoostV5AutoConfigApply.resolvePrimerRoute).
+                ledgerPut(StringKey.ApsBoostV5AutoConfigWritten, bk.key, if (value) 1.0 else 0.0)
+                if (value != bk.defaultValue) applied +="${bk.name.removePrefix("ApsBoostV5")}=$value"
             }
             markResolved(bk.key)
         }
@@ -583,7 +656,9 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         preferences.put(
             StringKey.ApsBoostV5AutoConfigSummary,
             "applied=${applied.size},heldTBR=${heldSuggestions.size},keptUser=$keptCount" +
-                "@${dateUtil.toISOString(now)}" + if (heldDetail.isNotEmpty()) ",held=$heldDetail" else ""
+                "@${dateUtil.toISOString(now)}" + (if (heldDetail.isNotEmpty()) ",held=$heldDetail" else "") +
+                (resolutions.lastOrNull { it.key == DoubleKey.ApsBoostV5TrancheThreshold }
+                    ?.let { "," + BoostV5AutoConfigApply.trancheBreadcrumb(it, suggestion.tranche) } ?: "")
         )
         if (applied.isNotEmpty() || heldSuggestions.isNotEmpty()) {
             val pretty = (applied + heldSuggestions).joinToString("\n") { "• $it" }
@@ -1073,7 +1148,8 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostV5VelocityBudgetActive, summary = R.string.boost_v5_velocity_budget_summary, title = R.string.boost_v5_velocity_budget_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5PrimerCapU, dialogMessage = R.string.boost_v5_primer_cap_summary, title = R.string.boost_v5_primer_cap_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostV5PrimerBolusMode, summary = R.string.boost_v5_primer_bolus_mode_summary, title = R.string.boost_v5_primer_bolus_mode_title))
-            // TEST BUILD ONLY — remove these three before release; auto-config owns them.
+            // Confirm tranche. The switch and the fraction are user settings. The threshold is written
+            // by auto-config from the person's own confirm episodes; a value set here by hand is kept.
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsBoostV5ConfirmTranche, summary = R.string.boost_v5_confirm_tranche_summary, title = R.string.boost_v5_confirm_tranche_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5TrancheFraction, dialogMessage = R.string.boost_v5_tranche_fraction_summary, title = R.string.boost_v5_tranche_fraction_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsBoostV5TrancheThreshold, dialogMessage = R.string.boost_v5_tranche_threshold_summary, title = R.string.boost_v5_tranche_threshold_title))

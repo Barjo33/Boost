@@ -124,7 +124,8 @@ internal object BoostV5AutoConfigApply {
         DoubleKey.ApsBoostCumulativeSmbCap60Min,
         DoubleKey.ApsBoostMaxIob,
         DoubleKey.ApsBoostBolus,
-        DoubleKey.ApsBoostV5PrimerCapU   // NOT raise-guarded — safety is the locked TBR delivery, see doseCapKeys
+        DoubleKey.ApsBoostV5PrimerCapU,  // NOT raise-guarded — safety is the locked TBR delivery, see doseCapKeys
+        DoubleKey.ApsBoostV5TrancheThreshold   // its own rules, see resolveTrancheThreshold
     )
 
     /** [managedDoubleKeys] paired with their suggested values (same stable order). */
@@ -136,7 +137,10 @@ internal object BoostV5AutoConfigApply {
         DoubleKey.ApsBoostCumulativeSmbCap60Min to s.cumulativeSmbCap60MinU,
         DoubleKey.ApsBoostMaxIob to s.maxIobU,
         DoubleKey.ApsBoostBolus to s.bolusCapU,
-        DoubleKey.ApsBoostV5PrimerCapU to s.primerCapU   // 2026-07-20 V1-acceleration primer
+        DoubleKey.ApsBoostV5PrimerCapU to s.primerCapU,  // 2026-07-20 V1-acceleration primer
+        // NaN when the evidence fell short: there is no suggestion, and resolveTrancheThreshold then
+        // writes nothing. The threshold never passes through resolve() or the movement tracker.
+        DoubleKey.ApsBoostV5TrancheThreshold to (s.trancheThreshold ?: Double.NaN)
     )
 
     /**
@@ -157,7 +161,168 @@ internal object BoostV5AutoConfigApply {
         INSIDE_DEADBAND,          // move smaller than the measurement error; it accumulates
         AWAITING_CONFIRMATION,    // quantised knob: a new value must repeat once before it is written
         BASELINE_RECORDED,        // first sight: where the derivation sits; nothing written
-        RETIRED_USER_EDITED       // the user has changed it since we wrote it — never revisit
+        RETIRED_USER_EDITED,      // the user has changed it since we wrote it — never revisit
+        // confirm-tranche threshold outcomes (resolveTrancheThreshold)
+        INSUFFICIENT_EVIDENCE,    // too few labelled confirm episodes; nothing written
+        LOOSENING_HELD            // a lower threshold was derived and the lowering guard held it
+    }
+
+    /**
+     * Labelled confirm episodes needed before a LOWER threshold may be written. Lowering releases
+     * more of the held insulin, so it needs twice the evidence a suggestion needs at all
+     * ([TrancheThresholdDeriver.MIN_LABELLED]).
+     */
+    const val TRANCHE_MIN_LABELLED_TO_LOWER = 30
+
+    /**
+     * Resolves the confirm-tranche release threshold. Called on every onboarding and re-derivation
+     * run, because confirm episodes accumulate only once the V6 override is active, so the evidence
+     * usually arrives after onboarding has finished.
+     *
+     * The threshold is written as an absolute value rather than tracked by movement like the caps,
+     * so auto-config has to know which value it wrote itself; [lastWritten] is that value. In order:
+     *  - a stored value off the factory default that is not the value auto-config last wrote was set
+     *    by hand, and is kept (KEPT_USER_TUNED). Setting it back to 0.48 hands it back.
+     *  - no derived threshold (fewer than 15 labelled episodes, or fewer than five in a class):
+     *    nothing is written (INSUFFICIENT_EVIDENCE) and the operative value stays.
+     *  - derived above the operative value: withholds more, a tightening, written whatever the
+     *    person's time below range.
+     *  - derived below the operative value: releases more, insulin-adding, written only when the
+     *    profile is well controlled (TBR<70 under [BoostV5AutoConfig.WELL_CONTROLLED_MAX_TBR70] and
+     *    time<54 under [BoostV5AutoConfig.WELL_CONTROLLED_MAX_SEV54], the cut the other
+     *    insulin-adding switches use) and there are at least [TRANCHE_MIN_LABELLED_TO_LOWER] labelled
+     *    episodes. Otherwise nothing is written (LOOSENING_HELD) and the operative value, the higher
+     *    of the two, stays. This follows the dose-cap raise guard, which leaves the current value in
+     *    place and reports the suggestion rather than writing a compromise value.
+     *  - derived equal to the operative value: nothing to do (INSIDE_DEADBAND).
+     * [writeOutcome] is APPLIED on the onboarding path and REDRIVEN on the re-derivation path, so
+     * each caller's existing reporting picks a write up.
+     */
+    fun resolveTrancheThreshold(
+        suggestion: BoostV5AutoConfig.V5Suggestion,
+        tbrBelow70Pct: Double,
+        timeBelow54Pct: Double,
+        storedValue: Double?,
+        lastWritten: Double?,
+        put: (Double) -> Unit,
+        recordWritten: (Double) -> Unit,
+        writeOutcome: Outcome = Outcome.APPLIED
+    ): Resolution {
+        val key = DoubleKey.ApsBoostV5TrancheThreshold
+        val current = storedValue ?: key.defaultValue
+        val derived = suggestion.trancheThreshold
+        val tr = suggestion.tranche
+        val handSet = storedValue != null && isUserTuned(key, storedValue) &&
+            (lastWritten == null || abs(storedValue - lastWritten) > DEFAULT_EPS)
+        if (handSet)
+            return Resolution(key, Outcome.KEPT_USER_TUNED, derived ?: Double.NaN, current,
+                              "kept:user-set $current (derived ${derived ?: "-"})")
+        if (derived == null)
+            return Resolution(key, Outcome.INSUFFICIENT_EVIDENCE, Double.NaN, current,
+                              "held:evidence ${tr?.nSmall ?: 0} small ${tr?.nLarge ?: 0} large; operative $current")
+        val target = round2(derived.coerceIn(key.min, key.max))
+        if (abs(target - current) <= DEFAULT_EPS)
+            return Resolution(key, Outcome.INSIDE_DEADBAND, target, current, "unchanged $current")
+        if (target < current) {
+            val wellControlled = tbrBelow70Pct < BoostV5AutoConfig.WELL_CONTROLLED_MAX_TBR70 &&
+                timeBelow54Pct < BoostV5AutoConfig.WELL_CONTROLLED_MAX_SEV54
+            val why = buildList {
+                if (!wellControlled) add("not-well-controlled")
+                if ((tr?.nLabelled ?: 0) < TRANCHE_MIN_LABELLED_TO_LOWER) add("n<$TRANCHE_MIN_LABELLED_TO_LOWER")
+            }
+            if (why.isNotEmpty())
+                return Resolution(key, Outcome.LOOSENING_HELD, target, current,
+                                  "held:${why.joinToString("+")} lowering $current to $target; " +
+                                      "TBR<70=$tbrBelow70Pct% <54=$timeBelow54Pct%")
+        }
+        put(target)
+        recordWritten(target)
+        return Resolution(key, writeOutcome, target, target, "set $current to $target")
+    }
+
+    /**
+     * Entry in the auto-config pending ledger holding the previous re-derivation window's
+     * well-controlled verdict (1.0 or 0.0), for [resolvePrimerRoute]. Not a preference key.
+     */
+    const val PRIMER_ROUTE_PREV_WC_KEY = "primer_route_prev_well_controlled"
+
+    /** Outcome of [resolvePrimerRoute]. [tbrFallback] is the operative routing after the run. */
+    data class RouteResolution(val outcome: Outcome, val tbrFallback: Boolean, val reason: String)
+
+    /**
+     * Re-evaluates the primer delivery route (BooleanKey.ApsBoostV5PrimerTbrFallback) on a scheduled
+     * re-derivation. Onboarding sets the route once from its 14-day window; without this a person
+     * routed to the temp basal never returned to the bolus as their time below range fell, and a
+     * bolus-routed person stayed on the bolus after becoming hypo-prone.
+     *
+     * [wellControlled] is the re-derivation window's own verdict, the same cut onboarding uses
+     * (TBR<70 under 1.5% and time<54 under 0.3%). The two directions are treated differently because
+     * one adds insulin and the other does not:
+     *  - not well controlled while on the bolus: moves to the retractable temp basal at once, a
+     *    tightening.
+     *  - well controlled while on the temp basal: moves to the bolus only when the previous
+     *    re-derivation window was well controlled as well ([previousWellControlled] true), since the
+     *    bolus is the insulin-adding route. One window alone is AWAITING_CONFIRMATION.
+     *  - a window with fewer than [BoostV5AutoConfig.MIN_BG_READINGS] readings changes nothing and
+     *    breaks the run of consecutive windows.
+     * A stored value that differs from the value auto-config last wrote ([lastWritten]) was set by
+     * someone else and is kept. With no record of a write, the stored value is taken as auto-config's
+     * own: the key has no preference-screen entry, so the onboarding derivation has been its only
+     * writer. ApsBoostV5PrimerBolusMode, the user's override that forces the bolus, is not managed
+     * here and still wins at the delivery seam.
+     *
+     * [recordWellControlled] persists this window's verdict for the next run (null clears it).
+     */
+    fun resolvePrimerRoute(
+        wellControlled: Boolean,
+        bgReadings: Int,
+        previousWellControlled: Boolean?,
+        stored: Boolean?,
+        lastWritten: Boolean?,
+        put: (Boolean) -> Unit,
+        recordWritten: (Boolean) -> Unit,
+        recordWellControlled: (Boolean?) -> Unit
+    ): RouteResolution {
+        val current = stored ?: false
+        if (bgReadings < BoostV5AutoConfig.MIN_BG_READINGS) {
+            recordWellControlled(null)
+            return RouteResolution(Outcome.INSUFFICIENT_EVIDENCE, current, "held:evidence bg=$bgReadings")
+        }
+        recordWellControlled(wellControlled)
+        if (stored != null && lastWritten != null && stored != lastWritten)
+            return RouteResolution(Outcome.KEPT_USER_TUNED, current, "kept:user-set tbrFallback=$current")
+        return when {
+            !wellControlled && !current -> {
+                put(true); recordWritten(true)
+                RouteResolution(Outcome.REDRIVEN, true, "bolus to temp basal: window not well controlled")
+            }
+            wellControlled && current && previousWellControlled == true -> {
+                put(false); recordWritten(false)
+                RouteResolution(Outcome.REDRIVEN, false, "temp basal to bolus: two consecutive well-controlled windows")
+            }
+            wellControlled && current ->
+                RouteResolution(Outcome.AWAITING_CONFIRMATION, true, "held:one-window temp basal kept until a second well-controlled window")
+            else -> RouteResolution(Outcome.INSIDE_DEADBAND, current, "unchanged tbrFallback=$current")
+        }
+    }
+
+    /** Compact form of a [RouteResolution] for the re-derivation breadcrumb (autordv=). */
+    fun primerRouteBreadcrumb(r: RouteResolution, wellControlled: Boolean): String {
+        val why = r.reason.substringBefore(' ').takeIf { it.startsWith("held:") || it.startsWith("kept:") }
+        return "pr=${r.outcome}/tb=${r.tbrFallback}/wc=$wellControlled" + (if (why != null) "/$why" else "")
+    }
+
+    /**
+     * Compact form of a threshold resolution for the auto-config breadcrumbs, which the engine
+     * replays into the reason every cycle (autocfg= and autordv=). Carries no commas or semicolons,
+     * since both separate fields there.
+     */
+    fun trancheBreadcrumb(r: Resolution, tr: TrancheThresholdDeriver.Derivation?): String {
+        fun f(x: Double?) = if (x == null || x.isNaN()) "-" else round2(x).toString()
+        val why = r.reason.substringBefore(' ').takeIf { it.startsWith("held:") || it.startsWith("kept:") }
+        return "tr=${r.outcome}/d=${f(r.suggestedValue)}/op=${f(r.operativeValue)}" +
+            "/s=${tr?.nSmall ?: 0}/l=${tr?.nLarge ?: 0}/J=${f(tr?.youdenJ)}" +
+            (if (why != null) "/$why" else "")
     }
 
     /**
@@ -261,7 +426,9 @@ internal object BoostV5AutoConfigApply {
         pendingValue: (DoubleKey) -> Double?,
         put: (DoubleKey, Double) -> Unit,
         setBaseline: (DoubleKey, Double) -> Unit,
-        setPending: (DoubleKey, Double?) -> Unit
+        setPending: (DoubleKey, Double?) -> Unit,
+        lastWritten: (DoubleKey) -> Double? = { null },
+        recordWritten: (DoubleKey, Double) -> Unit = { _, _ -> }
     ): List<Resolution> {
         val out = mutableListOf<Resolution>()
         val raiseGuard = tbrBelow70Pct > TBR_RAISE_GUARD_PCT || timeBelow54Pct >= TBR54_RAISE_GUARD_PCT
@@ -380,6 +547,15 @@ internal object BoostV5AutoConfigApply {
                                   "recomputed $curPrimer → $newPrimer from committedCap")
             }
         }
+        // Confirm-tranche threshold: re-derived from the person's own episodes on every run and
+        // written as an absolute value under its own rules (resolveTrancheThreshold).
+        val tk = DoubleKey.ApsBoostV5TrancheThreshold
+        out += resolveTrancheThreshold(
+            suggestion, tbrBelow70Pct, timeBelow54Pct,
+            storedValue = storedValue(tk), lastWritten = lastWritten(tk),
+            put = { put(tk, it) }, recordWritten = { recordWritten(tk, it) },
+            writeOutcome = Outcome.REDRIVEN
+        )
         return out
     }
 
@@ -426,7 +602,11 @@ internal object BoostV5AutoConfigApply {
         isResolved: (DoubleKey) -> Boolean,
         storedValue: (DoubleKey) -> Double?,
         put: (DoubleKey, Double) -> Unit,
-        markResolved: (DoubleKey) -> Unit
+        markResolved: (DoubleKey) -> Unit,
+        // What auto-config last wrote to a knob it sets absolutely (the tranche threshold), and the
+        // setter for it. Defaults suit a store that has never had one written.
+        lastWritten: (DoubleKey) -> Double? = { null },
+        recordWritten: (DoubleKey, Double) -> Unit = { _, _ -> }
     ): List<Resolution> {
         val resolutions = mutableListOf<Resolution>()
         val operative = mutableMapOf<DoubleKey, Double>()
@@ -483,6 +663,19 @@ internal object BoostV5AutoConfigApply {
         // retractable temp basal — needs one. The routing is a recommendation the user may override; an
         // override is logged at the delivery seam (primerRoute) so it is visible in the data.
         resolve(DoubleKey.ApsBoostV5PrimerCapU, suggestion.primerCapU)
+        // Confirm-tranche threshold, by its own rules. It resolves whatever the outcome, including
+        // too little evidence, so that onboarding can finish; the weekly re-derivation evaluates it
+        // again on every run, which is where the evidence normally arrives.
+        val tk = DoubleKey.ApsBoostV5TrancheThreshold
+        if (!isResolved(tk)) {
+            resolutions += resolveTrancheThreshold(
+                suggestion, tbrBelow70Pct, timeBelow54Pct,
+                storedValue = storedValue(tk), lastWritten = lastWritten(tk),
+                put = { put(tk, it) }, recordWritten = { recordWritten(tk, it) },
+                writeOutcome = Outcome.APPLIED
+            )
+            markResolved(tk)
+        }
         return resolutions
     }
 
