@@ -168,8 +168,16 @@ internal object BoostV5AutoConfigApply {
         RETIRED_USER_EDITED,      // the user has changed it since we wrote it — never revisit
         // confirm-tranche threshold outcomes (resolveTrancheThreshold)
         INSUFFICIENT_EVIDENCE,    // too few labelled confirm episodes; nothing written
-        LOOSENING_HELD            // a lower threshold was derived and the lowering guard held it
+        LOOSENING_HELD,           // a lower threshold was derived and the lowering guard held it
+        AT_NEUTRAL_CEILING        // an aggression raise stopped at AGGRESSION_AUTO_CEILING
     }
+
+    /**
+     * The highest value re-derivation will raise aggression to. Onboarding never derives above
+     * neutral (BoostV5AutoConfig.compute), and movement tracking could otherwise carry a user's
+     * offset above 1.0 past it. A value above 1.0 set by hand is kept and may still be lowered.
+     */
+    const val AGGRESSION_AUTO_CEILING = 1.0
 
     /**
      * Labelled confirm episodes needed before a LOWER threshold may be written. Lowering releases
@@ -385,9 +393,11 @@ internal object BoostV5AutoConfigApply {
      * incoherence the 2026-07-06 migration backtest found — but "the first run changes nothing" is
      * NOT true, and was stated as such when this shipped.
      *
-     * Note also that cumulative60 passes through the raise-guard when it increases and primerCap
-     * does NOT, matching the onboarding path: the primer's safety is its delivery routing rather
-     * than a cap.
+     * While the TBR raise-guard is tripped every insulin-adding move is held: a rise in either cap,
+     * the cumulative cap, the primer or aggression, and a fall in hypoCaution. The primer differs
+     * from onboarding here, where it is not raise-guarded so that a hypo-prone person is still
+     * provisioned one for the temp-basal route; once provisioned, a larger primer waits like the
+     * rest. Aggression is in addition never raised above [AGGRESSION_AUTO_CEILING].
      */
     val REDRIVE_RATIO_KEYS: List<DoubleKey> = listOf(
         DoubleKey.ApsBoostV5CommittedCapU,
@@ -477,7 +487,24 @@ internal object BoostV5AutoConfigApply {
                 rawProposed < current - stepCap -> current - stepCap
                 else                            -> rawProposed
             }
-            val proposed = round2(bounded.coerceIn(key.min, key.max))
+            var proposed = round2(bounded.coerceIn(key.min, key.max))
+            // Aggression is never auto-raised above neutral. A raise stops at 1.0, and from a value
+            // already at or above 1.0 (which only the user can have set) it does not move at all.
+            // The baseline is not advanced, so the withheld movement stays available if the
+            // derivation later falls back.
+            if (key == DoubleKey.ApsBoostV5Aggression && proposed > current + DEFAULT_EPS) {
+                val ceiling = maxOf(current, AGGRESSION_AUTO_CEILING)
+                if (proposed > ceiling + DEFAULT_EPS) {
+                    if (abs(ceiling - current) <= DEFAULT_EPS) {
+                        setPending(key, null)
+                        out += Resolution(key, Outcome.AT_NEUTRAL_CEILING, proposed, current,
+                                          "held:neutral-ceiling raise $current → $proposed not written; " +
+                                              "aggression is auto-raised no higher than $AGGRESSION_AUTO_CEILING")
+                        continue
+                    }
+                    proposed = ceiling
+                }
+            }
             val delta = proposed - current
 
             if (abs(delta) <= DEFAULT_EPS) {
@@ -487,6 +514,18 @@ internal object BoostV5AutoConfigApply {
                 setPending(key, null)
                 out += Resolution(key, Outcome.INSIDE_DEADBAND, proposed, current,
                                   "no movement: derivation $baseline → $derivedNow leaves $current unchanged")
+                continue
+            }
+
+            // Any insulin-adding move is held while the TBR guard is tripped: a cap or aggression
+            // rising, or hypoCaution falling (hypoCaution RISING is the tightening). Checked before
+            // the confirmation and noise filters so a held move is reported as held, and the
+            // baseline is not advanced, so the movement accumulates until the guard clears.
+            val loosening = if (key == DoubleKey.ApsBoostV5HypoCaution) delta < 0 else delta > 0
+            if (loosening && raiseGuard) {
+                setPending(key, null)
+                out += Resolution(key, Outcome.SUGGESTED_NOT_APPLIED_TBR, proposed, current,
+                                  "raise held: $current → $proposed; TBR<70=$tbrBelow70Pct% <54=$timeBelow54Pct%")
                 continue
             }
 
@@ -506,15 +545,6 @@ internal object BoostV5AutoConfigApply {
                                       "no change: move ${round2(delta)} within the ±$band noise band (accumulating)")
                     continue
                 }
-            }
-
-            // hypoCaution RISING is a tightening; for the caps a rise is a loosening.
-            val loosening = if (key == DoubleKey.ApsBoostV5HypoCaution) delta < 0 else delta > 0
-            if (loosening && key in doseCapKeys && raiseGuard) {
-                setPending(key, null)
-                out += Resolution(key, Outcome.SUGGESTED_NOT_APPLIED_TBR, proposed, current,
-                                  "raise held: $current → $proposed; TBR<70=$tbrBelow70Pct% <54=$timeBelow54Pct%")
-                continue
             }
 
             put(key, proposed)
@@ -545,7 +575,7 @@ internal object BoostV5AutoConfigApply {
         if (abs(newCum - curCum) > DEFAULT_EPS) {
             if (newCum > curCum && raiseGuard) {
                 out += Resolution(cum, Outcome.SUGGESTED_NOT_APPLIED_TBR, newCum, curCum,
-                                  "raise held: $curCum → $newCum; TBR<70=$tbrBelow70Pct%")
+                                  "raise held: $curCum → $newCum; TBR<70=$tbrBelow70Pct% <54=$timeBelow54Pct%")
             } else {
                 put(cum, newCum)
                 out += Resolution(cum, Outcome.REDRIVEN, newCum, newCum,
@@ -560,7 +590,13 @@ internal object BoostV5AutoConfigApply {
             val curPrimer = operative.getValue(primer)
             val newPrimer = round2((operative.getValue(DoubleKey.ApsBoostV5CommittedCapU) * frac)
                                        .coerceIn(primer.min, primer.max))
-            if (abs(newPrimer - curPrimer) > 0.056) {
+            if (abs(newPrimer - curPrimer) > 0.056 && newPrimer > curPrimer && raiseGuard) {
+                // Not raise-guarded at onboarding, where a hypo-prone person must still be
+                // provisioned a primer for the temp-basal route. Once provisioned, a larger primer is
+                // an insulin-adding move like any other and waits for the guard to clear.
+                out += Resolution(primer, Outcome.SUGGESTED_NOT_APPLIED_TBR, newPrimer, curPrimer,
+                                  "raise held: $curPrimer → $newPrimer; TBR<70=$tbrBelow70Pct% <54=$timeBelow54Pct%")
+            } else if (abs(newPrimer - curPrimer) > 0.056) {
                 put(primer, newPrimer)
                 out += Resolution(primer, Outcome.REDRIVEN, newPrimer, newPrimer,
                                   "recomputed $curPrimer → $newPrimer from committedCap")
