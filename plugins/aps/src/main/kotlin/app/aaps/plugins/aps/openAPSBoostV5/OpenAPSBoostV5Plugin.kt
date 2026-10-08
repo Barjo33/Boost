@@ -221,12 +221,19 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
 
     /** Auto-config-managed boolean dosing switches (2026-07-17 convention: every new dosing switch is
      *  auto-config managed). Each resolves once at onboarding, suggestion-only, like the double knobs.
-     *  The primer route is the exception: maybeRedrive re-evaluates it on every scheduled run. */
+     *  The primer route and [redrivenSwitches] are then re-evaluated by maybeRedrive on every
+     *  scheduled run; the velocity-budget floor is not, and relies on its live 14-day TBR gate. */
     private val managedBooleanKeys = listOf(
         BooleanKey.ApsBoostV5FastCarbConfirm,
         BooleanKey.ApsBoostV5AggressiveEarlyConfirm,
         BooleanKey.ApsBoostV5VelocityBudgetActive,
         BooleanKey.ApsBoostV5PrimerTbrFallback,   // primer routing; also re-evaluated weekly in maybeRedrive (NOT the user override, which is unmanaged)
+    )
+
+    /** Insulin-adding switches re-evaluated weekly by BoostV5AutoConfigApply.resolveInsulinAddingSwitch. */
+    private val redrivenSwitches = setOf(
+        BooleanKey.ApsBoostV5AggressiveEarlyConfirm,
+        BooleanKey.ApsBoostV5FastCarbConfirm,
     )
 
     private fun suggestionBoolean(s: BoostV5AutoConfig.V5Suggestion, key: BooleanKey): Boolean = when (key) {
@@ -378,6 +385,34 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         aapsLogger.info(LTag.APS, "BoostV5 re-derivation: ${routeKey.key} → ${route.reason}")
         val routeChanged = route.outcome == BoostV5AutoConfigApply.Outcome.REDRIVEN
 
+        // Insulin-adding switches, by the same rules as the primer route: off on the first window
+        // that does not allow them, on only after two consecutive windows that do and never under
+        // the TBR guard, never over a value the user set. See resolveInsulinAddingSwitch.
+        val raiseGuard = g.tbr70 > BoostV5AutoConfigApply.TBR_RAISE_GUARD_PCT ||
+            g.sev54 >= BoostV5AutoConfigApply.TBR54_RAISE_GUARD_PCT
+        val switches = listOf(
+            Triple("aec", BooleanKey.ApsBoostV5AggressiveEarlyConfirm, suggestion.aggressiveEarlyConfirm),
+            Triple("fcc", BooleanKey.ApsBoostV5FastCarbConfirm, suggestion.fastCarbConfirm)
+        ).map { (tag, key, allowsOn) ->
+            val verdictKey = BoostV5AutoConfigApply.switchPreviousVerdictKey(key.key)
+            val r = synchronized(configLock) { BoostV5AutoConfigApply.resolveInsulinAddingSwitch(
+                allowsOn = allowsOn,
+                raiseGuard = raiseGuard,
+                bgReadings = g.bgCount,
+                previousAllowsOn = pending[verdictKey]?.let { it >= 0.5 },
+                stored = preferences.getIfExists(key),
+                defaultValue = key.defaultValue,
+                lastWritten = written[key.key]?.takeIf { it >= 0.0 }?.let { it >= 0.5 },
+                userMarked = written[key.key] == BoostV5AutoConfigApply.SWITCH_USER_SET_MARK,
+                put = { preferences.put(key, it) },
+                recordWritten = { ledgerPut(StringKey.ApsBoostV5AutoConfigWritten, key.key, if (it) 1.0 else 0.0) },
+                recordVerdict = { v -> ledgerPut(StringKey.ApsBoostV5AutoConfigPending, verdictKey, v?.let { if (it) 1.0 else 0.0 }) }
+            ) }
+            aapsLogger.info(LTag.APS, "BoostV5 re-derivation: ${key.key} → ${r.reason}")
+            Triple(tag, key, r) to allowsOn
+        }
+        val switchesChanged = switches.filter { it.first.third.outcome == BoostV5AutoConfigApply.Outcome.REDRIVEN }
+
         val trancheKey = DoubleKey.ApsBoostV5TrancheThreshold
         fun shortName(k: DoubleKey) = k.name.removePrefix("ApsBoostV5").removePrefix("ApsBoost")
         fun unit(k: DoubleKey) = if (k == trancheKey) "" else " U"
@@ -399,13 +434,16 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
                 (if (retired.isEmpty()) "" else retired.joinToString("") { ",retired-${shortName(it.key)}" }) +
                 (if (kept.isEmpty()) "" else kept.joinToString("") { ",kept-${shortName(it.key)}:${it.operativeValue}" }) +
                 (if (tranche == null) "" else "," + BoostV5AutoConfigApply.trancheBreadcrumb(tranche, suggestion.tranche)) +
-                "," + BoostV5AutoConfigApply.primerRouteBreadcrumb(route, windowWellControlled)
+                "," + BoostV5AutoConfigApply.primerRouteBreadcrumb(route, windowWellControlled) +
+                switches.joinToString("") { (t, allowsOn) -> "," + BoostV5AutoConfigApply.switchBreadcrumb(t.first, t.third, allowsOn) }
         )
 
-        if (changed.isNotEmpty() || held.isNotEmpty() || routeChanged) {
+        fun switchName(k: BooleanKey) = k.name.removePrefix("ApsBoostV5")
+        if (changed.isNotEmpty() || held.isNotEmpty() || routeChanged || switchesChanged.isNotEmpty()) {
             // Rolling in-app history so this is answerable after the notification is dismissed.
             val line = (changed.map { "${shortName(it.key)} ${it.suggestedValue} (was ${it.operativeValue})" } +
-                (if (routeChanged) listOf("PrimerRoute ${if (route.tbrFallback) "temp basal" else "bolus"}") else emptyList()))
+                (if (routeChanged) listOf("PrimerRoute ${if (route.tbrFallback) "temp basal" else "bolus"}") else emptyList()) +
+                switchesChanged.map { (t, _) -> "${switchName(t.second)} ${if (t.third.value) "on" else "off"}" })
                 .joinToString("; ")
             val entry = "${dateUtil.toISOString(now)} ${if (line.isEmpty()) "held only" else line}"
             val hist = (listOf(entry) + AutoConfigLedger.text(preferences, StringKey.ApsBoostV5RedriveHistory)
@@ -414,16 +452,18 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
 
             val body = buildString {
                 append("Boost re-checked your settings against the last ${BoostV5AutoConfig.REDRIVE_LOOKBACK_DAYS} days")
-                if (changed.isNotEmpty() || routeChanged) {
-                    append(" and changed ${changed.size + if (routeChanged) 1 else 0}:\n")
-                    append(changed.joinToString("\n") { "• ${shortName(it.key)} → ${it.operativeValue}${unit(it.key)}" })
-                    if (routeChanged) {
-                        if (changed.isNotEmpty()) append("\n")
-                        append(
+                if (changed.isNotEmpty() || routeChanged || switchesChanged.isNotEmpty()) {
+                    append(" and changed ${changed.size + (if (routeChanged) 1 else 0) + switchesChanged.size}:\n")
+                    val lines = changed.map { "• ${shortName(it.key)} → ${it.operativeValue}${unit(it.key)}" } +
+                        (if (!routeChanged) emptyList() else listOf(
                             if (route.tbrFallback) "• Primer now given as a temp basal: time below range is above the well-controlled cut"
                             else "• Primer now given as a bolus: two consecutive windows within the well-controlled cut"
-                        )
-                    }
+                        )) +
+                        switchesChanged.map { (t, _) ->
+                            if (t.third.value) "• ${switchName(t.second)} switched on: two consecutive windows allow it"
+                            else "• ${switchName(t.second)} switched off: the last ${BoostV5AutoConfig.REDRIVE_LOOKBACK_DAYS} days no longer allow it"
+                        }
+                    append(lines.joinToString("\n"))
                 }
                 held.forEach { append("\n• ${shortName(it.key)}: ${it.suggestedValue}${unit(it.key)} suggested, held back (time-below-range)") }
             }
@@ -623,6 +663,10 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
                 // (used by the primer route, see BoostV5AutoConfigApply.resolvePrimerRoute).
                 ledgerPut(StringKey.ApsBoostV5AutoConfigWritten, bk.key, if (value) 1.0 else 0.0)
                 if (value != bk.defaultValue) applied +="${bk.name.removePrefix("ApsBoostV5")}=$value"
+            } else if (bk in redrivenSwitches) {
+                // Off its factory default before onboarding: the user's, so the weekly
+                // re-derivation must never change it (BoostV5AutoConfigApply.resolveInsulinAddingSwitch).
+                ledgerPut(StringKey.ApsBoostV5AutoConfigWritten, bk.key, BoostV5AutoConfigApply.SWITCH_USER_SET_MARK)
             }
             markResolved(bk.key)
         }

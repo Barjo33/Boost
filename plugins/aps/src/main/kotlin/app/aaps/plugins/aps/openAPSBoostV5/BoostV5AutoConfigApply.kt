@@ -333,6 +333,91 @@ internal object BoostV5AutoConfigApply {
         }
     }
 
+    /**
+     * Value in the written ledger recording that onboarding found a switch set by the user and kept
+     * it. A switch so marked is never changed by re-derivation. 1.0 and 0.0 record auto-config's own
+     * true and false.
+     */
+    const val SWITCH_USER_SET_MARK = -1.0
+
+    /** Pending-ledger entry holding a switch's previous window verdict, for [resolveInsulinAddingSwitch]. */
+    fun switchPreviousVerdictKey(prefKey: String) = "switch_prev_allows_$prefKey"
+
+    /** Outcome of [resolveInsulinAddingSwitch]. [value] is the operative setting after the run. */
+    data class SwitchResolution(val outcome: Outcome, val value: Boolean, val reason: String)
+
+    /**
+     * Re-evaluates an insulin-adding on/off switch on a scheduled re-derivation, by the rules the
+     * primer route follows ([resolvePrimerRoute]). Used for ApsBoostV5AggressiveEarlyConfirm and
+     * ApsBoostV5FastCarbConfirm, where ON adds insulin. Onboarding sets each once; without this a
+     * switch turned on for a person who was well controlled then stayed on after they were not.
+     *
+     * [allowsOn] is this window's own derivation of the switch (the same rule onboarding applies:
+     * the strict well-controlled cut for aggressive early confirm, not hypo-prone for fast-carb
+     * confirm). In order:
+     *  - a window under [BoostV5AutoConfig.MIN_BG_READINGS] readings changes nothing and breaks the
+     *    run of consecutive windows;
+     *  - a value the user set is kept: one that differs from auto-config's last write, or one
+     *    onboarding marked as the user's ([userMarked]);
+     *  - ON while the window does not allow it: switched OFF at once, a tightening;
+     *  - OFF while the window allows it: switched ON only when the previous window allowed it too,
+     *    and never while the TBR raise-guard is tripped ([raiseGuard]); one window alone is
+     *    AWAITING_CONFIRMATION, and a window under the guard does not count towards the two.
+     * With no record of a write (installs that onboarded before the written ledger), a stored value
+     * at the factory default is auto-config's. A stored value off the default could be either, so
+     * it is not overridden in the insulin-adding direction (switching ON is reported as kept) while
+     * switching OFF still applies. The verdict is recorded through [recordVerdict] for the next run
+     * (null clears it).
+     */
+    fun resolveInsulinAddingSwitch(
+        allowsOn: Boolean,
+        raiseGuard: Boolean,
+        bgReadings: Int,
+        previousAllowsOn: Boolean?,
+        stored: Boolean?,
+        defaultValue: Boolean,
+        lastWritten: Boolean?,
+        userMarked: Boolean,
+        put: (Boolean) -> Unit,
+        recordWritten: (Boolean) -> Unit,
+        recordVerdict: (Boolean?) -> Unit
+    ): SwitchResolution {
+        val current = stored ?: defaultValue
+        if (bgReadings < BoostV5AutoConfig.MIN_BG_READINGS) {
+            recordVerdict(null)
+            return SwitchResolution(Outcome.INSUFFICIENT_EVIDENCE, current, "held:evidence bg=$bgReadings")
+        }
+        val countsTowardOn = allowsOn && !raiseGuard
+        recordVerdict(countsTowardOn)
+        if (userMarked || (stored != null && lastWritten != null && stored != lastWritten))
+            return SwitchResolution(Outcome.KEPT_USER_TUNED, current, "kept:user-set $current")
+        val unrecordedNonDefault = lastWritten == null && stored != null && stored != defaultValue
+        return when {
+            !allowsOn && current -> {
+                put(false); recordWritten(false)
+                SwitchResolution(Outcome.REDRIVEN, false, "on to off: window does not allow it")
+            }
+            allowsOn && !current && raiseGuard ->
+                SwitchResolution(Outcome.SUGGESTED_NOT_APPLIED_TBR, false, "held:tbr-guard off kept while time below range trips the guard")
+            countsTowardOn && !current && previousAllowsOn == true ->
+                if (unrecordedNonDefault)
+                    SwitchResolution(Outcome.KEPT_USER_TUNED, false, "kept:unrecorded off is not switched on without a record that auto-config set it")
+                else {
+                    put(true); recordWritten(true)
+                    SwitchResolution(Outcome.REDRIVEN, true, "off to on: two consecutive windows allow it")
+                }
+            countsTowardOn && !current ->
+                SwitchResolution(Outcome.AWAITING_CONFIRMATION, false, "held:one-window off kept until a second window allows it")
+            else -> SwitchResolution(Outcome.INSIDE_DEADBAND, current, "unchanged $current")
+        }
+    }
+
+    /** Compact form of a [SwitchResolution] for the re-derivation breadcrumb (autordv=). */
+    fun switchBreadcrumb(tag: String, r: SwitchResolution, allowsOn: Boolean): String {
+        val why = r.reason.substringBefore(' ').takeIf { it.startsWith("held:") || it.startsWith("kept:") }
+        return "$tag=${r.outcome}/v=${r.value}/ok=$allowsOn" + (if (why != null) "/$why" else "")
+    }
+
     /** Compact form of a [RouteResolution] for the re-derivation breadcrumb (autordv=). */
     fun primerRouteBreadcrumb(r: RouteResolution, wellControlled: Boolean): String {
         val why = r.reason.substringBefore(' ').takeIf { it.startsWith("held:") || it.startsWith("kept:") }
