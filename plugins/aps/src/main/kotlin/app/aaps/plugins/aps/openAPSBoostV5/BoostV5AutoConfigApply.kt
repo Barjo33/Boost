@@ -175,6 +175,18 @@ internal object BoostV5AutoConfigApply {
     const val TRANCHE_MIN_LABELLED_TO_LOWER = 30
 
     /**
+     * Whether auto-config may lower the tranche threshold at all. False for now, because the
+     * derivation is biased downwards once the tranche has been running: episodes in which the
+     * tranche withheld insulin go on to peak higher, so more of them are labelled large and the
+     * Youden-optimal threshold falls (self derived 0.35 with the tranche on, against 0.65 from the
+     * episodes before it). Until the derivation corrects for the tranche's own effect, a lower
+     * derived value is not evidence that releasing more is safe, so the threshold may only be
+     * raised. The lowering path is kept and is exercised by tests through the `allowLowering`
+     * parameter of [resolveTrancheThreshold].
+     */
+    const val TRANCHE_ALLOW_LOWERING = false
+
+    /**
      * Resolves the confirm-tranche release threshold. Called on every onboarding and re-derivation
      * run, because confirm episodes accumulate only once the V6 override is active, so the evidence
      * usually arrives after onboarding has finished.
@@ -187,8 +199,9 @@ internal object BoostV5AutoConfigApply {
      *    nothing is written (INSUFFICIENT_EVIDENCE) and the operative value stays.
      *  - derived above the operative value: withholds more, a tightening, written whatever the
      *    person's time below range.
-     *  - derived below the operative value: releases more, insulin-adding, written only when the
-     *    profile is well controlled (TBR<70 under [BoostV5AutoConfig.WELL_CONTROLLED_MAX_TBR70] and
+     *  - derived below the operative value: releases more, insulin-adding. Held whenever
+     *    `allowLowering` is false, the shipped setting ([TRANCHE_ALLOW_LOWERING]). With it true,
+     *    written only when the profile is well controlled (TBR<70 under [BoostV5AutoConfig.WELL_CONTROLLED_MAX_TBR70] and
      *    time<54 under [BoostV5AutoConfig.WELL_CONTROLLED_MAX_SEV54], the cut the other
      *    insulin-adding switches use) and there are at least [TRANCHE_MIN_LABELLED_TO_LOWER] labelled
      *    episodes. Otherwise nothing is written (LOOSENING_HELD) and the operative value, the higher
@@ -206,7 +219,8 @@ internal object BoostV5AutoConfigApply {
         lastWritten: Double?,
         put: (Double) -> Unit,
         recordWritten: (Double) -> Unit,
-        writeOutcome: Outcome = Outcome.APPLIED
+        writeOutcome: Outcome = Outcome.APPLIED,
+        allowLowering: Boolean = TRANCHE_ALLOW_LOWERING
     ): Resolution {
         val key = DoubleKey.ApsBoostV5TrancheThreshold
         val current = storedValue ?: key.defaultValue
@@ -227,6 +241,7 @@ internal object BoostV5AutoConfigApply {
             val wellControlled = tbrBelow70Pct < BoostV5AutoConfig.WELL_CONTROLLED_MAX_TBR70 &&
                 timeBelow54Pct < BoostV5AutoConfig.WELL_CONTROLLED_MAX_SEV54
             val why = buildList {
+                if (!allowLowering) add("lowering-off")
                 if (!wellControlled) add("not-well-controlled")
                 if ((tr?.nLabelled ?: 0) < TRANCHE_MIN_LABELLED_TO_LOWER) add("n<$TRANCHE_MIN_LABELLED_TO_LOWER")
             }

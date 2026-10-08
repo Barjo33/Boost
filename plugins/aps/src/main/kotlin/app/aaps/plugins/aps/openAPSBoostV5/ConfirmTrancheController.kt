@@ -31,7 +31,8 @@ import kotlin.math.min
  * anything cheap. Auto-config derives it from the person's own confirm episodes
  * ([TrancheThresholdDeriver]) and writes it to DoubleKey.ApsBoostV5TrancheThreshold under the rules
  * in [BoostV5AutoConfigApply.resolveTrancheThreshold]: a raise withholds more and applies on its
- * own, a lowering releases more and applies only for a well-controlled person with enough episodes.
+ * own; a lowering would release more and is not written while
+ * [BoostV5AutoConfigApply.TRANCHE_ALLOW_LOWERING] is false.
  * Whether the tranche runs at all, and the fraction given immediately, remain the user's settings.
  *
  * This can only deliver less than the engine would without it, never more. Over an episode the
