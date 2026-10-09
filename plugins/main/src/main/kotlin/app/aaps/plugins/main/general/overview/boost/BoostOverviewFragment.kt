@@ -247,6 +247,7 @@ class BoostOverviewFragment : DaggerFragment(), View.OnClickListener, View.OnLon
         binding.buttonsLayout.carbsButton.setOnClickListener(this)
         binding.buttonsLayout.quickWizardButton.setOnClickListener(this)
         binding.buttonsLayout.quickWizardButton.setOnLongClickListener(this)
+        arrangeActionButtons()
     }
 
     override fun onResume() {
@@ -1153,11 +1154,30 @@ class BoostOverviewFragment : DaggerFragment(), View.OnClickListener, View.OnLon
                     list += event.hashCode()
                 }
         binding.buttonsLayout.userButtonsLayout.visibility = events.isNotEmpty().toVisibility()
+        ButtonGrid.arrange(
+            binding.buttonsLayout.userButtonsLayout,
+            (0 until binding.buttonsLayout.userButtonsLayout.childCount).map { binding.buttonsLayout.userButtonsLayout.getChildAt(it) },
+            rh.dpToPx(2), rh.dpToPx(2)
+        )
+        arrangeActionButtons()
 
         if (list != lastUserAction) {
             lastUserAction = list
             rxBus.send(EventWearUpdateTiles())
         }
+    }
+
+    /**
+     * Re-flows the standard action buttons (shared overview_buttons_layout) into rows of at most three,
+     * from whichever are visible now. Only this fragment does so; the stock overview keeps its single row.
+     */
+    private fun arrangeActionButtons() {
+        val b = binding.buttonsLayout
+        ButtonGrid.arrange(
+            b.actionButtonsLayout,
+            listOf(b.treatmentButton, b.insulinButton, b.carbsButton, b.wizardButton, b.calibrationButton, b.cgmButton, b.quickWizardButton),
+            gapPx = rh.dpToPx(4), rowGapPx = rh.dpToPx(2)
+        )
     }
 
     // --- Click handlers ---

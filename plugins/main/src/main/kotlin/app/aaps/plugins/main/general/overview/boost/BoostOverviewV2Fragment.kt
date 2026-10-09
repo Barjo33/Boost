@@ -251,6 +251,7 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
         binding.v2BtnTreatment.setOnClickListener(this)
         binding.v2BtnCalibration.setOnClickListener(this)
         binding.v2BtnCgm.setOnClickListener(this)
+        arrangeActionButtons()
 
         // Target value tap -> temp target dialog
         binding.v2TargetValue.setOnClickListener(this)
@@ -1076,6 +1077,16 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
             binding.v2ButtonsLayout.quickWizardButton.visibility == View.VISIBLE ||
             hasUserActions
         binding.v2ButtonsLayout.root.visibility = anyVisible.toVisibility()
+        arrangeActionButtons()
+    }
+
+    /** Re-flows the V2 action cards into rows of at most three, from whichever are visible now. */
+    private fun arrangeActionButtons() {
+        ButtonGrid.arrange(
+            binding.v2ActionButtons,
+            listOf(binding.v2BtnInsulin, binding.v2BtnCalculator, binding.v2BtnCarbs, binding.v2BtnTreatment, binding.v2BtnCalibration, binding.v2BtnCgm),
+            gapPx = rh.dpToPx(8), rowGapPx = rh.dpToPx(8)
+        )
     }
 
     /**
@@ -1126,6 +1137,7 @@ class BoostOverviewV2Fragment : DaggerFragment(), View.OnClickListener {
                     list += event.hashCode()
                 }
         container.visibility = events.isNotEmpty().toVisibility()
+        ButtonGrid.arrange(container, (0 until container.childCount).map { container.getChildAt(it) }, rh.dpToPx(2), rh.dpToPx(2))
         if (list != lastUserAction) {
             lastUserAction = list
             rxBus.send(EventWearUpdateTiles())
