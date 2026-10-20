@@ -73,6 +73,14 @@ your own data. That is optional now, not a required warm-up.
 | **"Boost"** | the same engine with the V6 override in shadow — logs what it *would* do, does not dose |
 | (any other engine) | unchanged — Boost not involved |
 
+### Building it in your browser
+
+If you build the app with GitHub Actions in your own fork (the AndroidAPS browser build), run the
+Branch CI workflow, with "Use workflow from" set to the branch you want: `master` for this line
+(`dev` is the other). Do not use the AAPS CI workflow. It fetches a release tag from the
+upstream nightscout/AndroidAPS repository and builds that, so the app it produces is standard
+AndroidAPS without Boost.
+
 > ⚠️ Going active means an experimental algorithm is dosing your pump. You are the safety system —
 > watch it, understand it, and keep your own limits (max-IOB, max-bolus) sensible.
 
@@ -103,7 +111,7 @@ know what they are when a dose looks smaller than you expected.
 
 | Setting (as named in the app) | Where | Range (default) | What it does |
 |---|---|---|---|
-| **Boost Bolus Cap** | Boost (the base engine plugin) → Boost base-engine SMB sizing; not shown on the Boost V6 screen | 0.1–10 U (2.5) | The largest single bolus Boost will give outside the UAM basal-minutes limit below. Auto-config sets it to your AAPS maximum bolus. With carbs on board Boost may exceed it, up to the greater of this cap or your carbs on board divided by your carb ratio. |
+| **Max allowed bolus [U]** | Preferences → Treatments safety | your own limit | The largest single bolus AndroidAPS will deliver, manual or automated, and the value to adjust if Boost's doses are being held down by a bolus limit. The Boost Bolus Cap in the base engine's settings no longer applies when Boost V6 is the engine. Boost's largest automated dose, the catch-up shot when a meal is confirmed, is limited by the V6 CONFIRMED dose cap (Boost V6 → Advanced Settings), which auto-config sets from your own bolus history; raising Max allowed bolus above that cap does not make Boost's automated doses any larger. |
 | **Max minutes of basal to limit SMB to for UAM** | Preferences → SMB settings | 15–120 min (15) | Sets the ceiling on a single microbolus as a number of minutes of your own basal: the limit is your current basal rate times these minutes, divided by 60. At a basal of 0.6 U/h, 15 minutes is a ceiling of 0.15 U. It applies when the loop is dosing on unannounced meals rather than carbs, so it is mostly an overnight limit and does not need to be large. |
 
 The companion setting **Max Minutes of basal to limit SMB to**, on the same screen and with the same
