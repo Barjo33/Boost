@@ -23,6 +23,7 @@ import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.data.model.BS
+import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.RM
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -38,6 +39,7 @@ import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.plugins.aps.getBoostDosing
 import app.aaps.core.validators.preferences.AdaptiveDoublePreference
 import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
@@ -200,19 +202,100 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         return last == 0L || dateUtil.now() - last >= intervalMs
     }
 
+    // When the insulin-need watch last ran. In memory only: after a restart it runs once more, and
+    // the notification cooldown is persisted, so a restart cannot repeat a notification.
+    @Volatile private var lastNeedWatchAttemptMs = 0L
+
+    private fun needWatchDue(): Boolean = dateUtil.now() - lastNeedWatchAttemptMs >= NEED_WATCH_INTERVAL_MS
+
     private fun scheduleConfigEvaluation() {
-        if (!runCatching { configEvaluationDue() }.getOrDefault(false)) return
+        val configDue = runCatching { configEvaluationDue() }.getOrDefault(false)
+        val ndwDue = runCatching { needWatchDue() }.getOrDefault(false)
+        if (!configDue && !ndwDue) return
         if (!configEvaluationRunning.compareAndSet(false, true)) return   // one at a time
         configExecutor.execute {
             try {
-                runCatching { maybeAutoConfigure() }
-                    .onFailure { aapsLogger.error(LTag.APS, "BoostV5 auto-config failed (non-fatal)", it) }
-                runCatching { maybeRedrive() }
-                    .onFailure { aapsLogger.error(LTag.APS, "BoostV5 re-derivation failed (non-fatal)", it) }
+                if (configDue) {
+                    runCatching { maybeAutoConfigure() }
+                        .onFailure { aapsLogger.error(LTag.APS, "BoostV5 auto-config failed (non-fatal)", it) }
+                    runCatching { maybeRedrive() }
+                        .onFailure { aapsLogger.error(LTag.APS, "BoostV5 re-derivation failed (non-fatal)", it) }
+                }
+                if (ndwDue) {
+                    val now = dateUtil.now()
+                    lastNeedWatchAttemptMs = now
+                    runCatching { checkInsulinNeed(now) }
+                        .onFailure { aapsLogger.error(LTag.APS, "BoostV5 insulin-need watch failed (non-fatal)", it) }
+                }
             } finally {
                 configEvaluationRunning.set(false)
             }
         }
+    }
+
+    private fun replaceBreadcrumbToken(pattern: Regex, token: String) {
+        val key = StringKey.ApsBoostV5AutoConfigSummary
+        val old = preferences.getBoostDosing(key)
+        val updated = if (pattern.containsMatchIn(old)) pattern.replace(old, token) else if (old.isEmpty()) token else "$old,$token"
+        if (updated != old) preferences.put(key, updated)
+    }
+
+    /**
+     * The insulin-need watch ([InsulinNeedWatch]): the last three complete days' total daily dose
+     * against the month before, reported in the auto-config breadcrumb every day and as a
+     * notification when it lies outside two standard deviations. It changes no setting.
+     */
+    private fun checkInsulinNeed(now: Long) {
+        val dayMs = 24L * 60 * 60 * 1000
+        val span = (InsulinNeedWatch.BASELINE_DAYS + InsulinNeedWatch.WINDOW_DAYS).toLong()
+        // calculate(now, n) covers the n complete local days before today's midnight
+        val tdds = tddCalculator.calculate(now, span, allowMissingDays = true) ?: return
+        val days = ArrayList<InsulinNeedWatch.Day>()
+        for (i in 0 until tdds.size()) {
+            val start = tdds.keyAt(i)
+            val t = tdds.valueAt(i)
+            val total = if (t.totalAmount > 0) t.totalAmount else t.basalAmount + t.bolusAmount
+            val basal = runCatching {
+                persistenceLayer.getEffectiveProfileSwitchActiveAt(start + dayMs / 2)
+                    ?.let { ProfileSealed.EPS(it, activePlugin).percentageBasalSum() }
+            }.getOrNull()
+            days += InsulinNeedWatch.Day(start, total, basal)
+        }
+        days.sortBy { it.startMs }
+        val result = InsulinNeedWatch.evaluate(days)
+        replaceBreadcrumbToken(NDW_TOKEN, result.token())
+        aapsLogger.info(LTag.APS, "BoostV5 insulin-need watch: ${result.token()}")
+        val lastAbove = preferences.get(LongNonKey.ApsBoostNeedWatchLastAboveMs)
+        val lastBelow = preferences.get(LongNonKey.ApsBoostNeedWatchLastBelowMs)
+        if (!InsulinNeedWatch.shouldNotify(result, lastAbove, lastBelow, now)) return
+        val windowEnd = result.windowStartMs + InsulinNeedWatch.WINDOW_DAYS * dayMs
+        val bgs = persistenceLayer.getBgReadingsDataFromTimeToTime(result.baselineStartMs, windowEnd, true)
+            .filter { it.value >= 39.0 }
+        val recentBg = bgs.filter { it.timestamp >= result.windowStartMs }.map { it.value }.average()
+        val baseBg = bgs.filter { it.timestamp < result.windowStartMs }.map { it.value }.average()
+        notifyInsulinNeed(result, recentBg, baseBg)
+        preferences.put(
+            if (result.status == InsulinNeedWatch.Status.ABOVE) LongNonKey.ApsBoostNeedWatchLastAboveMs else LongNonKey.ApsBoostNeedWatchLastBelowMs,
+            now
+        )
+    }
+
+    private fun notifyInsulinNeed(r: InsulinNeedWatch.Result, recentBg: Double, baseBg: Double) {
+        val mmol = preferences.get(StringKey.GeneralUnits) == GlucoseUnit.MMOL.asText
+        fun bg(x: Double) = if (mmol) "%.1f mmol/L".format(java.util.Locale.ROOT, x / 18.0) else "%.0f mg/dL".format(java.util.Locale.ROOT, x)
+        val above = r.status == InsulinNeedWatch.Status.ABOVE
+        val body = buildString {
+            append("Your insulin has averaged %.1f U a day over the last ${InsulinNeedWatch.WINDOW_DAYS} days, ".format(java.util.Locale.ROOT, r.recentMeanU))
+            append("against %.1f U over the ${r.baselineDays} days before (".format(java.util.Locale.ROOT, r.baselineMeanU))
+            append("%+.0f%%, beyond twice the usual day-to-day spread of %.1f U).".format(java.util.Locale.ROOT, r.percent, r.baselineSdU))
+            if (!recentBg.isNaN() && !baseBg.isNaN()) append(" Glucose averaged ${bg(recentBg)} against ${bg(baseBg)}.")
+            append(
+                if (above) " This can mean your insulin needs have risen; eating, activity, illness or an infusion site can do the same."
+                else " This can mean your insulin needs have fallen; eating, activity or a gap in the pump record can do the same."
+            )
+            append(" About two in three changes this size settle within a week. No setting has been changed.")
+        }
+        uiInteraction.addNotification(Notification.USER_MESSAGE, body, Notification.INFO)
     }
 
     /** Per-knob auto-config resolution marks (argument = the managed preference's key string). */
@@ -1224,3 +1307,6 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
  */
 internal fun aggressiveEarlyConfirmAllowed(switchOn: Boolean, tbrBelow63Pct: Double?, tbrBelow70Pct: Double?): Boolean =
     switchOn && composedFloorAllowedByTbr(tbrBelow63Pct, tbrBelow70Pct)
+
+private const val NEED_WATCH_INTERVAL_MS = 24L * 60 * 60 * 1000
+private val NDW_TOKEN = Regex("ndw=[A-Z_]+(/[a-z]=[^,/]+)*")
