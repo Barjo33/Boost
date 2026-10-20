@@ -31,6 +31,7 @@ import app.aaps.core.interfaces.notifications.Notification
 import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.interfaces.utils.MidnightTime
 import app.aaps.core.keys.BooleanComposedKey
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
@@ -256,13 +257,14 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             val t = tdds.valueAt(i)
             val total = if (t.totalAmount > 0) t.totalAmount else t.basalAmount + t.bolusAmount
             val basal = runCatching {
-                persistenceLayer.getEffectiveProfileSwitchActiveAt(start + dayMs / 2)
-                    ?.let { ProfileSealed.EPS(it, activePlugin).percentageBasalSum() }
+                persistenceLayer.getEffectiveProfileSwitchActiveAt(start + dayMs / 2)?.let {
+                    InsulinNeedWatch.profileDailyBasal(ProfileSealed.EPS(it, activePlugin).percentageBasalSum(), it.originalPercentage, it.originalDuration)
+                }
             }.getOrNull()
             days += InsulinNeedWatch.Day(start, total, basal)
         }
         days.sortBy { it.startMs }
-        val result = InsulinNeedWatch.evaluate(days)
+        val result = InsulinNeedWatch.evaluate(days, MidnightTime.calcDaysBack(now, 1))
         replaceBreadcrumbToken(NDW_TOKEN, result.token())
         aapsLogger.info(LTag.APS, "BoostV5 insulin-need watch: ${result.token()}")
         val lastAbove = preferences.get(LongNonKey.ApsBoostNeedWatchLastAboveMs)
@@ -293,9 +295,9 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
                 if (above) " This can mean your insulin needs have risen; eating, activity, illness or an infusion site can do the same."
                 else " This can mean your insulin needs have fallen; eating, activity or a gap in the pump record can do the same."
             )
-            append(" About two in three changes this size settle within a week. No setting has been changed.")
+            append(" In past records, about a third of a change this size was still there a week later. No setting has been changed.")
         }
-        uiInteraction.addNotification(Notification.USER_MESSAGE, body, Notification.INFO)
+        uiInteraction.addNotification(Notification.BOOST_NEED_WATCH, body, Notification.INFO)
     }
 
     /** Per-knob auto-config resolution marks (argument = the managed preference's key string). */

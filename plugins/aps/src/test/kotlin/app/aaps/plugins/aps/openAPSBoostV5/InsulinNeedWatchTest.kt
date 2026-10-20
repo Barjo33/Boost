@@ -68,6 +68,20 @@ class InsulinNeedWatchTest {
         assertThat(InsulinNeedWatch.evaluate(days(tdds) { null }).status).isEqualTo(Status.BELOW)
     }
 
+    @Test fun `a missing yesterday leaves the window short instead of moving it back`() {
+        val d = days(october.take(36))
+        val yesterday = d.last().startMs
+        // drop 11 October: the window is still 9 to 11 October, now with two days, so no verdict
+        assertThat(InsulinNeedWatch.evaluate(d.dropLast(1), yesterday).status).isEqualTo(Status.FEW_DAYS)
+        assertThat(InsulinNeedWatch.evaluate(d, yesterday).status).isEqualTo(Status.ABOVE)
+    }
+
+    @Test fun `a temporary percentage switch is divided out, a permanent one is kept`() {
+        // 16 U a day profile under a 70% exercise switch stores 11.2 U
+        assertThat(InsulinNeedWatch.profileDailyBasal(11.2, 70, 2 * 60 * 60 * 1000L)).isWithin(1e-9).of(16.0)
+        assertThat(InsulinNeedWatch.profileDailyBasal(19.2, 120, 0L)).isWithin(1e-9).of(19.2)
+    }
+
     @Test fun `a direction is not repeated within 14 days, the other direction is`() {
         val above = InsulinNeedWatch.evaluate(days(october.take(36)))
         val now = t0 + 40 * dayMs

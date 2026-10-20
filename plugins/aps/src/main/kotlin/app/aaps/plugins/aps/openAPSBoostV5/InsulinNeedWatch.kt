@@ -4,7 +4,7 @@ import kotlin.math.abs
 import kotlin.math.sqrt
 
 /**
- * A daily check for a change in how much insulin the person is taking: the mean total daily dose of
+ * The insulin-need watch (breadcrumb token ndw=). A daily check for a change in how much insulin the person is taking: the mean total daily dose of
  * the last [WINDOW_DAYS] complete days against the [BASELINE_DAYS] before them, flagged when it lies
  * more than [K_SD] standard deviations of single days from that month's mean (2026-10-20).
  *
@@ -18,7 +18,8 @@ import kotlin.math.sqrt
  * own change. On the developer's October 2026 change it fired on 11 October, six days before any
  * glucose rule.
  *
- * Days are local calendar days from TddCalculator, so they include profile basal. A day under
+ * Days are TddCalculator's: 24 hours from each local midnight, so they include profile basal (on a
+ * clock-change day the hour lost or repeated is about 4% of a day, well inside the band). A day under
  * [GAP_FRACTION] of the median of the span is a gap in the record, not a dose. A change in the
  * profile's daily basal of more than [PROFILE_CHANGE] within the span would move the dose by itself,
  * whether it was a deliberate change or a new insulin concentration, so it is reported as that and
@@ -60,13 +61,15 @@ object InsulinNeedWatch {
     }
 
     /**
-     * [days] are complete days, oldest first, the last being yesterday. Missing days may simply be
-     * absent. Returns the status of the last [WINDOW_DAYS] days against the [BASELINE_DAYS] before.
+     * [days] are complete days, oldest first. Missing days may simply be absent. [lastDayStartMs] is
+     * the start of yesterday, so that a missing yesterday leaves the window short rather than moving
+     * it back a day. Returns the status of the [WINDOW_DAYS] days ending yesterday against the
+     * [BASELINE_DAYS] before them.
      */
-    fun evaluate(days: List<Day>): Result {
+    fun evaluate(days: List<Day>, lastDayStartMs: Long = days.lastOrNull()?.startMs ?: 0L): Result {
         if (days.size < WINDOW_DAYS) return Result(Status.FEW_DAYS)
         val dayMs = 24L * 60 * 60 * 1000
-        val lastStart = days.last().startMs
+        val lastStart = lastDayStartMs
         val windowStart = lastStart - (WINDOW_DAYS - 1) * dayMs
         val baselineStart = windowStart - BASELINE_DAYS * dayMs
         val span = days.filter { it.startMs >= baselineStart - dayMs / 2 }
@@ -96,6 +99,15 @@ object InsulinNeedWatch {
         }
         return Result(status, recent, mean, sd, baseline.size, windowStart, baselineStart)
     }
+
+    /**
+     * The profile's own daily basal from an effective profile switch. Its stored blocks already carry
+     * the switch's percentage, so a temporary switch (an exercise 70% or a sick-day 120%) is divided
+     * back out: it is a short-term choice, not a new profile. A permanent percentage is kept, since it
+     * changes the dose the person takes from then on.
+     */
+    fun profileDailyBasal(storedBasalSumU: Double, originalPercentage: Int, originalDurationMs: Long): Double =
+        if (originalDurationMs > 0 && originalPercentage > 0) storedBasalSumU * 100.0 / originalPercentage else storedBasalSumU
 
     /** Whether to notify: the status is outside the band and the same direction has not been notified within [COOLDOWN_DAYS]. */
     fun shouldNotify(result: Result, lastAboveMs: Long, lastBelowMs: Long, now: Long): Boolean {
