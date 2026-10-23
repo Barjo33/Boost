@@ -19,12 +19,13 @@ import java.util.Locale
  */
 internal class DeviceAgeTag(private val lastChangeMs: (site: Boolean) -> Long?) {
 
-    private var fetchedAtMs = Long.MIN_VALUE
+    private var fetchedAtMs: Long? = null          // null until the first read; no sentinel to overflow
     private var siteMs: Long? = null
     private var reservoirMs: Long? = null
 
     fun tag(now: Long): String {
-        if (now - fetchedAtMs >= REFRESH_MS || now < fetchedAtMs) {
+        val last = fetchedAtMs
+        if (last == null || now - last >= REFRESH_MS || now < last) {
             siteMs = lastChangeMs(true)
             reservoirMs = lastChangeMs(false)
             fetchedAtMs = now
