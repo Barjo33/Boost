@@ -14,6 +14,7 @@ import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.HR
+import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.TT
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
@@ -187,6 +188,11 @@ open class OpenAPSBoostPlugin @Inject constructor(
     aapsLogger, rh
 ), APS, PluginConstraints {
 
+
+    // Site and reservoir age telemetry (2026-10-23): siteAge= and resAge= on every cycle, read-only.
+    private val deviceAgeTag = DeviceAgeTag { site ->
+        persistenceLayer.getLastTherapyRecordUpToNow(if (site) TE.Type.CANNULA_CHANGE else TE.Type.INSULIN_CHANGE)?.timestamp
+    }
 
     /** The volume-weighted dose shadow, held on preferences as the other shadows are. It logs
      *  an alternative blend and reaches nothing on the dose path. */
@@ -1902,6 +1908,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 it.reason.append("accelMeal=$trig,${Round.roundTo(accel, 0.1)},${Round.roundTo(glucoseStatus.shortAvgDelta, 0.1)}," +
                     "${Round.roundTo(glucoseStatus.longAvgDelta, 0.1)},${glucoseStatus.glucose.toInt()},${v5decision?.mealHypothesis ?: "?"}; ")
             }.onFailure { t -> aapsLogger.error(LTag.APS, "Accel-meal shadow failed (swallowed — dosing untouched)", t) }
+            // Site and reservoir age (2026-10-23). READ-ONLY telemetry; failure swallowed.
+            runCatching { it.reason.append(deviceAgeTag.tag(now)) }
+                .onFailure { t -> aapsLogger.error(LTag.APS, "Device-age tag failed (swallowed, dosing untouched)", t) }
             // Sleep gate (2026-06-14): do NOT let V5 drive the SMB while SLEEPING — fall back to V1's
             // (oref1/Boost) SMB, which already respects night mode. V5 still computes its shadow
             // telemetry above (runShadow ran), so the V5-vs-V1 comparison continues overnight; only
