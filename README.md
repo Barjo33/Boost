@@ -112,10 +112,11 @@ know what they are when a dose looks smaller than you expected.
 | Setting (as named in the app) | Where | Range (default) | What it does |
 |---|---|---|---|
 | **Max allowed bolus [U]** | Preferences → Treatments safety | your own limit | The largest single bolus AndroidAPS will deliver, manual or automated, and the value to adjust if Boost's doses are being held down by a bolus limit. The Boost Bolus Cap in the base engine's settings no longer applies when Boost V6 is the engine. Boost's largest automated dose, the catch-up shot when a meal is confirmed, is limited by the V6 CONFIRMED dose cap (Boost V6 → Advanced Settings), which auto-config sets from your own bolus history; raising Max allowed bolus above that cap does not make Boost's automated doses any larger. |
-| **Max minutes of basal to limit SMB to for UAM** | Preferences → SMB settings | 15–120 min (15) | Sets the ceiling on a single microbolus as a number of minutes of your own basal: the limit is your current basal rate times these minutes, divided by 60. At a basal of 0.6 U/h, 15 minutes is a ceiling of 0.15 U. It applies when the loop is dosing on unannounced meals rather than carbs, so it is mostly an overnight limit and does not need to be large. |
+| **Max minutes of basal to limit SMB to for UAM** | Preferences → SMB settings | 15–120 min (15); set 20 | Sets the ceiling on a single microbolus as a number of minutes of your own basal: the limit is your current basal rate times these minutes, divided by 60. At a basal of 0.6 U/h, 20 minutes is a ceiling of 0.2 U. Boost V6 sizes meal doses itself, so this limit governs the microboluses V6 does not size: those given overnight, under a high temporary target or while asleep, when Boost stands aside for plain oref1. Set it to 20 and no higher. At 120 minutes and a basal of 1.0 U/h each of those microboluses can be 2 U, and repeated through a rise they have stacked to more than 10 U of insulin on board before a low. |
 
-The companion setting **Max Minutes of basal to limit SMB to**, on the same screen and with the same
-default of 15 minutes, does the same job for microboluses given when Boost is not the active engine.
+The companion setting **Max Minutes of basal to limit SMB to**, on the same screen with a default of
+15 minutes, does the same job when insulin on board has fallen below -0.2 U, which happens after a
+long low temporary basal. Leave it at 15.
 
 The cap is a size and not a rate: it limits any one bolus and says nothing about how often that
 bolus may repeat. Raising it raises every dose the cap was holding down, so change it in small steps
