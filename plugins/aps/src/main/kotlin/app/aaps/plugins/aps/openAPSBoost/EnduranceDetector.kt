@@ -14,8 +14,9 @@ package app.aaps.plugins.aps.openAPSBoost
  * only after [EXIT_MIN] continuous minutes without a qualifying cycle, so a descent or a short stop
  * does not end the ride. Missing heart rate does not qualify, so a watch that goes dark ends the
  * state after [EXIT_MIN]. Missing step data does not qualify either (2026-10-27): a dead step feed
- * reads as zero steps, so walking and running at zone 2 qualified and a replay over 103 to 132 days
- * found up to 1.5 false bouts a week. Without steps a ride cannot be told from a walk, so, as for the
+ * reads as zero steps, so walking and running at zone 2 qualified; replayed with steps forced to 0
+ * over 24 to 132 days a person, a permanently dead feed would have added up to 1.5 false bouts a
+ * week. Without steps a ride cannot be told from a walk, so, as for the
  * inactivity and lie-in gates, a dark feed changes nothing; a feed that dies mid-ride ends the bout
  * after [EXIT_MIN]. Time-based throughout, so it behaves the same at any loop cadence.
  *
