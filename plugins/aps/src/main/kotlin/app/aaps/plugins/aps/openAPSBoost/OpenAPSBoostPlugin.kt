@@ -1172,7 +1172,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
         // step and heart-rate classification said. Removes insulin only, so like the classification
         // above it runs whatever the Boost gate says.
         enduranceState = if (enduranceEnabled && hrIntegrationEnabled)
-            EnduranceDetector.step(enduranceState, now, hrClassification?.hrZone, recentSteps15Min)
+            EnduranceDetector.step(enduranceState, now, hrClassification?.hrZone, recentSteps15Min.takeIf { stepsAvailable })
         else EnduranceDetector.State()
         if (enduranceState.active) {
             activityState = "ENDURANCE"

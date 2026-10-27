@@ -17,7 +17,7 @@ class EnduranceDetectorTest {
     private fun min(m: Int) = t0 + m * 60_000L
 
     /** Steps the detector once a minute from [fromMin] until [toMin] inclusive at one zone and step count. */
-    private fun run(start: EnduranceDetector.State, fromMin: Int, toMin: Int, zone: HrZone?, steps: Int = 10): EnduranceDetector.State {
+    private fun run(start: EnduranceDetector.State, fromMin: Int, toMin: Int, zone: HrZone?, steps: Int? = 10): EnduranceDetector.State {
         var s = start
         for (m in fromMin..toMin) s = EnduranceDetector.step(s, min(m), zone, steps)
         return s
@@ -77,5 +77,20 @@ class EnduranceDetectorTest {
         assertThat(recoveryWindowMs(2.0, 1.0, 300)).isEqualTo(8 * h)       // length factor capped at 4
         assertThat(recoveryWindowMs(4.0, 1.5, 300)).isEqualTo(RECOVERY_WINDOW_MAX_MS)
         assertThat(recoveryWindowMs(2.0, 1.25, 30)).isEqualTo((2.5 * h).toLong())
+    }
+
+    // ── Dead step feed (2026-10-27) ──
+
+    @Test fun `a dead step feed does not qualify, even at zone 3 for an hour`() {
+        // Field replay: zone-2 walks and runs became endurance bouts when the feed read 0.
+        assertThat(run(EnduranceDetector.State(), 0, 60, HrZone.ZONE_3_MODERATE, steps = null).active).isFalse()
+        assertThat(EnduranceDetector.qualifies(HrZone.ZONE_2_LIGHT, null)).isFalse()
+    }
+
+    @Test fun `a feed that dies mid-ride ends the bout after 20 minutes`() {
+        val riding = run(EnduranceDetector.State(), 0, 45, HrZone.ZONE_2_LIGHT)
+        assertThat(riding.active).isTrue()
+        assertThat(run(riding, 46, 64, HrZone.ZONE_2_LIGHT, steps = null).active).isTrue()
+        assertThat(run(riding, 46, 65, HrZone.ZONE_2_LIGHT, steps = null).active).isFalse()
     }
 }

@@ -13,7 +13,11 @@ package app.aaps.plugins.aps.openAPSBoost
  * run for [ENTRY_MIN] minutes, a gap of up to [DIP_TOLERANCE_MIN] not resetting the clock, and ends
  * only after [EXIT_MIN] continuous minutes without a qualifying cycle, so a descent or a short stop
  * does not end the ride. Missing heart rate does not qualify, so a watch that goes dark ends the
- * state after [EXIT_MIN]. Time-based throughout, so it behaves the same at any loop cadence.
+ * state after [EXIT_MIN]. Missing step data does not qualify either (2026-10-27): a dead step feed
+ * reads as zero steps, so walking and running at zone 2 qualified and a replay over 103 to 132 days
+ * found up to 1.5 false bouts a week. Without steps a ride cannot be told from a walk, so, as for the
+ * inactivity and lie-in gates, a dark feed changes nothing; a feed that dies mid-ride ends the bout
+ * after [EXIT_MIN]. Time-based throughout, so it behaves the same at any loop cadence.
  *
  * Known overlap: a weights session with steady heart rate and little walking can qualify after 30
  * minutes and receive the endurance profile reduction, where resistance guidance keeps the profile.
@@ -34,10 +38,11 @@ object EnduranceDetector {
         val activeSinceMs: Long? = null
     )
 
-    fun qualifies(zone: HrActivityCalculator.HrZone?, steps15Min: Int): Boolean =
-        zone != null && zone >= HrActivityCalculator.HrZone.ZONE_2_LIGHT && steps15Min < LOW_STEPS_15MIN
+    /** [steps15Min] is null when no step feed is live. */
+    fun qualifies(zone: HrActivityCalculator.HrZone?, steps15Min: Int?): Boolean =
+        zone != null && zone >= HrActivityCalculator.HrZone.ZONE_2_LIGHT && steps15Min != null && steps15Min < LOW_STEPS_15MIN
 
-    fun step(previous: State, nowMs: Long, zone: HrActivityCalculator.HrZone?, steps15Min: Int): State {
+    fun step(previous: State, nowMs: Long, zone: HrActivityCalculator.HrZone?, steps15Min: Int?): State {
         // A gap of EXIT_MIN or more since the last qualifying cycle ends an active bout, whatever this
         // cycle shows. The caller steps only while Boost is active, so such a gap can span a night or a
         // high temp target.
