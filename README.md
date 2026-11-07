@@ -74,12 +74,12 @@ Your fork's `KEYSTORE_SET` and `GDRIVE_OAUTH2` secrets are used as they are.
 
 ### You have a fork of Boost-in-AAPS_3.4
 
-This repository was Boost-in-AAPS_3.4. Its Boost 6.2.0 for AAPS 3.4.2.6 is on the branch `dev`, and
-the earlier 6.1.2 line that was `master` is now on `master-3.4.2.6`. A fork of it already holds the
-secrets Boost CI needs, including the separate keystore secrets.
+This repository was Boost-in-AAPS_3.4. Its Boost 6.2.0 for AAPS 3.4.2.6 is now on the branch
+`dev-3.4.2.6`, and the earlier 6.1.2 line that was `master` is on `master-3.4.2.6`. `master` and
+`dev` are both this 4.0 line. A fork of it already holds the secrets Boost CI needs, including the
+separate keystore secrets.
 
-- To stay on 3.4, do not sync your fork's `master`. Branch CI builds `dev` or your `master` as
-  before.
+- To stay on 3.4, do not sync your fork's `master` or `dev`. Branch CI builds them as before.
 - To move to 4.0, sync your fork. GitHub says your `master` has diverged and offers to discard your
   commits; accepting replaces it with this `master`, which brings Boost CI. Then run Boost CI and
   install as above. After the sync, Branch CI is gone from your fork and 3.4 can no longer be built
