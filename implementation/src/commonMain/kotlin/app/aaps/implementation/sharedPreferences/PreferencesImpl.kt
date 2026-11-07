@@ -8,6 +8,7 @@ import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.core.interfaces.profile.unitDoubleToUnits
 import app.aaps.core.interfaces.sharedPreferences.KeyValueStore
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.HardLimits
@@ -256,11 +257,11 @@ class PreferencesImpl(
     }
 
     override fun get(key: UnitDoublePreferenceKey): Double =
-        if (simpleMode && key.defaultedBySM) profileUtil().valueInCurrentUnitsDetect(key.defaultValue)
-        else profileUtil().valueInCurrentUnitsDetect(sp.getDouble(key.key, key.defaultValue))
+        if (simpleMode && key.defaultedBySM) profileUtil().unitDoubleToUnits(key, key.defaultValue)
+        else profileUtil().unitDoubleToUnits(key, sp.getDouble(key.key, key.defaultValue))
 
     override fun getIfExists(key: UnitDoublePreferenceKey): Double? =
-        if (sp.contains(key.key)) profileUtil().valueInCurrentUnitsDetect(sp.getDouble(key.key, key.defaultValue)) else null
+        if (sp.contains(key.key)) profileUtil().unitDoubleToUnits(key, sp.getDouble(key.key, key.defaultValue)) else null
 
     override fun put(key: UnitDoublePreferenceKey, value: Double) {
         sp.putDouble(key.key, value)

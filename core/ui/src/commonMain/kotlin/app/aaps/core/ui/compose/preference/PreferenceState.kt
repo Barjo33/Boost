@@ -14,7 +14,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import app.aaps.core.data.format.NumberFormat
 import app.aaps.core.data.format.NumberFormatPlatform
+import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.core.interfaces.profile.unitDoubleToMgdl
+import app.aaps.core.interfaces.profile.unitDoubleToUnits
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.BooleanNonPreferenceKey
 import app.aaps.core.keys.interfaces.BooleanPreferenceKey
@@ -641,7 +644,7 @@ class UnitDoublePreferenceState(
         setSharedStringState(sharedStates, "unit_display:${key.key}", newValue)
         // Convert from display units back to mg/dL for storage
         val displayDouble = newValue.toDoubleOrNull() ?: return
-        val mgdlValue = profileUtil.convertToMgdlDetect(displayDouble)
+        val mgdlValue = profileUtil.unitDoubleToMgdl(key, displayDouble)
         preferences.put(key, mgdlValue)
     }
 }
@@ -653,9 +656,10 @@ class UnitDoublePreferenceState(
  * see [sharedStateUpdaterFor]. Two copies of this would be two ways of rounding the same number, and
  * the row would flicker between them as edits arrived.
  */
-private fun formatUnitDoubleForDisplay(profileUtil: ProfileUtil, storedValue: Double): String {
-    val displayValue = profileUtil.valueInCurrentUnitsDetect(storedValue)
-    val isMgdl = displayValue == storedValue || (storedValue > 0 && displayValue / storedValue > 0.9)
+private fun formatUnitDoubleForDisplay(profileUtil: ProfileUtil, key: UnitDoublePreferenceKey, storedValue: Double): String {
+    val displayValue = profileUtil.unitDoubleToUnits(key, storedValue)
+    val isMgdl = if (key.isOffset) profileUtil.units == GlucoseUnit.MGDL
+    else displayValue == storedValue || (storedValue > 0 && displayValue / storedValue > 0.9)
     val precision = if (isMgdl) 0 else 1
     // SEPARATOR_DOT, not the locale separator: this string is parsed back as a number when edited.
     return NumberFormat.withDecimalsHalfUp(precision).format(displayValue, NumberFormatPlatform.SEPARATOR_DOT)
@@ -670,7 +674,7 @@ fun rememberUnitDoublePreferenceState(
     val sharedStates = LocalSharedPreferenceStates.current
 
     // Back the display value with the shared state map so it's reactive
-    val formatted = formatUnitDoubleForDisplay(profileUtil, preferences.getRaw(key))
+    val formatted = formatUnitDoubleForDisplay(profileUtil, key, preferences.getRaw(key))
     val displayState = remember(key) {
         mutableStateOf(getSharedStringState(sharedStates, "unit_display:${key.key}", formatted))
     }

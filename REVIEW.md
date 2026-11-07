@@ -132,6 +132,7 @@ Low: `_docs/`, this file and other documents. The items below on personal data.
 | July port had lost the `runEngine` seam | Item 5 |
 | Five Double keys typed `PERCENT` crashed three settings screens | Item 12; nothing yet |
 | Night-mode offset unit inferred from its minimum, so mmol/L input was stored wrongly | Item 12; nothing yet |
+| Night-mode offset (27 mg/dL) unit-detected by magnitude as 27 mmol/L on read and entry, so night mode disabled SMBs below target + 486 mg/dL | Item 12, `UnitDoubleConversionTest`; an offset key sets `isOffset` |
 | Overview glucose circle labelled mg/dL for every mmol/L reading | Item 12; nothing yet |
 | Nested preference sub-screens drawn empty, hiding every Boost engine group | Nothing yet |
 | Boost profile missing from the APS screen | `OpenAPSViewModelTest` |
