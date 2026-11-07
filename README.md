@@ -4,8 +4,13 @@ Boost is an independently maintained variant of [AAPS](https://github.com/nights
 4.0.0 that adds the Boost APS plugin. It is not a release of, or supported by, the AAPS project.
 You build it yourself and you are responsible for how you use it. AGPL-3.0, as AAPS.
 
-This line is Boost 6.3.0: the V6 meal logic and the Boost high temp, with each SMB sized by the
+This line is Boost 6.3.1: the V6 meal logic and the Boost high temp, with each SMB sized by the
 Boost tiers as in Boost 6.2.0 for AAPS 3.4.2.6.
+
+6.3.1 corrects the night mode BG offset. 6.3.0 read its 27 mg/dL default as 27 mmol/L, so the
+setting showed 27.0 mmol/L and reverted when changed, and with night mode on SMBs were off all
+night. The offset you set now applies, as on 3.4, and a value saved under 6.3.0 is read back as
+entered. Otherwise 6.3.1 doses as 6.3.0.
 
 ## Dosing changes from Boost 6.2.0
 
