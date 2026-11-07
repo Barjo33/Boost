@@ -74,12 +74,12 @@ Your fork's `KEYSTORE_SET` and `GDRIVE_OAUTH2` secrets are used as they are.
 
 ### You have a fork of Boost-in-AAPS_3.4
 
-This repository was Boost-in-AAPS_3.4, and its Boost 6.2.0 for AAPS 3.4.2.6 is now on the branch
-`master-3.4.2.6`. A fork of it already holds the secrets Boost CI needs, including the separate
-keystore secrets.
+This repository was Boost-in-AAPS_3.4. Its Boost 6.2.0 for AAPS 3.4.2.6 is on the branch `dev`, and
+the earlier 6.1.2 line that was `master` is now on `master-3.4.2.6`. A fork of it already holds the
+secrets Boost CI needs, including the separate keystore secrets.
 
-- To stay on 3.4, do not sync your fork. Its `master` is still the 3.4.2.6 line and Branch CI
-  builds it as before.
+- To stay on 3.4, do not sync your fork's `master`. Branch CI builds `dev` or your `master` as
+  before.
 - To move to 4.0, sync your fork. GitHub says your `master` has diverged and offers to discard your
   commits; accepting replaces it with this `master`, which brings Boost CI. Then run Boost CI and
   install as above. After the sync, Branch CI is gone from your fork and 3.4 can no longer be built
@@ -99,3 +99,11 @@ Check out the release tag and build `fullRelease` with your existing keystore.
 
 Open Config Builder and check that OpenAPS Boost is the selected APS. Check your maximum IOB and
 SMB settings, then watch the first cycles in the APS tab before relying on it.
+
+## Tools
+
+The [Simulator](https://tim2000s.github.io/Boost/boost_simulator.html) shows how Boost sizes a dose
+from a glucose level, trend and IOB; choose Boost 6.3.0 at the top. The
+[Analyser](https://tim2000s.github.io/Boost/boost_analyser.html) compares V1 and V6 dosing on your
+own Nightscout data. The [Tuning Guide](https://tim2000s.github.io/Boost/boost_tuning_guide.html)
+explains each setting for 6.3.0 and 6.2.0.
