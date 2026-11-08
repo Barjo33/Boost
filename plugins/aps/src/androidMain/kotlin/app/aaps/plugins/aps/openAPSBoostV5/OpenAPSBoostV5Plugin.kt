@@ -197,31 +197,29 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         // (A coroutine Mutex in AAPS 4.0, because the engine run is a suspend call.)
         withContext(Dispatchers.Default) {
             configLock.withLock {
-                // Before the engine, so a lowered value sizes this cycle's microbolus. Two preference
-                // reads a cycle, so it does not wait for the weekly re-derivation.
-                runCatching { enforceSmbMinutesCeiling() }
-                    .onFailure { aapsLogger.error(LTag.APS, "BoostV5 SMB basal-minutes ceiling failed (non-fatal)", it) }
+                // Before the engine, so the first cycle is sized by the starting values. Two preference
+                // reads a cycle; after the first write both are stored and it never writes again.
+                runCatching { seedSmbMinutes() }
+                    .onFailure { aapsLogger.error(LTag.APS, "BoostV5 SMB basal-minutes seed failed (non-fatal)", it) }
                 openAPSBoostEngine.value.runEngine(initiator, tempBasalFallback)
             }
         }
     }
 
-    /** See [BoostV5AutoConfigApply.smbBasalMinutesCeilings]. Writes, logs and notifies only when it lowers a value. */
-    private fun enforceSmbMinutesCeiling() {
-        // Unmasked: these keys are defaultedBySM and 4.0 defaults them to 30, so a masked read in Simple Mode
-        // would report 30 on every cycle, write again and post another notice.
-        val ceilings = BoostV5AutoConfigApply.smbBasalMinutesCeilings
-        val lowered = BoostV5AutoConfigApply.capSmbBasalMinutes({ preferences.getBoostDosing(it) }, { key, value -> preferences.put(key, value) })
-        if (lowered.isEmpty()) return
-        val changes = lowered.map { (key, old) -> Triple(key, old, ceilings.getValue(key)) }
-        replaceBreadcrumbToken(SMBMIN_TOKEN, "smbmin=" + changes.joinToString("/") { (key, old, new) -> "${key.key}:$old>$new" })
-        aapsLogger.info(LTag.APS, "BoostV5 auto-config: SMB basal-minutes lowered $changes")
+    /** See [BoostV5AutoConfigApply.smbBasalMinutesSeeds]. Writes, logs and notifies only the first time, when nothing is stored. */
+    private fun seedSmbMinutes() {
+        // getIfExists, not get: these keys are defaultedBySM, so get() reads 30 in Simple Mode whatever is stored.
+        val seeds = BoostV5AutoConfigApply.smbBasalMinutesSeeds
+        val written = BoostV5AutoConfigApply.seedSmbBasalMinutes({ preferences.getIfExists(it) }, { key, value -> preferences.put(key, value) })
+        if (written.isEmpty()) return
+        replaceBreadcrumbToken(SMBMIN_TOKEN, "smbmin=" + written.joinToString("/") { "${it.key}:${seeds.getValue(it)}" })
+        aapsLogger.info(LTag.APS, "BoostV5 auto-config: SMB basal-minutes set to Boost's starting values $written")
         notificationManager.post(
             NotificationId.BOOST_MESSAGE,
-            "Boost V6 lowered the largest microbolus to Boost's limits: " +
-                changes.joinToString("; ") { (key, old, new) ->
-                    (if (key == IntKey.ApsUamMaxMinutesOfBasalToLimitSmb) "UAM" else "standard") + " $old to $new minutes of basal"
-                } + ".",
+            "Boost set the largest microbolus to its starting values: " +
+                written.joinToString("; ") { key ->
+                    (if (key == IntKey.ApsUamMaxMinutesOfBasalToLimitSmb) "UAM" else "standard") + " ${seeds.getValue(key)} minutes of basal"
+                } + ". You can change them in the SMB settings.",
             level = NotificationLevel.INFO
         )
     }
@@ -1424,7 +1422,7 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
                     DoubleKey.ApsBoostV5TrancheFraction,
                     DoubleKey.ApsBoostV5TrancheThreshold,
                     BooleanKey.ApsBoostV6PreMealTarget,
-                    DoubleKey.ApsBoostV6PreMealTargetMgdl,
+                    UnitDoubleKey.ApsBoostV6PreMealTargetMgdl,
                     DoubleKey.ApsBoostV6PreMealLeadMin,
                     // These size the base SMB that V6 caps its dose at outside a meal, and the engine has no
                     // screen of its own now that V6 is the only Boost plugin, so an imported value stays visible here.

@@ -153,6 +153,8 @@ Low: `_docs/`, this file and other documents. The items below on personal data.
 | A piped gradle reported `tail`'s exit code (CLAUDE.md) | Item 17 |
 | Insulin-need watch ran during a history download, and `TddCalculator` kept the partial days it computed for auto-config to read | Nothing automated; the `historyDownloadHolds` check in `scheduleConfigEvaluation` |
 | The VWA-TDD shadow folded the 4.0 upgrade day into its curve as a whole day, read delivery over whole hours since the anchor, and warmed from days cut at the phone's current hour | Five `BoostVwaTddShadowTest` cases; nothing tests the caller's live interval |
-| SMB minutes ceiling read a Simple Mode mask of 30, rewrote every cycle and stacked notices; 4.0 defaults differ from 3.4 | Nothing automated: `SmbBasalMinutesCeilingTest` uses a plain map. Emulator check in Simple Mode |
+| SMB minutes ceiling read a Simple Mode mask of 30, rewrote every cycle and stacked notices; 4.0 defaults differ from 3.4 | Nothing automated for the Simple Mode read; emulator check in Simple Mode |
+| The same ceiling locked both SMB minutes settings at 15 and 20, when they were meant only as the values a person starts Boost with | `SmbBasalMinutesSeedTest` (stored values kept, a second run writes nothing); nothing tests that the plugin reads with `getIfExists` |
+| The Boost overview and widget showed the last loop result with no age check | `BoostOverviewDataProviderTest` |
 
 A new correction in this repository adds a row here naming its check, or "nothing yet".

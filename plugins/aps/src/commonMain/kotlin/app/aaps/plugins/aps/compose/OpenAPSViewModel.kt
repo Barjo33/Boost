@@ -259,13 +259,17 @@ class OpenAPSViewModel(
     private fun autoConfigRows(reason: String): List<KeyValueRow> = buildList {
         for (crumb in AUTO_CONFIG_BREADCRUMB.findAll(reason)) {
             val name = crumb.groupValues[1]
+            // History sync writes counts against a minimum (tr=12/20), which share codes with the set-up
+            // crumbs but not their meaning, so it has its own labels and its values are shown as written.
+            val histSync = name == "histsync"
             add(KeyValueRow("", AUTO_CONFIG_CRUMB_LABELS[name]?.let { rh.gs(it) } ?: name))
-            for (item in crumb.groupValues[2].split(',').map { it.trim() }.filter { it.isNotEmpty() }) {
+            for (item in crumb.groupValues[2].split(TOP_LEVEL_COMMA).map { it.trim() }.filter { it.isNotEmpty() }) {
                 if (item.startsWith('@')) {
                     add(KeyValueRow(rh.gs(ApsStrings.autoconfig_at), isoToLocal(item.substring(1))))
                     continue
                 }
-                val cut = item.indexOf('=').takeIf { it > 0 } ?: item.indexOf(':').takeIf { it > 0 }
+                // The first separator, so declined:insufficient-history(days=3/7) cuts at the colon.
+                val cut = item.indexOfFirst { it == '=' || it == ':' }.takeIf { it > 0 }
                 if (cut == null) {
                     add(KeyValueRow(itemLabel(item), ""))
                     continue
@@ -275,6 +279,14 @@ class OpenAPSViewModel(
                 // keptUser=1@<ISO time>: the time of the set-up run rides on the last count
                 val at = value.substringAfter('@', "").takeIf { it.isNotEmpty() }
                 if (at != null) value = value.substringBefore('@')
+                // declined:insufficient-history(days=3/7,bg=430/1500) carries its own counts in brackets
+                if (histSync || '(' in value) {
+                    val label = if (histSync) HIST_SYNC_LABELS[code]?.let { rh.gs(it) } ?: code else itemLabel(code)
+                    val count = HIST_SYNC_COUNT.matchEntire(value)?.takeIf { histSync && code in HIST_SYNC_COUNTED }
+                    add(KeyValueRow(label, count?.let { rh.gs(ApsStrings.histsync_count, it.groupValues[1], it.groupValues[2]) } ?: value.replace('-', ' ')))
+                    if (at != null) add(KeyValueRow(rh.gs(ApsStrings.autoconfig_at), isoToLocal(at)))
+                    continue
+                }
                 val parts = value.split('/')
                 add(KeyValueRow(itemLabel(code), words(parts.first()).replace("|", ", ")))
                 for (part in parts.drop(1)) {
@@ -528,6 +540,27 @@ private val AUTO_CONFIG_BREADCRUMB = Regex("""\b(autocfg|autordv|histsync)=([^;]
 
 private val OUTCOME_CODE = Regex("[A-Z][A-Z_]+")
 
+/** A comma outside brackets, so declined:insufficient-history(days=3/7,bg=430/1500) stays one item. */
+private val TOP_LEVEL_COMMA = Regex(""",(?![^(]*\))""")
+
+private val HIST_SYNC_COUNT = Regex("""(\d+)/(\d+)""")
+
+/** The history-sync codes whose n/m value is a count found against the minimum needed. */
+private val HIST_SYNC_COUNTED = setOf("days", "bg", "tr")
+
+/** History-sync codes (BoostHistorySync): an outcome, then counts found / needed or added. */
+private val HIST_SYNC_LABELS = mapOf(
+    "filled" to ApsStrings.histsync_filled,
+    "skipped" to ApsStrings.histsync_skipped,
+    "exhausted" to ApsStrings.histsync_exhausted,
+    "requested" to ApsStrings.histsync_requested,
+    "attempt" to ApsStrings.histsync_attempt,
+    "days" to ApsStrings.histsync_days,
+    "bg" to ApsStrings.histsync_bg,
+    "tr" to ApsStrings.histsync_tr,
+    "treatments" to ApsStrings.histsync_treatments_added,
+)
+
 private val AUTO_CONFIG_CRUMB_LABELS = mapOf(
     "autocfg" to ApsStrings.autoconfig_crumb_setup,
     "autordv" to ApsStrings.autoconfig_crumb_redrive,
@@ -536,6 +569,7 @@ private val AUTO_CONFIG_CRUMB_LABELS = mapOf(
 
 private val AUTO_CONFIG_ITEM_LABELS = mapOf(
     "applied" to ApsStrings.autoconfig_applied,
+    "declined" to ApsStrings.autoconfig_declined,
     "heldTBR" to ApsStrings.autoconfig_held_tbr,
     "keptUser" to ApsStrings.autoconfig_kept_user,
     "held" to ApsStrings.autoconfig_held,

@@ -33,7 +33,7 @@ check(r.v63 === 'COMMITTED' && r.v62 === 'RECOVERING', `RECOVERING re-engage on 
 
 // 2. Primer. A hand-built OBSERVING cycle with no IOB, BG 140, no recent low.
 const primer = (v63, over, prior) => {
-  setVersion(v63 ? '6.3.0' : '6.2.0');
+  setVersion(v63 ? '6.3.2' : '6.2.0');
   const inp = Object.assign(w.getInputs(), { bg: 140, iob: 0, maxIob: 3, primerCapU: 0.5,
     fastCarbConfirm: false, recentLowBg: 120, mlHypoRisk: 0 });
   const res = w.calcAll(inp);
@@ -62,7 +62,7 @@ check(Math.abs(r.v63 - 0.25) < 1e-9 && Math.abs(r.v62 - 0.30) < 1e-9, `budget fl
 
 // 5. The rapid-rise gate takes the largest of delta, short and long average in 6.3.0.
 r = both(v63 => {
-  setVersion(v63 ? '6.3.0' : '6.2.0');
+  setVersion(v63 ? '6.3.2' : '6.2.0');
   const inp = Object.assign(w.getInputs(), { bg: 100, delta: 2, shortAvgDelta: 2, longAvgDelta: 35, iob: 0 });
   const res = w.calcAll(inp);
   return w.v6Gates(1.0, w.v6Measurement(inp, res)).hard;
@@ -72,23 +72,23 @@ check(/maxDelta/.test(r.v63 || '') && r.v62 === null, `maxDelta gate on long avg
 // 8. Percent scale is on at 200% in 6.3.0 whatever the toggle says.
 doc.getElementById('t-percentScale').checked = false;
 doc.getElementById('s-percentScale').value = '100';
-r = both(v63 => { setVersion(v63 ? '6.3.0' : '6.2.0'); const i = w.getInputs(); return [i.percentScale, i.percentScaleVal]; });
+r = both(v63 => { setVersion(v63 ? '6.3.2' : '6.2.0'); const i = w.getInputs(); return [i.percentScale, i.percentScaleVal]; });
 check(r.v63[0] === true && r.v63[1] === 200 && r.v62[0] === false && r.v62[1] === 100, `percent scale: ${JSON.stringify(r)}`);
 
-// 9. The SMB basal minutes are held at 15 and 20.
+// 9. The SMB basal minutes are used as set: 6.3.2 sets 15 and 20 only at first start, and no longer lowers them.
 doc.getElementById('s-smbMin').value = '60';
 doc.getElementById('s-uamSmbMin').value = '60';
-r = both(v63 => { setVersion(v63 ? '6.3.0' : '6.2.0'); const i = w.getInputs(); return [i.smbMin, i.uamSmbMin]; });
-check(r.v63.join() === '15,20' && r.v62.join() === '60,60', `SMB basal minutes: ${JSON.stringify(r)}`);
+r = both(v63 => { setVersion(v63 ? '6.3.2' : '6.2.0'); const i = w.getInputs(); return [i.smbMin, i.uamSmbMin]; });
+check(r.v63.join() === '60,60' && r.v62.join() === '60,60', `SMB basal minutes: ${JSON.stringify(r)}`);
 
 // The explanatory text follows the version.
 doc.getElementById('s-v6PriorState').value = 'RECOVERING';
 const why = v => { setVersion(v); w.update(); return doc.getElementById('out-v6-state-why').textContent; };
-const why63 = why('6.3.0'), why62 = why('6.2.0');
+const why63 = why('6.3.2'), why62 = why('6.2.0');
 check(/^RECOVERING/.test(doc.getElementById('out-v6-state-name').textContent), 'default inputs left RECOVERING');
 check(/Committed cap/.test(why63) && !/Committed cap/.test(why62), `RECOVERING text: "${why63}" / "${why62}"`);
 check(doc.getElementById('note-percentScale').style.display === 'none', 'percent scale note shown in 6.2.0 mode');
-setVersion('6.3.0'); w.update();
+setVersion('6.3.2'); w.update();
 check(doc.getElementById('note-percentScale').style.display !== 'none', 'percent scale note hidden in 6.3.0 mode');
 check(doc.getElementById('s-percentScale').disabled, 'percent scale slider still enabled in 6.3.0 mode');
 

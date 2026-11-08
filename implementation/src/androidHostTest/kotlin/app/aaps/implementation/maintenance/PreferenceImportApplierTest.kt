@@ -91,6 +91,28 @@ class PreferenceImportApplierTest {
 
     private val freePeak38 = arrayOf("ConfigBuilder_Enabled_INSULIN_InsulinOrefFreePeakPlugin" to "true", "insulin_oref_peak" to "38")
 
+    // Boost: SMB minutes from AAPS without Boost are left unset, so Boost V6 writes its starting values.
+    private val smbMinutes = IntKey.ApsMaxMinutesOfBasalToLimitSmb.key
+    private val uamMinutes = IntKey.ApsUamMaxMinutesOfBasalToLimitSmb.key
+
+    @Test fun `SMB minutes from AAPS without Boost are not kept, in the file or in the store`() = runTest {
+        store.putInt(smbMinutes, 45)
+        sut().apply(prefs(smbMinutes to "30", uamMinutes to "60", BooleanKey.GeneralSimpleMode.key to "false"), keepPumpSettings = false)
+        assertThat(store.contains(smbMinutes)).isFalse()
+        assertThat(store.contains(uamMinutes)).isFalse()
+    }
+
+    @Test fun `SMB minutes from a Boost build are kept`() = runTest {
+        sut().apply(prefs(smbMinutes to "30", uamMinutes to "60", DoubleKey.ApsBoostScale.key to "1.0"), keepPumpSettings = false)
+        assertThat(store.getInt(smbMinutes, 0)).isEqualTo(30)
+        assertThat(store.getInt(uamMinutes, 0)).isEqualTo(60)
+    }
+
+    @Test fun `a 3_4 Boost file is recognised by the Boost plugin entry alone`() = runTest {
+        sut().apply(prefs(smbMinutes to "30", "ConfigBuilder_APS_OpenAPSBoostPlugin_Enabled" to "true"), keepPumpSettings = false)
+        assertThat(store.getInt(smbMinutes, 0)).isEqualTo(30)
+    }
+
     @Test fun `other builds take upload from the file`() = runTest {
         store.putBoolean(BooleanKey.NsClientUploadData.key, false)
         sut().apply(prefs(BooleanKey.NsClientUploadData.key to "true"), keepPumpSettings = false)

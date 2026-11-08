@@ -14,6 +14,7 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.KeyCategory
 import app.aaps.core.keys.LongComposedKey
 import app.aaps.core.keys.ResolvedKey
+import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.BooleanComposedNonPreferenceKey
 import app.aaps.core.keys.interfaces.BooleanNonPreferenceKey
@@ -93,12 +94,20 @@ class PreferenceImportApplier(
      * backup old enough to need migrating they understate what will change.
      */
     suspend fun apply(prefs: Prefs, keepPumpSettings: Boolean): ImportExportPrefs.ImportOutcome {
-        val migrated = FileKeyValueStore(prefs.values)
+        // Boost: SMB minutes from AAPS without Boost are not kept. Dropping them from the file and from
+        // the store leaves them unset, so Boost V6 writes its starting values (15 and 20) on its first
+        // cycle, as on a new install. A client leaves them to the master, which runs V6.
+        val resetSmbMinutes = !config.AAPSCLIENT && !isFromBoost(prefs.values.keys)
+        val migrated = FileKeyValueStore(if (resetSmbMinutes) prefs.values - SMB_MINUTES_KEYS else prefs.values)
         // Before migrate(), which deletes the names this reads.
         val insulin = insulinMigration.importedInsulin(migrated, StringNonKey.InsulinConfiguration.key)
         insulin?.let { migrated.putString(StringNonKey.InsulinConfiguration.key, it.catalogue) }
         migrations.migrate(migrated)
         val outcome = run(migrated.asTextMap(), keepPumpSettings, write = true)
+        if (resetSmbMinutes && SMB_MINUTES_KEYS.any { store.contains(it) }) {
+            store.edit(commit = true) { SMB_MINUTES_KEYS.forEach { remove(it) } }
+            preferences.reloadFromStore()
+        }
         // A client leaves the list to the master, so it has nothing to check.
         if (!config.AAPSCLIENT) insulin?.notice?.let { notificationManager.post(id = NotificationId.INSULIN_MIGRATION_DEFAULT_USED, text = it) }
         return outcome
@@ -226,6 +235,14 @@ class PreferenceImportApplier(
      * rather than asking the plugin list is deliberate: the file can name a driver this build does
      * not have, and that still has to count as pump selection so the checkbox protects it.
      */
+    /**
+     * A file written by Boost, on 3.4 or 4.0: it carries Boost's own settings (`boost_...`) or the Boost
+     * plugin's entry in the plugin list. AAPS without Boost has neither, and its version string is
+     * the same, so the names are the only record of where the file came from.
+     */
+    private fun isFromBoost(names: Set<String>): Boolean =
+        names.any { it.startsWith("boost_") || it.contains("OpenAPSBoost") }
+
     private fun ResolvedKey.isPumpSelection(): Boolean =
         category == KeyCategory.ConfigBuilderEnabled &&
             this is ResolvedKey.Composed &&
@@ -323,3 +340,5 @@ class PreferenceImportApplier(
         else Staged.Write { putDouble(name, value) }
     }
 }
+
+private val SMB_MINUTES_KEYS = setOf(IntKey.ApsMaxMinutesOfBasalToLimitSmb.key, IntKey.ApsUamMaxMinutesOfBasalToLimitSmb.key)

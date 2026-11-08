@@ -41,6 +41,20 @@ internal class DynIsfComplicationTest {
     }
 
     @Test
+    fun `shows dashes, not the last value, when the phone is lost or the BG is stale`() {
+        val sut = sut()
+        val preview = sut.getPreviewComplicationData()
+        val data = preview.copy(statusData = preview.statusData.copy(variableSens = "2.7"))
+        val pi = PendingIntent.getActivity(sut, 0, Intent(), PendingIntent.FLAG_IMMUTABLE)
+        for (complication in listOf(
+            sut.buildNoSyncComplicationData(ComplicationType.SHORT_TEXT, data, pi),
+            sut.buildOutdatedComplicationData(ComplicationType.SHORT_TEXT, data, pi)
+        )) {
+            assertThat((complication as ShortTextComplicationData).text.getTextAt(sut.resources, Instant.now()).toString()).isEqualTo("--")
+        }
+    }
+
+    @Test
     fun `an unsupported complication type yields null`() {
         assertThat(sut().getPreviewData(ComplicationType.RANGED_VALUE)).isNull()
     }

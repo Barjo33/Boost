@@ -85,6 +85,15 @@ class SgvRangedComplication : ModernBaseComplicationProviderService() {
         if (type == ComplicationType.RANGED_VALUE) NoDataComplicationData()
         else super.buildOutdatedComplicationData(type, data, complicationPendingIntent)
 
+    /** Same when the phone has not been heard from: the last reading is just as old. */
+    override fun buildNoSyncComplicationData(
+        type: ComplicationType,
+        data: ComplicationStore,
+        complicationPendingIntent: PendingIntent
+    ): ComplicationData? =
+        if (type == ComplicationType.RANGED_VALUE) NoDataComplicationData()
+        else super.buildNoSyncComplicationData(type, data, complicationPendingIntent)
+
     // Kept as in Boost 6.1.2: honours the detailed-delta and unicode preferences and counts up from the
     // reading time itself, so it does not use the base class's buildCountUpText (which rounds down).
     private fun buildDeltaAndTimeTitle(bgData: EventData.SingleBg): TimeDifferenceComplicationText {

@@ -131,7 +131,7 @@ internal fun bgZoneColor(bgMgdl: Double): Color = when {
     bgMgdl >= 70 -> BoostV2Colors.bgInRange   // in range — green
     bgMgdl >= 54 -> BoostV2Colors.bgLow       // low — deep orange
     bgMgdl > 0   -> BoostV2Colors.bgUrgent    // very low — urgent red
-    else         -> BoostV2Colors.bgInRange   // no reading — default green
+    else         -> BoostV2Colors.labelGrey   // no reading — grey, never the in-range green
 }
 
 /** Pump reservoir / battery / age warning level → V2 colour. */

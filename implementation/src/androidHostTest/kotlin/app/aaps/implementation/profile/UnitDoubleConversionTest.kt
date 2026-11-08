@@ -64,4 +64,18 @@ class UnitDoubleConversionTest : TestBase() {
         assertThat(sut.unitDoubleToUnits(UnitDoubleKey.ApsBoostDynIsfBgCap, 11.66)).isWithin(1e-9).of(11.66)
         assertThat(sut.unitDoubleToMgdl(UnitDoubleKey.ApsBoostDynIsfBgCap, 11.66)).isWithin(0.1).of(210.0)
     }
+
+    // The V6 pre-meal target was a plain number shown in mg/dL on a mmol phone. As an absolute target it is
+    // detected by size, which is safe because its range starts at 65 mg/dL.
+    @Test
+    fun `pre-meal target of 72 mg per dL shows as 4_0 mmol and is stored back as 72`() {
+        val preMeal = UnitDoubleKey.ApsBoostV6PreMealTargetMgdl
+        units(GlucoseUnit.MMOL)
+        assertThat(sut.unitDoubleToUnits(preMeal, 72.0)).isWithin(0.01).of(4.0)
+        assertThat(sut.unitDoubleToMgdl(preMeal, 4.0)).isWithin(0.1).of(72.0)
+        assertThat(sut.convertToMgdlDetect(sut.unitDoubleToUnits(preMeal, 72.0))).isWithin(0.1).of(72.0)
+        units(GlucoseUnit.MGDL)
+        assertThat(sut.unitDoubleToUnits(preMeal, 72.0)).isWithin(1e-9).of(72.0)
+        assertThat(sut.convertToMgdlDetect(sut.unitDoubleToUnits(preMeal, 72.0))).isWithin(1e-9).of(72.0)
+    }
 }

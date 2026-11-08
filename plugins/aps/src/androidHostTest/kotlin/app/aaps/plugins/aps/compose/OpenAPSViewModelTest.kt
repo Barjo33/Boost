@@ -124,6 +124,33 @@ internal class OpenAPSViewModelTest {
     }
 
     @Test
+    fun uiState_labelsHistorySyncCounts_andKeepsBracketedCountsTogether() {
+        // tr=12/20 is 12 treatments of 20 needed, not a confirm-tranche threshold with a reason of 20.
+        val reason = "COB: 0; autocfg=declined:insufficient-history(days=3/7,bg=430/1500)@2026-01-08T08:00:00.000Z; " +
+            "histsync=skipped:ns-unavailable,days=2/7,bg=430/1500,tr=12/20@2026-01-08T08:00:00.000Z; "
+        val result = mock<APSResult>()
+        whenever(result.rawData()).thenReturn(RT(runningDynamicIsf = false, reason = StringBuilder(reason)))
+        whenever { result.resultAsString() }.thenReturn("")
+        whenever(apsPlugin.lastAPSResult).thenReturn(result)
+        whenever(dateUtil.fromISODateString("2026-01-08T08:00:00.000Z")).thenReturn(1_000L)
+        whenever(dateUtil.dateAndTimeString(any())).thenReturn("8 Jan 08:00")
+
+        val section = viewModel().uiState.value.sections.single { it.title == ApsStrings.openapsma_autoconfig_label }
+
+        assertThat(section.rows).containsExactly(
+            KeyValueRow("", "First set-up"),
+            KeyValueRow("Not run", "insufficient history(days=3/7,bg=430/1500)"),
+            KeyValueRow("Run at", "8 Jan 08:00"),
+            KeyValueRow("", "History sync"),
+            KeyValueRow("No download", "ns unavailable"),
+            KeyValueRow("Days with insulin data", "2 of 7 needed"),
+            KeyValueRow("Glucose readings", "430 of 1500 needed"),
+            KeyValueRow("Treatments", "12 of 20 needed"),
+            KeyValueRow("Run at", "8 Jan 08:00")
+        ).inOrder()
+    }
+
+    @Test
     fun uiState_hasNoAutoConfigSection_whenReasonCarriesNoBreadcrumb() {
         val result = mock<APSResult>()
         whenever(result.rawData()).thenReturn(RT(runningDynamicIsf = false, reason = StringBuilder("COB: 0; sleep=AWAKE; ")))

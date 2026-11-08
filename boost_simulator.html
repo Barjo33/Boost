@@ -501,7 +501,7 @@ canvas {
       <div class="ctrl">
         <div class="ctrl-label" style="margin-bottom:6px"><span class="ctrl-name">Boost version</span></div>
         <select id="s-simVersion" onchange="update()" style="width:100%; padding:7px 9px; background:#0f1117; color:#e2e8f0; border:1px solid #334155; border-radius:7px; font-size:0.82rem;">
-          <option value="6.3.0" selected>Boost 6.3.0 (AAPS 4.0.0)</option>
+          <option value="6.3.2" selected>Boost 6.3.2 (AAPS 4.0.0)</option>
           <option value="6.2.0">Boost 6.2.0 (AAPS 3.4.2.6)</option>
         </select>
         <div class="ctrl-hints"><span>dosing rules follow the chosen release</span></div>
@@ -663,13 +663,13 @@ canvas {
         <div class="ctrl-label"><span class="ctrl-name">maxSMBBasalMinutes</span><span class="ctrl-val" id="v-smbMin">30 min</span></div>
         <input type="range" id="s-smbMin" min="15" max="120" step="5" value="30" oninput="update()">
         <div class="ctrl-hints"><span>15 min (IOB ≤ -0.2)</span><span>120 min</span></div>
-        <div class="ctrl-hints v63-note" id="note-smbMin" style="display:none"><span>Boost 6.3.0 holds this at no more than 15 min. A higher value is lowered.</span></div>
+        <div class="ctrl-hints v63-note" id="note-smbMin" style="display:none"><span>Boost 6.3.2 sets this to 15 min the first time it runs. You can change it after that.</span></div>
       </div>
       <div class="ctrl">
         <div class="ctrl-label"><span class="ctrl-name">maxUAMSMBBasalMinutes</span><span class="ctrl-val" id="v-uamSmbMin">15 min</span></div>
         <input type="range" id="s-uamSmbMin" min="15" max="120" step="5" value="15" oninput="update()">
         <div class="ctrl-hints"><span>15 min (IOB &gt; -0.2)</span><span>120 min</span></div>
-        <div class="ctrl-hints v63-note" id="note-uamSmbMin" style="display:none"><span>Boost 6.3.0 holds this at no more than 20 min. A higher value is lowered.</span></div>
+        <div class="ctrl-hints v63-note" id="note-uamSmbMin" style="display:none"><span>Boost 6.3.2 sets this to 20 min the first time it runs. You can change it after that.</span></div>
       </div>
       <div class="toggle-row" style="margin-top:4px">
         <span class="toggle-label">Enable Percent Scaling</span>
@@ -679,7 +679,7 @@ canvas {
         <div class="ctrl-label"><span class="ctrl-name">Percent Scale Factor</span><span class="ctrl-val" id="v-percentScale">200%</span></div>
         <input type="range" id="s-percentScale" min="50" max="500" step="10" value="200" oninput="update()">
         <div class="ctrl-hints"><span>50%</span><span>500% (BG 108–180 amplifier)</span></div>
-        <div class="ctrl-hints v63-note" id="note-percentScale" style="display:none"><span>Boost 6.3.0 has no setting for this. Percent scale is on at 200%, so the simulator uses that.</span></div>
+        <div class="ctrl-hints v63-note" id="note-percentScale" style="display:none"><span>Boost 6.3.2 has no setting for this. Percent scale is on at 200%, so the simulator uses that.</span></div>
       </div>
     </div>
   </div>
@@ -1839,7 +1839,7 @@ function v6Knobs(inp) {
     v63: isV63(inp),
   };
 }
-// Boost 6.3.0 (AAPS 4.0.0) rules apply unless the inputs ask for 6.2.0 (AAPS 3.4.2.6).
+// Boost 6.3 (AAPS 4.0.0) rules apply unless the inputs ask for 6.2.0 (AAPS 3.4.2.6).
 function isV63(inp) { return inp.simVersion !== '6.2.0'; }
 
 function fmt(v, dp=1) {
@@ -2152,7 +2152,7 @@ function getInputs() {
   const gbg = id => getBgSliderMgdl(id.replace(/^s-/, ''));
   const gb = id => g(id).checked;
   const gs = id => g(id).value;
-  const v63 = gs('s-simVersion') === '6.3.0';
+  const v63 = gs('s-simVersion') === '6.3.2';
   return {
     simVersion:    gs('s-simVersion'),
     // Patient / insulin
@@ -2181,9 +2181,9 @@ function getInputs() {
     maxIob:        gf('s-maxIob'),
     bolusMax:      gf('s-bolusMax'),
     insulinReqPct: gf('s-insulinReqPct') / 100,
-    // 6.3.0 lowers these to 15 and 20 (BoostV5AutoConfigApply.smbBasalMinutesCeilings)
-    smbMin:        v63 ? Math.min(15, gf('s-smbMin')) : gf('s-smbMin'),
-    uamSmbMin:     v63 ? Math.min(20, gf('s-uamSmbMin')) : gf('s-uamSmbMin'),
+    // 6.3.2 only sets these to 15 and 20 where nothing is stored (BoostV5AutoConfigApply.seedSmbBasalMinutes), so the value used is the one set
+    smbMin:        gf('s-smbMin'),
+    uamSmbMin:     gf('s-uamSmbMin'),
     // 6.3.0 has no percent scale setting: the default, on at 200%, applies
     percentScale:    v63 ? true : gb('t-percentScale'),
     percentScaleVal: v63 ? 200 : gf('s-percentScale'),      // raw value (e.g. 200), matches Kotlin formula
@@ -2253,17 +2253,13 @@ function update() {
   sl('activityPct','%'); sl('inactivityPct','%');
   sl('nightOffset',' '+dispUnit()); sl('cob',' g');
   sl('tempTargetBg',' '+dispUnit());
-  // Version-specific controls: 6.3.0 fixes percent scale and holds the SMB basal minutes.
-  const v63 = document.getElementById('s-simVersion').value === '6.3.0';
+  // Version-specific controls: 6.3 fixes percent scale.
+  const v63 = document.getElementById('s-simVersion').value === '6.3.2';
   document.querySelectorAll('.v63-note').forEach(e => { e.style.display = v63 ? '' : 'none'; });
   document.getElementById('t-percentScale').disabled = v63;
   document.getElementById('s-percentScale').disabled = v63;
   if (v63) {
     document.getElementById('v-percentScale').textContent = '200% (fixed)';
-    [['smbMin', 15], ['uamSmbMin', 20]].forEach(([id, ceil]) => {
-      const v = parseFloat(document.getElementById('s-' + id).value);
-      if (v > ceil) document.getElementById('v-' + id).textContent = `${ceil} min (held from ${v})`;
-    });
   }
   document.querySelector('#note-primerCapU span').textContent = v63
     ? `Opens on a short average rise of ${rateText(3)} or more, and not after a meal was committed.`

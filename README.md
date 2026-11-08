@@ -4,13 +4,15 @@ Boost is an independently maintained variant of [AAPS](https://github.com/nights
 4.0.0 that adds the Boost APS plugin. It is not a release of, or supported by, the AAPS project.
 You build it yourself and you are responsible for how you use it. AGPL-3.0, as AAPS.
 
-This line is Boost 6.3.1: the V6 meal logic and the Boost high temp, with each SMB sized by the
+This line is Boost 6.3.2: the V6 meal logic and the Boost high temp, with each SMB sized by the
 Boost tiers as in Boost 6.2.0 for AAPS 3.4.2.6.
 
-6.3.1 corrects the night mode BG offset. 6.3.0 read its 27 mg/dL default as 27 mmol/L, so the
-setting showed 27.0 mmol/L and reverted when changed, and with night mode on SMBs were off all
-night. The offset you set now applies, as on 3.4, and a value saved under 6.3.0 is read back as
-entered. Otherwise 6.3.1 doses as 6.3.0.
+6.3.2 sets the two SMB minutes settings to 15 (standard) and 20 (UAM) once, the first time Boost
+runs, and then leaves them to you. 6.3.1 lowered a higher value on every loop cycle, so neither
+could be raised. A value 6.3.1 lowered stays as it is until you change it. Settings imported from
+AAPS without Boost have both reset, so they start at 15 and 20 in the same way; settings from a
+Boost build keep theirs. 6.3.2 also keeps the night mode BG offset correction from 6.3.1, and
+otherwise doses as 6.3.1.
 
 ## Dosing changes from Boost 6.2.0
 
@@ -18,10 +20,10 @@ entered. Otherwise 6.3.1 doses as 6.3.0.
   when you install this, and your sensitivity settings are converted once on the first loop cycle.
 - Percent scale is on at 200 % and no longer has a setting. Where 3.4 had stored it as off, it
   stays off.
-- The two "Max minutes of basal to limit SMB" settings are held at no more than 15 (standard) and
-  20 (UAM). Boost lowers a higher value and tells you; it never raises one. These settings limit
-  only the SMB that oref sizes: Tier 8, and every SMB while Boost is off, such as at night. V6's
-  meal doses and Boost's other tiers are not limited by them.
+- The two "Max minutes of basal to limit SMB" settings are set to 15 (standard) and 20 (UAM) the
+  first time Boost runs, and you can change them after that. These settings limit only the SMB that
+  oref sizes: Tier 8, and every SMB while Boost is off, such as at night. V6's meal doses and Boost's
+  other tiers are not limited by them.
 - In a meal state, V6 used to give its dose on a cycle where V1 had suspended for a low. It no
   longer does. V6's rapid-rise check now takes the largest of the latest change, the short average
   and the long average, as V1 does, where it used to take the latest change only.
@@ -50,6 +52,16 @@ entered. Otherwise 6.3.1 doses as 6.3.0.
 
 - The APS screen has a Heart rate section and an Auto config section, which shows Boost's automatic
   settings in words.
+- With "Open the Boost overview at start" on, the app opens on the Boost overview and stays there
+  when a dialog such as Maintenance opens.
+- The Boost overview and widget no longer show a loop result older than 15 minutes as current.
+  Low-glucose suspend shows as LGS, and delta acceleration and profile % are shown again.
+- The tab row on the Boost overview holds Manage and the pump, APS, loop, BG source and NSClient
+  pages; every other screen is in the menu and search. "Show tabs on the Boost overview" hides it.
+- The V6 pre-meal target is shown and entered in your profile's units.
+- On the watch, the ranged glucose and DynISF complications go blank when the phone is out of
+  contact or the reading is old.
+- "Meal-detection Sensitivity" is renamed "Insulin budget scale". It works as before.
 
 ## Installing over your current build
 
@@ -108,7 +120,7 @@ SMB settings, then watch the first cycles in the APS tab before relying on it.
 ## Tools
 
 The [Simulator](https://tim2000s.github.io/Boost/boost_simulator.html) shows how Boost sizes a dose
-from a glucose level, trend and IOB; choose Boost 6.3.0 at the top. The
+from a glucose level, trend and IOB; choose Boost 6.3.2 at the top. The
 [Analyser](https://tim2000s.github.io/Boost/boost_analyser.html) compares V1 and V6 dosing on your
 own Nightscout data. The [Tuning Guide](https://tim2000s.github.io/Boost/boost_tuning_guide.html)
-explains each setting for 6.3.0 and 6.2.0.
+explains each setting for 6.3.2 and 6.2.0.

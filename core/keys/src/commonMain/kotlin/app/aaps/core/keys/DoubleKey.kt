@@ -373,7 +373,6 @@ enum class DoubleKey(
     ApsBoostV5PrimerCapU(key = "boost_v5_primer_cap_u", defaultValue = 0.0, min = 0.0, max = 2.5, title = KeysStrings.pref_title_boost_v5_primer_cap_u, summary = KeysStrings.pref_summary_boost_v5_primer_cap_u, unitType = UnitType.DOUBLE_2, defaultedBySM = true),
     ApsBoostV5HypoCaution(key = "boost_v5_hypo_caution", defaultValue = 1.0, min = 1.0, max = 2.0, title = KeysStrings.pref_title_boost_v5_hypo_caution, summary = KeysStrings.pref_summary_boost_v5_hypo_caution, defaultedBySM = true, unitType = UnitType.DOUBLE),
     ApsBoostV5Sensitivity(key = "boost_v5_sensitivity", defaultValue = 1.0, min = 0.8, max = 1.2, title = KeysStrings.pref_title_boost_v5_sensitivity, summary = KeysStrings.pref_summary_boost_v5_sensitivity, defaultedBySM = true, unitType = UnitType.DOUBLE),
-    ApsBoostV6PreMealTargetMgdl(key = "boost_v6_pre_meal_target_mgdl", defaultValue = 72.0, min = 65.0, max = 90.0, title = KeysStrings.pref_title_boost_v6_pre_meal_target_mgdl, summary = KeysStrings.pref_summary_boost_v6_pre_meal_target_mgdl, defaultedBySM = true, unitType = UnitType.DOUBLE),
     ApsBoostV6PreMealLeadMin(key = "boost_v6_pre_meal_lead_min", defaultValue = 60.0, min = 30.0, max = 90.0, title = KeysStrings.pref_title_boost_v6_pre_meal_lead_min, summary = KeysStrings.pref_summary_boost_v6_pre_meal_lead_min, defaultedBySM = true, unitType = UnitType.DOUBLE),
     ;
 

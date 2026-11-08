@@ -8,6 +8,7 @@ import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,7 +74,9 @@ fun BoostOverviewHost(
     onBoostDetails: () -> Unit,
     onSearchResultClick: (SearchIndexEntry) -> Unit,
     onActionsError: (String, String) -> Unit,
-    onNotificationActionClick: (AapsNotification) -> Unit
+    onNotificationActionClick: (AapsNotification) -> Unit,
+    autoShowNotificationSheet: Boolean = false,
+    onAutoShowConsumed: () -> Unit = {}
 ) {
     val treatmentState by treatmentViewModel.uiState.collectAsStateWithLifecycle()
     val loopState by loopActionViewModel.uiState.collectAsStateWithLifecycle()
@@ -82,10 +85,18 @@ fun BoostOverviewHost(
     val notifications by notificationManager.notifications.collectAsStateWithLifecycle()
     val mainState by mainViewModel.uiState.collectAsStateWithLifecycle()
     val searchState by searchViewModel.uiState.collectAsStateWithLifecycle()
+    val showPanelTabs by boostViewModel.showPanelTabs.collectAsStateWithLifecycle()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
     var showNotificationSheet by rememberSaveable { mutableStateOf(false) }
+    // As on the 4.0 overview: an important notification opens the sheet when the app comes to the front.
+    LaunchedEffect(autoShowNotificationSheet) {
+        if (autoShowNotificationSheet) {
+            showNotificationSheet = true
+            onAutoShowConsumed()
+        }
+    }
     var showLoopActionSheet by rememberSaveable { mutableStateOf(false) }
     val manageSheetState = ManageSheetHost(
         manageViewModel = manageViewModel,
@@ -141,12 +152,10 @@ fun BoostOverviewHost(
                 actions = actions,
                 modifier = Modifier.systemBarsPadding(),
                 panelTabs = {
-                    BoostPanelTabs(
+                    if (showPanelTabs) BoostPanelTabs(
                         plugins = panelPlugins,
-                        isTreatmentsEnabled = mainState.isProfileLoaded,
                         actionsLabel = stringResource(CoreUiStrings.manage),
                         onActions = { manageSheetState.show() },
-                        onElement = { element -> onNavigate(NavigationRequest.Element(element)) },
                         onPlugin = { plugin -> onNavigate(NavigationRequest.Plugin(plugin::class.simpleName.orEmpty())) }
                     )
                 },

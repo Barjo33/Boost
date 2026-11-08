@@ -16,6 +16,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
@@ -24,8 +28,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.core.app.ActivityCompat
@@ -40,6 +44,7 @@ import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import app.aaps.appshell.AapsAppRoot
 import app.aaps.appshell.navigation.AppRoute
 import app.aaps.appshell.navigation.ElementNavigator
@@ -88,11 +93,14 @@ import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.VisibilityContext
 import app.aaps.core.objects.crypto.CryptoUtil
+import app.aaps.core.ui.R as CoreUiR
 import app.aaps.core.ui.compose.FallbackViewModelFactory
 import app.aaps.core.ui.compose.MetroAppCompatActivity
 import app.aaps.core.ui.compose.MetroViewModelFactoryOwner
+import app.aaps.core.ui.compose.dialogs.OkDialog
 import app.aaps.core.ui.compose.navigation.NavigationRequest
 import app.aaps.core.ui.compose.pump.PumpCommunicationStatus
+import app.aaps.core.ui.search.SearchableItem
 import app.aaps.core.utils.isRunningRealPumpTest
 import app.aaps.implementation.androidNotification.AlarmNotificationManager
 import app.aaps.implementation.plugin.PluginPermissionsImpl
@@ -103,17 +111,19 @@ import app.aaps.plugins.source.DexcomPlugin
 import app.aaps.plugins.source.activities.RequestDexcomPermissionActivity
 import app.aaps.settingsstore.AndroidStorage
 import app.aaps.settingsstore.SettingsUnreadableActivity
+import app.aaps.ui.compose.aboutDialog.AboutAlertDialog
 import app.aaps.ui.compose.configuration.ConfigurationViewModel
 import app.aaps.ui.compose.insulinManagement.InsulinManagementViewModel
 import app.aaps.ui.compose.loopSheet.LoopActionViewModel
 import app.aaps.ui.compose.main.MainViewModel
 import app.aaps.ui.compose.main.OverviewScreen
 import app.aaps.ui.compose.maintenance.ImportViewModel
+import app.aaps.ui.compose.maintenance.MaintenanceDialogs
 import app.aaps.ui.compose.maintenance.MaintenanceViewModel
 import app.aaps.ui.compose.manageSheet.ManageViewModel
 import app.aaps.ui.compose.overview.boost.BoostOverviewHost
-import app.aaps.ui.compose.overview.boost.boostPanelPlugins
 import app.aaps.ui.compose.overview.boost.BoostV2ViewModel
+import app.aaps.ui.compose.overview.boost.boostPanelPlugins
 import app.aaps.ui.compose.overview.chips.ChipsViewModel
 import app.aaps.ui.compose.overview.graphs.GraphViewModel
 import app.aaps.ui.compose.overview.statusLights.StatusViewModel
@@ -141,8 +151,6 @@ import dev.zacsweers.metro.Inject
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
-import app.aaps.core.ui.R as CoreUiR
-import app.aaps.core.ui.search.SearchableItem
 
 class ComposeMainActivity : MetroAppCompatActivity() {
 
@@ -376,22 +384,21 @@ class ComposeMainActivity : MetroAppCompatActivity() {
         // Trigger initial refresh when app content first appears (after init completes)
         LaunchedEffect(Unit) { refreshOnResume() }
 
-        // Boost: with "Open the Boost overview at start" on, the Boost V2 overview opens over the main
-        // screen once per launch, as 6.1.2's setting replaced the Overview tab. rememberSaveable keeps a
-        // rotation or a return from the background from opening it again after the user went back.
-        var boostOverviewOpenedAtStart by rememberSaveable { mutableStateOf(false) }
-        LaunchedEffect(Unit) {
-            if (!boostOverviewOpenedAtStart && preferences.get(BooleanKey.OverviewUseBoostOverviewV2) &&
-                navController.currentDestination?.route == AppRoute.Main.route
-            ) navController.navigate(AppRoute.BoostV2Overview.route) { launchSingleTop = true }
-            boostOverviewOpenedAtStart = true
+        // Boost: with "Open the Boost overview at start" on, the Boost V2 overview is the start screen,
+        // as 6.1.2's setting replaced the Overview tab. It used to be opened over the main screen once
+        // per launch, so Maintenance, About and Back all dropped the user on the 4.0 overview. Read once
+        // per activity, so a change of the setting applies at the next start.
+        val startRoute = remember {
+            if (preferences.get(BooleanKey.OverviewUseBoostOverviewV2)) AppRoute.BoostV2Overview.route else AppRoute.Main.route
         }
 
-        // Boost widget tap: open the Boost V2 overview over the main screen.
+        // Boost widget tap: go back to the Boost V2 overview if it is in the back stack, so a tap from
+        // Settings does not stack a second one, otherwise open it over the main screen.
         val openBoostOverview by _openBoostOverview
         LaunchedEffect(openBoostOverview) {
             if (openBoostOverview) {
-                navController.navigate(AppRoute.BoostV2Overview.route) { launchSingleTop = true }
+                if (!navController.popBackStack(AppRoute.BoostV2Overview.route, inclusive = false))
+                    navController.navigate(AppRoute.BoostV2Overview.route) { launchSingleTop = true }
                 _openBoostOverview.value = false
             }
         }
@@ -507,9 +514,24 @@ class ComposeMainActivity : MetroAppCompatActivity() {
 
         val state by mainViewModel.uiState.collectAsStateWithLifecycle()
 
+        // A refused application protection check closes the app. The 4.0 overview shows this dialog
+        // itself (it is shared with the other platforms), so here it covers every other screen; it was
+        // missing on all of them, and with the Boost overview on top the app stayed usable.
+        val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
+        if (state.showAuthFailedDialog && currentRoute != AppRoute.Main.route) {
+            OkDialog(
+                title = "",
+                message = stringResource(R.string.authorizationfailed),
+                onDismiss = {
+                    mainViewModel.setShowAuthFailedDialog(false)
+                    finish()
+                }
+            )
+        }
+
         NavHost(
             navController = navController,
-            startDestination = AppRoute.Main.route
+            startDestination = startRoute
         ) {
             appNavGraph(
                 navController = navController,
@@ -589,33 +611,9 @@ class ComposeMainActivity : MetroAppCompatActivity() {
                         onNotificationActionClick = { notification -> handleNotificationAction(notification.id, navController) },
                         onQuickLaunchActionClick = { action -> handleQuickLaunchAction(action, navController) },
                         onImportSettingsNavigate = { source -> navController.navigate(AppRoute.ImportSettings.createRoute(source.name)) },
-                        onDirectoryClick = {
-                            try {
-                                accessTree?.launch(null)
-                            } catch (_: Exception) {
-                                maintenanceViewModel.emitError("Unable to launch activity. This is an Android issue")
-                            }
-                        },
-                        onLaunchBrowser = { url ->
-                            try {
-                                val customTabsIntent = CustomTabsIntent.Builder()
-                                    .setShowTitle(true)
-                                    .build()
-                                customTabsIntent.launchUrl(this@ComposeMainActivity, url.toUri())
-                            } catch (_: Exception) {
-                                maintenanceViewModel.emitError("Unable to open browser")
-                            }
-                        },
-                        onBringToForeground = {
-                            val intent = Intent(this@ComposeMainActivity, ComposeMainActivity::class.java)
-                                .addFlags(
-                                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-                                        or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                                        or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                        or Intent.FLAG_ACTIVITY_NO_ANIMATION
-                                )
-                            startActivity(intent)
-                        },
+                        onDirectoryClick = ::launchDirectoryPicker,
+                        onLaunchBrowser = ::launchBrowser,
+                        onBringToForeground = ::bringToForeground,
                         onRecreateActivity = { recreate() },
                         onAuthorizationFailed = { finish() },
                         autoShowNotificationSheet = _autoShowNotifications.value,
@@ -628,12 +626,10 @@ class ComposeMainActivity : MetroAppCompatActivity() {
             // shared appNavGraph. It uses this activity's view models, the same ones the main
             // overview holds, and the same navigator for every action it offers.
             composable(AppRoute.BoostV2Overview.route) {
-                val onBoostNavigate: (NavigationRequest) -> Unit = { request ->
-                    // These two are sheets of the main overview, which is not composed under this screen.
-                    if (request is NavigationRequest.Element && (request.type == ElementType.MAINTENANCE || request.type == ElementType.ABOUT))
-                        navController.popBackStack(AppRoute.Main.route, inclusive = false)
-                    handleNavigationRequest(request, navController)
-                }
+                // Maintenance and About only set flags on MainViewModel; the dialogs below show them here.
+                val onBoostNavigate: (NavigationRequest) -> Unit = { request -> handleNavigationRequest(request, navController) }
+                val boostSnackbarHostState = remember { SnackbarHostState() }
+                Box(modifier = Modifier.fillMaxSize()) {
                 BoostOverviewHost(
                     boostViewModel = boostV2ViewModel,
                     graphViewModel = graphViewModel,
@@ -655,12 +651,64 @@ class ComposeMainActivity : MetroAppCompatActivity() {
                         else handleSearchResultClick(entry, navController)
                     },
                     onBoostDetails = { activePlugin.activeAPS?.let { aps -> aps::class.simpleName }?.let { handleNavigationRequest(NavigationRequest.Plugin(it), navController) } },
-                    onNotificationActionClick = { notification -> handleNotificationAction(notification.id, navController) }
+                    onNotificationActionClick = { notification -> handleNotificationAction(notification.id, navController) },
+                    autoShowNotificationSheet = _autoShowNotifications.value,
+                    onAutoShowConsumed = { _autoShowNotifications.value = false }
                 )
+                SnackbarHost(boostSnackbarHostState, modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
+                }
+                MaintenanceDialogs(
+                    maintenanceViewModel = maintenanceViewModel,
+                    showMaintenanceSheet = state.showMaintenanceSheet,
+                    onMaintenanceSheetDismiss = { mainViewModel.setShowMaintenanceSheet(false) },
+                    onDirectoryClick = ::launchDirectoryPicker,
+                    onImportSettingsNavigate = { source -> navController.navigate(AppRoute.ImportSettings.createRoute(source.name)) },
+                    onRecreateActivity = { recreate() },
+                    onLaunchBrowser = ::launchBrowser,
+                    onBringToForeground = ::bringToForeground,
+                    onSnackbar = { boostSnackbarHostState.showSnackbar(it) }
+                )
+                if (state.showAboutDialog) {
+                    AboutAlertDialog(
+                        data = mainViewModel.buildAboutDialogData(stringResource(R.string.app_name)),
+                        onDismiss = { mainViewModel.setShowAboutDialog(false) },
+                        onOpenBatteryHelp = if (mainViewModel.showBatteryHelp) ({ mainViewModel.openBatteryHelp() }) else null
+                    )
+                }
             }
         }
     }
 
+
+    private fun launchDirectoryPicker() {
+        try {
+            accessTree?.launch(null)
+        } catch (_: Exception) {
+            maintenanceViewModel.emitError("Unable to launch activity. This is an Android issue")
+        }
+    }
+
+    private fun launchBrowser(url: String) {
+        try {
+            val customTabsIntent = CustomTabsIntent.Builder()
+                .setShowTitle(true)
+                .build()
+            customTabsIntent.launchUrl(this, url.toUri())
+        } catch (_: Exception) {
+            maintenanceViewModel.emitError("Unable to open browser")
+        }
+    }
+
+    private fun bringToForeground() {
+        val intent = Intent(this, ComposeMainActivity::class.java)
+            .addFlags(
+                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                    or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    or Intent.FLAG_ACTIVITY_NO_ANIMATION
+            )
+        startActivity(intent)
+    }
 
     private var isProtectionCheckActive = false
 

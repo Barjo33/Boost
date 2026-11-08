@@ -167,6 +167,7 @@ boost_post_exercise_recovery_target|UnitDoubleKey|true
 boost_postrescue_tight_ramp_trial|BooleanKey|true
 boost_pre_sleep_lead_min|IntKey|true
 boost_scale_value|DoubleKey|true
+boost_show_panel_tabs|BooleanKey|true
 boost_sleep_history|StringKey|true
 boost_sleep_hysteresis_min|IntKey|true
 boost_sleep_in_hrs|DoubleKey|true
@@ -206,7 +207,7 @@ boost_v5_tranche_fraction|DoubleKey|true
 boost_v5_tranche_threshold|DoubleKey|true
 boost_v5_velocity_budget_active|BooleanKey|true
 boost_v6_pre_meal_lead_min|DoubleKey|true
-boost_v6_pre_meal_target_mgdl|DoubleKey|true
+boost_v6_pre_meal_target_mgdl|UnitDoubleKey|true
 boost_v6_pre_meal_target|BooleanKey|true
 boost_vwa_tdd_shadow_state|StringKey|true
 boost_wake_hr_hysteresis_min|IntKey|true

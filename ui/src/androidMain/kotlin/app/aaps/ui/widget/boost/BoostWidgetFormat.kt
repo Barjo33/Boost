@@ -37,7 +37,7 @@ object BoostWidgetFormat {
         bgMgdl >= 70 -> 0xFF4CAF50.toInt()
         bgMgdl >= 54 -> 0xFFFF5722.toInt()
         bgMgdl > 0   -> 0xFFD50000.toInt()
-        else         -> 0xFF4CAF50.toInt()
+        else         -> ACTIVITY_BOOST_OFF   // no reading: grey, never the in-range green
     }
 
     private const val VALUE_CHARS = 7

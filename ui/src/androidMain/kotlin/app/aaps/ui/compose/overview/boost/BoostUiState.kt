@@ -15,7 +15,7 @@ import app.aaps.core.ui.compose.StatusLevel
  */
 enum class AidStatus {
     ACTIVE,     // AID ON — closed loop running (green)
-    ATTENTION,  // OPEN / S.BOLUS — needs user action (amber)
+    ATTENTION,  // OPEN / S.BOLUS / LGS — needs user action or doses less than closed loop (amber)
     ALERT,      // PAUSED / DISC / NO AID — not delivering (red)
     DISABLED    // OFF — loop disabled (grey)
 }

@@ -605,7 +605,7 @@
     <span class="v6">BOOST V6</span>
     &nbsp;·&nbsp;V1/V2 settings share one tab and V6's 3-knob engine has its own. Pick a tab below.
   </div>
-  <p style="font-size:0.8rem;margin-top:10px">Versions: this guide covers Boost 6.3.0 for AAPS 4.0.0 (the <a href="https://github.com/tim2000s/Boost" style="color:#6ee7b7">master</a> branch of tim2000s/Boost) and Boost 6.2.0 for AAPS 3.4.2.6 (the <a href="https://github.com/tim2000s/Boost/tree/dev-3.4.2.6" style="color:#6ee7b7">dev-3.4.2.6</a> branch). Where they differ, a note beginning "In 6.2.0 (AAPS 3.4.2.6):" gives the older behaviour. In 6.3.0 there is one Boost plugin, named Boost in Config Builder, and it always runs V6; the settings on the V1 tab belong to the base engine that V6 still uses, and they sit under Boost, Advanced settings. Installing 6.3.0 over plain Boost moves you to V6 dosing, and your sensitivity settings are converted once on the first loop cycle (<a href="https://github.com/tim2000s/Boost/blob/master/README.md#dosing-changes-from-boost-620" style="color:#6ee7b7">6.3.0 README</a>). In 6.2.0 (AAPS 3.4.2.6): V6 ran only with the Boost V6 plugin selected as the APS, and the plain Boost plugin ran the base engine with V6 in shadow.</p>
+  <p style="font-size:0.8rem;margin-top:10px">Versions: this guide covers Boost 6.3.2 for AAPS 4.0.0 (the <a href="https://github.com/tim2000s/Boost" style="color:#6ee7b7">master</a> branch of tim2000s/Boost) and Boost 6.2.0 for AAPS 3.4.2.6 (the <a href="https://github.com/tim2000s/Boost/tree/dev-3.4.2.6" style="color:#6ee7b7">dev-3.4.2.6</a> branch). Where they differ, a note beginning "In 6.2.0 (AAPS 3.4.2.6):" gives the older behaviour. In 6.3.2 there is one Boost plugin, named Boost in Config Builder, and it always runs V6; the settings on the V1 tab belong to the base engine that V6 still uses, and they sit under Boost, Advanced settings. Installing 6.3.2 over plain Boost moves you to V6 dosing, and your sensitivity settings are converted once on the first loop cycle (<a href="https://github.com/tim2000s/Boost/blob/master/README.md#dosing-changes-from-boost-620" style="color:#6ee7b7">6.3.2 README</a>). In 6.2.0 (AAPS 3.4.2.6): V6 ran only with the Boost V6 plugin selected as the APS, and the plain Boost plugin ran the base engine with V6 in shadow.</p>
 </div>
 
 <div class="legend">
@@ -644,7 +644,7 @@
     </div>
 
     <p style="font-size:0.77rem; color:#64748b; margin-bottom:12px;">
-      In 6.3.0, Boost Max IOB is on the main Boost screen, and Boost Insulin Required % and Boost Scale Value are under
+      In 6.3.2, Boost Max IOB is on the main Boost screen, and Boost Insulin Required % and Boost Scale Value are under
       Advanced settings, Boost base-engine SMB sizing. Boost Bolus Cap and the two percent-scale settings are not shown
       and keep their stored or default values. In 6.2.0 (AAPS 3.4.2.6): all of these were on the plain Boost plugin's screen.
     </p>
@@ -731,7 +731,7 @@
       <div class="setting-desc">Max scale factor when BG is <b>110–180 mg/dL, rising (delta &gt; 3 mg/dL/5min) and
       accelerating</b>. Only active if Percent Scaling is enabled. The lower bound was deliberately raised from 98 to
       110 after data showed high hypo rates when it fired at BG 90–110.
-      In 6.3.0 neither percent-scale setting is offered: percent scaling is on at 200%, and a value stored by 3.4 still
+      In 6.3.2 neither percent-scale setting is offered: percent scaling is on at 200%, and a value stored by 3.4 still
       applies, so an install that had it off keeps it off. In 6.2.0 (AAPS 3.4.2.6): both are settings, with percent
       scaling off by default.</div>
       <div class="spectrum-wrap">
@@ -756,9 +756,10 @@
       IOB has fallen below that, as after a long low temp basal. Both apply only to the SMB that oref sizes itself:
       Tier 8, and every SMB while Boost's gate is closed (night window, high temp target, sleep). V6's meal doses and
       Tiers 1 to 7 have their own limits. The cap bounds the size of one SMB and says nothing about how often it repeats.
-      In 6.3.0 Boost holds the two at no more than 15 (standard) and 20 (UAM): a higher value is lowered on the next loop
-      cycle and a notification says so, and a lower value is left alone. AAPS 4.0 defaults both to 30, so a new install is
-      lowered to 15 and 20. In 6.2.0 (AAPS 3.4.2.6): both default to 15 (range 15 to 120) with no ceiling enforced, and the
+      In 6.3.2 Boost sets the two to 15 (standard) and 20 (UAM) the first time it runs, where nothing is stored yet, and a
+      notification says so; after that the values are yours to change. Settings imported from AAPS without Boost have both
+      reset, so they start at 15 and 20 in the same way. (6.3.0 and 6.3.1 lowered a higher value on every loop cycle.)
+      In 6.2.0 (AAPS 3.4.2.6): both default to 15 (range 15 to 120) with no ceiling enforced, and the
       6.2.0 README advises 20 for UAM and 15 for the standard setting.</div>
       <div class="spectrum-wrap">
         <div class="spectrum-bar"></div>
@@ -766,7 +767,7 @@
           <div class="default-pip"></div>
           <div class="default-label">15 to 20 min</div>
         </div>
-        <div class="spectrum-labels"><span>15 (min)</span><span>120 (max in 6.2.0; 6.3.0 holds UAM at 20)</span></div>
+        <div class="spectrum-labels"><span>15 (min)</span><span>120 (max)</span></div>
       </div>
     </div>
   </div>
@@ -989,7 +990,7 @@
         <div class="toggle-name">Auto-detect sleep (HR + steps)</div>
         <div class="toggle-desc">Lets the HR/step sleep detector extend night mode past the clock (still asleep) or start it
         early (pre-sleep), and on V6 flex the dosing window with your actual sleep. Needs a worn HR source.
-        In 6.3.0: a sleep that begins in the 90 minutes before the night window is held unless steps, or heart rate with
+        In 6.3.2: a sleep that begins in the 90 minutes before the night window is held unless steps, or heart rate with
         steps, show you are up again; in the 90 minutes before night end, walking ends sleep (steps over the last hour
         reaching your Sleep-in Steps setting, with at least 100 in the last 15 minutes); watch steps are counted once; and
         a Health Connect step top-up is no longer a reason to wake. In 6.2.0 (AAPS 3.4.2.6): none of these four changes
@@ -1108,9 +1109,9 @@
       <div>
         <div class="toggle-name">Boost Percentage Scaling</div>
         <div class="toggle-desc">Scales SMBs when BG is 110–180 mg/dL, rising (delta &gt; 3) and accelerating. Uses Percent Scale Factor.
-        In 6.3.0 this is not a setting: it is on at 200% unless 3.4 had stored it as off. In 6.2.0 (AAPS 3.4.2.6): a switch, off by default.</div>
+        In 6.3.2 this is not a setting: it is on at 200% unless 3.4 had stored it as off. In 6.2.0 (AAPS 3.4.2.6): a switch, off by default.</div>
       </div>
-      <span class="badge badge-on-agg">6.3.0: ON · 6.2.0: OFF</span>
+      <span class="badge badge-on-agg">6.3.2: ON · 6.2.0: OFF</span>
     </div>
 
     <div class="toggle-row" style="background:#0f1117; border:1px solid #2d3748">
@@ -1243,7 +1244,7 @@
         <li>Raise <b>Insulin Required %</b> toward 100%</li>
         <li>Raise <b>DynISF Velocity</b> to 100% (full BG reactivity)</li>
         <li>Lower <b>DynISF Normal Target</b> (stronger ISF reference)</li>
-        <li>Enable <b>Percent Scaling</b> for rising-BG amplification (6.2.0; always on in 6.3.0)</li>
+        <li>Enable <b>Percent Scaling</b> for rising-BG amplification (6.2.0; always on in 6.3.2)</li>
         <li>Raise <b>Inactivity Profile %</b> (more insulin when sedentary)</li>
         <li>Enable <b>Low TT Lowers Sensitivity</b> for correction targets</li>
         <li>Raise <b>TDD Adjustment Factor</b> above 100%</li>
@@ -1253,7 +1254,7 @@
 
   <div class="v2-diff">
     <b>Boost V2 differences to keep in mind:</b> V2 uses TDD² in its ISF formula — it is <b>more sensitive to TDD changes</b> than V1 and reacts more strongly to short-term variations. BG Velocity is always 100% in V2 and cannot be reduced. Start with conservative delivery settings (lower Scale, lower Max IOB) when switching to V2.
-    Boost V2 is a 6.2.0 (AAPS 3.4.2.6) plugin only; 6.3.0 has no V2 plugin and uses the V1 ISF formula.
+    Boost V2 is a 6.2.0 (AAPS 3.4.2.6) plugin only; 6.3.2 has no V2 plugin and uses the V1 ISF formula.
   </div>
 </div>
 
@@ -1334,7 +1335,7 @@
         <li><b>Don't push Scale to 3.0 expecting to disable Boost</b> — it only gates off the UAM tiers (3/4); the COB, percent-scale and acceleration tiers keep running. If you need Boost fully off, switch the APS plugin instead. And don't reach for max scale as a hypo fix at all — you lose UAM meal coverage while keeping the tiers that were likely stacking.</li>
         <li><b>Don't raise the DynISF Normal Target</b> as a first fix — this makes ISF less aggressive at a given BG but doesn't address the stacking behaviour during COB tiers.</li>
         <li><b>Don't extend Night Mode hours</b> into the day to suppress post-meal SMBs — this is a blunt instrument that will block needed corrections at other times.</li>
-        <li><b>Don't reach for the SMB-minutes caps as a first fix</b>: <span class="setting-key">uamsmbmaxminutes / smbmaxminutes</span> size only Tier 8 and the SMBs given while Boost's gate is closed, so they do not touch the COB and UAM tiers that stack after food. In 6.3.0 Boost already holds them at 15 and 20 at most. In 6.2.0 (AAPS 3.4.2.6): they default to 15, the minimum. If ISF or CR is wrong the correction pressure persists whatever these are set to; fix the profile signal first.</li>
+        <li><b>Don't reach for the SMB-minutes caps as a first fix</b>: <span class="setting-key">uamsmbmaxminutes / smbmaxminutes</span> size only Tier 8 and the SMBs given while Boost's gate is closed, so they do not touch the COB and UAM tiers that stack after food. In 6.3.2 they start at 15 and 20, and the 6.2.0 advice to keep UAM at 20 or below still holds. In 6.2.0 (AAPS 3.4.2.6): they default to 15, the minimum. If ISF or CR is wrong the correction pressure persists whatever these are set to; fix the profile signal first.</li>
         <li><b>Don't ignore profile calibration</b> — Boost amplifies what the profile tells it. A miscalibrated ISF or CR will always produce bad meal outcomes regardless of Boost settings.</li>
       </ul>
     </div>
@@ -1361,7 +1362,7 @@
         <br><br>
         During a post-meal plateau where BG is stable but high (flat delta), Boost uses <b>Tier 7 (mild correction)</b> or standard oref1 logic rather than the more aggressive UAM tiers, because acceleration signals are gone. The correction speed is then entirely governed by ISF and Max IOB headroom.
         <br><br>
-        If <b>Percent Scaling is disabled</b>, the rising 110–180 mg/dL window never gets the amplified SMB it's designed to handle. Enabling this is specifically designed for this pattern. (In 6.3.0 it is on unless 3.4 had stored it as off, and there is no switch.)
+        If <b>Percent Scaling is disabled</b>, the rising 110–180 mg/dL window never gets the amplified SMB it's designed to handle. Enabling this is specifically designed for this pattern. (In 6.3.2 it is on unless 3.4 had stored it as off, and there is no switch.)
         <br><br>
         A <b>too-high ISF</b> (conservative number) underestimates insulinReq — each SMB chips away slowly. Verify ISF is accurate for corrections.
       </div>
@@ -1388,7 +1389,7 @@
         <li>
           <b>Enable Percent Scaling</b><br>
           Specifically designed for BG in the 110–180 rising-and-accelerating band. Set Percent Scale Factor to 200–300% to amplify SMBs as BG rises through this band.
-          This step is for 6.2.0 (AAPS 3.4.2.6). In 6.3.0 percent scaling is on at 200% with no setting to change.
+          This step is for 6.2.0 (AAPS 3.4.2.6). In 6.3.2 percent scaling is on at 200% with no setting to change.
           <div class="fix-val">ApsBoostEnablePercentScale → ON</div>
           <div class="fix-val">ApsBoostPercentScale → 200–300%</div>
         </li>
@@ -1399,10 +1400,9 @@
         </li>
         <li>
           <b>UAM SMB minutes</b><br>
-          These size only Tier 8, the plain oref1 SMB a flat plateau often falls to, so they can bind here. In 6.3.0
-          they are held at no more than 20 (UAM) and 15 (standard), and a higher value is lowered on the next cycle, so
-          there is nothing to raise. In 6.2.0 (AAPS 3.4.2.6): the 6.2.0 README advises 20 for UAM and no higher, since
-          large values have let these SMBs stack before a low.
+          These size only Tier 8, the plain oref1 SMB a flat plateau often falls to, so they can bind here. In 6.3.2
+          they start at 20 (UAM) and 15 (standard). The 6.2.0 README advises 20 for UAM and no higher, since large values
+          have let these SMBs stack before a low.
           <div class="fix-val">uamsmbmaxminutes → 20 at most · smbmaxminutes → 15</div>
         </li>
         <li>
@@ -1577,7 +1577,7 @@
         <div class="card-icon icon-yellow">🎚️</div>
         <div>
           <div class="card-title">V6 user knobs</div>
-          <div class="card-subtitle">The only three settings most V6 users ever touch. Full detail is in the <a href="https://github.com/tim2000s/Boost/blob/dev-3.4.2.6/README.md#the-three-levers" style="color:#fbbf24">6.2.0 README</a> (the same three settings in 6.3.0)</div>
+          <div class="card-subtitle">The only three settings most V6 users ever touch. Full detail is in the <a href="https://github.com/tim2000s/Boost/blob/dev-3.4.2.6/README.md#the-three-levers" style="color:#fbbf24">6.2.0 README</a> (the same three settings in 6.3.2)</div>
         </div>
       </div>
 
@@ -1605,7 +1605,7 @@
           <span class="setting-key">ApsBoostV5HypoCaution</span>
         </div>
         <div class="setting-desc">How hard V6 trims the budget when the ML hypo-risk model is elevated. Higher = more backoff (and a lower floor: 0.50 → 0.25 across 1.0 → 2.0) = more conservative.
-        In 6.3.0 a value above 1.0 also lowers the smallest dose V6 keeps when hypo risk is high: the budget floor is
+        In 6.3.2 a value above 1.0 also lowers the smallest dose V6 keeps when hypo risk is high: the budget floor is
         30% of insulinReq divided by Hypo Caution, so 15% at 2.0. In 6.2.0 (AAPS 3.4.2.6): that floor stays at 30%, so
         at the highest risk every setting above about 1.67 gives the same dose.</div>
         <div class="spectrum-wrap">
@@ -1621,10 +1621,10 @@
       <!-- Sensitivity -->
       <div class="setting">
         <div class="setting-top">
-          <span class="setting-name">Meal-detection Sensitivity</span>
+          <span class="setting-name">Insulin budget scale</span>
           <span class="setting-key">ApsBoostV5Sensitivity</span>
         </div>
-        <div class="setting-desc">Named Meal-detection Sensitivity in the app (Advanced settings), though it changes neither meal detection nor your ISF. Per-user calibration on the whole budget. &lt;1.0 trims V6 for users it runs hot on; &gt;1.0 lets it run firmer for resistant users.</div>
+        <div class="setting-desc">Named Insulin budget scale in the app (Advanced settings); 6.2.0 and earlier 6.3 releases called it Meal-detection Sensitivity, though it changes neither meal detection nor your ISF. Per-user calibration on the whole budget. &lt;1.0 trims V6 for users it runs hot on; &gt;1.0 lets it run firmer for resistant users.</div>
         <div class="spectrum-wrap">
           <div class="spectrum-bar"></div>
           <div class="default-marker" style="left: 50%">
@@ -1642,7 +1642,7 @@
         <div class="card-icon icon-slate">⚙️</div>
         <div>
           <div class="card-title">Shared & advanced</div>
-          <div class="card-subtitle">Inherited safety limits + rarely-touched V6 internals. Each one, and how auto-config chooses its value, is detailed in the <a href="https://github.com/tim2000s/Boost/blob/dev-3.4.2.6/docs/v6-advanced-settings.md" style="color:#fbbf24">Advanced settings reference</a> (written for 6.2.0; 6.3.0 differences are in its <a href="https://github.com/tim2000s/Boost/blob/master/README.md#dosing-changes-from-boost-620" style="color:#fbbf24">README</a>)</div>
+          <div class="card-subtitle">Inherited safety limits + rarely-touched V6 internals. Each one, and how auto-config chooses its value, is detailed in the <a href="https://github.com/tim2000s/Boost/blob/dev-3.4.2.6/docs/v6-advanced-settings.md" style="color:#fbbf24">Advanced settings reference</a> (written for 6.2.0; 6.3.2 differences are in its <a href="https://github.com/tim2000s/Boost/blob/master/README.md#dosing-changes-from-boost-620" style="color:#fbbf24">README</a>)</div>
         </div>
       </div>
       <div class="setting">
@@ -1674,7 +1674,7 @@
         15 minutes V1 used to gain by reacting before the meal was confirmed. It fires <b>once per meal session</b>, only
         when delta is at least 3&nbsp;mg/dL per 5&nbsp;min, and only with every floor clear: no recent low below
         80&nbsp;mg/dL, awake, not exercising, not inside the post-rescue window, no meal announced by carbs or a recent
-        bolus, and inside maxIOB headroom. In 6.3.0 it opens on a sustained rise (short average delta of at least
+        bolus, and inside maxIOB headroom. In 6.3.2 it opens on a sustained rise (short average delta of at least
         3&nbsp;mg/dL, 0.17&nbsp;mmol/L, per 5&nbsp;min), and never fires again once the session has committed. In 6.2.0
         (AAPS 3.4.2.6): it opened on acceleration (delta_accl above 10). In both, the value set here is a ceiling: the
         dose is scaled down from it by the size of the rise (full at a delta of 8&nbsp;mg/dL per 5&nbsp;min), by BG (no
@@ -1750,12 +1750,12 @@
       and the resting branch no longer ignores an elevated heart rate — the loop could previously add insulin
       as BG fell during exercise.</li>
       <li><b>Fail-closed anti-stacking</b> — if recent-bolus history can't be read, SMBs pause rather than lose the cap.</li>
-      <li><b>Low suspend wins (6.3.0)</b>: on a cycle where the base engine has suspended for a low, a meal-state V6
+      <li><b>Low suspend wins (6.3.2)</b>: on a cycle where the base engine has suspended for a low, a meal-state V6
       dose is no longer given, and V6's rapid-rise check (no SMB when the rise exceeds 30% of BG) takes the largest of the latest change, the short average and
       the long average, as V1 does. In 6.2.0 (AAPS 3.4.2.6): a meal-state V6 dose could still be given on such a cycle,
       and the rapid-rise check used the latest change only.</li>
       <li><b>Low-glucose threshold on a rise</b>: Boost lowers the low-glucose threshold to 65&nbsp;mg/dL on an
-      accelerating rise. In 6.3.0 this needs glucose to be rising and never goes below your own low-glucose setting.
+      accelerating rise. In 6.3.2 this needs glucose to be rising and never goes below your own low-glucose setting.
       In 6.2.0 (AAPS 3.4.2.6): any positive acceleration set it to 65&nbsp;mg/dL, even below your setting.</li>
     </ul>
   </div>
@@ -1808,7 +1808,7 @@
     the notification) — run the <a href="boost_analyser.html" style="color:#fbbf24">Analyser</a> before touching anything: it
     detects cap-binding, gate and schedule patterns from your own Nightscout data. V1's DynISF/profile settings
     (<a href="#" class="tab-link" data-tab="v1">Boost V1 tab</a>) still shape V6's insulinReq input.
-    In 6.3.0 the APS screen has an Auto config section, which shows Boost's automatic settings in words, and a Heart rate
+    In 6.3.2 the APS screen has an Auto config section, which shows Boost's automatic settings in words, and a Heart rate
     section. A daily insulin-need watch compares your mean daily dose over the last 5 days with the 30 days before, and
     sends a notification when it lies more than 1.5 standard deviations away; it reports and never doses. In 6.2.0
     (AAPS 3.4.2.6): neither section is on the APS screen, and the insulin-need watch compares the last 3 days with
@@ -1918,7 +1918,7 @@
         <span class="setting-key">ApsBoostV5CommittedCapU</span>, or IOB reached min(Boost Max IOB, AAPS Max IOB).
         <br><br>
         Once the rise flattens, V6 moves to <b>RECOVERING/IDLE</b> — where it is deliberately capped at the V1 base dose
-        (July 2026 non-meal-state cap). In 6.3.0 COMMITTED holds until the rise is below 3&nbsp;mg/dL per 5&nbsp;min and
+        (July 2026 non-meal-state cap). In 6.3.2 COMMITTED holds until the rise is below 3&nbsp;mg/dL per 5&nbsp;min and
         returns from RECOVERING above 8&nbsp;mg/dL per 5&nbsp;min. In 6.2.0 (AAPS 3.4.2.6): COMMITTED could drop to
         RECOVERING (0.4×) as soon as a rise slowed, while glucose was still climbing. From there the correction speed is the V1 story: ISF and IOB headroom.
         <br><br>
@@ -1954,7 +1954,7 @@
         <li>
           <b>The V1 base dose still matters</b><br>
           Once the plateau is flat, V6 is bounded by what V1 would give, so Insulin Required %, DynISF Normal Target,
-          SMB minutes (held at 20 UAM in 6.3.0) and, in 6.2.0, Percent Scaling (Scenario 2 on the <a href="#" class="tab-link" data-tab="v1">Boost V1
+          SMB minutes (20 UAM at first start in 6.3.2) and, in 6.2.0, Percent Scaling (Scenario 2 on the <a href="#" class="tab-link" data-tab="v1">Boost V1
           tab</a>) shape the correction speed even on V6.
         </li>
       </ul>
@@ -2048,7 +2048,7 @@
 
 
 <div class="footer">
-  Boost Plugin Tuning Guide · AndroidAPS · Updated 2026-11-07 (Boost 6.3.0 for AAPS 4.0.0, with 6.2.0 for AAPS 3.4.2.6 noted where it differs) · previously 2026-07-03 (V1/V6 tab split; activity/inactivity semantics, percent-scale window 110–180, Boost Scale tier-gating and spectrum-direction corrections)
+  Boost Plugin Tuning Guide · AndroidAPS · Updated 2026-11-08 (Boost 6.3.2 for AAPS 4.0.0, with 6.2.0 for AAPS 3.4.2.6 noted where it differs) · previously 2026-11-07 (Boost 6.3.0), 2026-07-03 (V1/V6 tab split; activity/inactivity semantics, percent-scale window 110–180, Boost Scale tier-gating and spectrum-direction corrections)
 </div>
 
 <script>

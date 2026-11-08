@@ -65,6 +65,11 @@ enum class BooleanKey(
         key = "use_boost_overview_v2", defaultValue = false, title = KeysStrings.pref_title_use_boost_overview_v2,
         summary = KeysStrings.pref_summary_use_boost_overview_v2, defaultedBySM = true, platforms = AppPlatform.ANDROID_ONLY
     ),
+    // Boost: the tab strip under the Boost overview header. Everything in it is also in the drawer and search.
+    OverviewShowBoostPanelTabs(
+        key = "boost_show_panel_tabs", defaultValue = true, title = KeysStrings.pref_title_show_boost_panel_tabs,
+        summary = KeysStrings.pref_summary_show_boost_panel_tabs, defaultedBySM = true, platforms = AppPlatform.ANDROID_ONLY
+    ),
     OverviewShowNotesInDialogs(key = "show_notes_entry_dialogs", defaultValue = false, title = KeysStrings.pref_title_show_notes_in_dialogs, defaultedBySM = true),
     OverviewUseBolusAdvisor("use_bolus_advisor", true, KeysStrings.pref_title_use_bolus_advisor, KeysStrings.pref_summary_use_bolus_advisor, defaultedBySM = true, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
     OverviewUseBolusReminder("use_bolus_reminder", true, KeysStrings.pref_title_use_bolus_reminder, KeysStrings.pref_summary_use_bolus_reminder, defaultedBySM = true, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),

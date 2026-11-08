@@ -113,6 +113,9 @@ class BoostV2ViewModel(
      */
     val chartFaithful: StateFlow<Boolean> = preferences.observe(BooleanKey.ApsBoostV2ChartFaithful)
 
+    /** [BooleanKey.OverviewShowBoostPanelTabs], observed so the strip hides as soon as Settings changes it. */
+    val showPanelTabs: StateFlow<Boolean> = preferences.observe(BooleanKey.OverviewShowBoostPanelTabs)
+
     /** Persist the chart-style choice; the [chartFaithful] flow re-emits so the UI flips live. */
     fun setChartFaithful(faithful: Boolean) {
         preferences.put(BooleanKey.ApsBoostV2ChartFaithful, faithful)
@@ -216,16 +219,16 @@ class BoostV2ViewModel(
         val profilePct = profileData?.percentage ?: 100
         val profileModified = profileData?.isModified ?: false
 
-        // ── Target (temp target > algorithm target ≠ profile > profile > 100) ──
+        // ── Target (temp target > algorithm target ≠ profile > profile; none without a profile) ──
         val tempTarget = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())
         val hasTempTarget = tempTarget != null
         val profileTargetMgdl = profileFunction.getProfile()?.getTargetMgdl() ?: 0.0
-        val targetMgdl: Double = when {
+        val targetMgdl: Double? = when {
             tempTarget != null                                                                   -> tempTarget.lowTarget
             bs.targetBgMgdl > 0 && profileTargetMgdl > 0 && abs(profileTargetMgdl - bs.targetBgMgdl) > 0.01 -> bs.targetBgMgdl
-            else                                                                                 -> profileTargetMgdl.takeIf { it > 0 } ?: 100.0
+            else                                                                                 -> profileTargetMgdl.takeIf { it > 0 }
         }
-        val targetDisplay = profileUtil.fromMgdlToStringInUnits(targetMgdl)
+        val targetDisplay = targetMgdl?.let { profileUtil.fromMgdlToStringInUnits(it) } ?: "---"
 
         // ── Pump column ──
         val pump = activePlugin.activePump
@@ -264,7 +267,9 @@ class BoostV2ViewModel(
         val (aidText, aidStatus) =
             if (!pumpDescription.isTempBasalCapable) "NO AID" to AidStatus.ALERT
             else when (loop.runningMode()) {
-                RM.Mode.CLOSED_LOOP, RM.Mode.CLOSED_LOOP_LGS                            -> "AID ON" to AidStatus.ACTIVE
+                RM.Mode.CLOSED_LOOP                                                     -> "AID ON" to AidStatus.ACTIVE
+                // Low-glucose suspend only: no SMBs and no high temps, so not shown as the full loop.
+                RM.Mode.CLOSED_LOOP_LGS                                                 -> "LGS" to AidStatus.ATTENTION
                 RM.Mode.OPEN_LOOP                                                       -> "OPEN" to AidStatus.ATTENTION
                 RM.Mode.SUSPENDED_BY_USER, RM.Mode.SUSPENDED_BY_PUMP, RM.Mode.SUSPENDED_BY_DST -> "PAUSED" to AidStatus.ALERT
                 RM.Mode.DISCONNECTED_PUMP                                              -> "DISC" to AidStatus.ALERT

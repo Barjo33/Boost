@@ -48,6 +48,17 @@
     <string name="hr_activity_state">Activity state this cycle</string>
     <string name="hr_details">Details</string>
     <string name="autoconfig_applied">Settings applied</string>
+    <string name="autoconfig_declined">Not run</string>
+    <string name="histsync_filled">History downloaded</string>
+    <string name="histsync_skipped">No download</string>
+    <string name="histsync_exhausted">Download attempts used up</string>
+    <string name="histsync_requested">Download asked for</string>
+    <string name="histsync_attempt">Download attempt</string>
+    <string name="histsync_days">Days with insulin data</string>
+    <string name="histsync_bg">Glucose readings</string>
+    <string name="histsync_tr">Treatments</string>
+    <string name="histsync_treatments_added">Treatments added</string>
+    <string name="histsync_count" comment="%1$s=number found, %2$s=minimum number needed. Example: 12 of 20 needed">%1$s of %2$s needed</string>
     <string name="autoconfig_held_tbr">Raises held back (too much time below 70 mg/dL)</string>
     <string name="autoconfig_kept_user">Settings kept as you set them</string>
     <string name="autoconfig_held">Held suggestions</string>

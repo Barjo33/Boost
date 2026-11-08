@@ -39,6 +39,8 @@ enum class UnitDoubleKey(
     ApsBoostDynIsfBgCap(key = "boost_dynisf_bg_cap", defaultValue = 210.0, minMgdl = 100, maxMgdl = 300, title = KeysStrings.pref_title_boost_dynisf_bg_cap, summary = KeysStrings.pref_summary_boost_dyn_isf_bg_cap, defaultedBySM = true),
     ApsBoostDynIsfNormalTarget(key = "boost_dynisf_normal_target", defaultValue = 99.0, minMgdl = 70, maxMgdl = 120, title = KeysStrings.pref_title_boost_dynisf_normal_target, summary = KeysStrings.pref_summary_boost_dyn_isf_normal_target, defaultedBySM = true),
     ApsBoostNightModeBgOffset(key = "boost_night_mode_bg_offset", defaultValue = 27.0, minMgdl = 0, maxMgdl = 90, title = KeysStrings.pref_title_boost_night_mode_bg_offset, summary = KeysStrings.pref_summary_boost_night_mode_bg_offset, defaultedBySM = true, isOffset = true),
+    // Stored in mg/dL as before; shown in the profile's units. 65 mg/dL and up, so the units are never ambiguous.
+    ApsBoostV6PreMealTargetMgdl(key = "boost_v6_pre_meal_target_mgdl", defaultValue = 72.0, minMgdl = 65, maxMgdl = 90, title = KeysStrings.pref_title_boost_v6_pre_meal_target_mgdl, summary = KeysStrings.pref_summary_boost_v6_pre_meal_target_mgdl, defaultedBySM = true),
     ApsBoostPostExerciseRecoveryTarget(key = "boost_post_exercise_recovery_target", defaultValue = 144.0, minMgdl = 90, maxMgdl = 200, title = KeysStrings.pref_title_boost_post_exercise_recovery_target, summary = KeysStrings.pref_summary_boost_post_exercise_recovery_target, defaultedBySM = true),
     ;
 

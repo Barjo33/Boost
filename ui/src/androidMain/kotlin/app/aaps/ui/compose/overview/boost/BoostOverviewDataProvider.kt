@@ -15,10 +15,6 @@ import app.aaps.core.interfaces.utils.DateUtil
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.doubleOrNull
-import kotlinx.serialization.json.intOrNull
 
 /**
  * Extracts Boost-specific algorithm data from the last APS run result.
@@ -29,9 +25,9 @@ import kotlinx.serialization.json.intOrNull
  *
  * Port of `BoostOverviewHelper` (Boost 6.1.2 on AAPS 3.4) to AAPS 4.0. The 4.0 TDD and persistence
  * APIs are `suspend`, so [getBoostStatus] is `suspend` here (the 3.4 version was blocking).
- * `APSResult.json()` is a kotlinx [JsonObject] in 4.0 instead of an org.json object; [optDouble] and
- * [optInt] below keep the org.json defaults, so a missing key still reads as 0 and the RT fallback
- * is still only reached when there is no JSON at all, as in 3.4.
+ * The 3.4 version read delta acceleration and profile % from the result JSON under `delta_accl` and
+ * `current_profile_percentage`; the 4.0 JSON is the RT serialised under its own property names, so
+ * those keys never existed and both read 0. They are now read from the RT.
  */
 @SingleIn(AppScope::class)
 @Inject
@@ -69,12 +65,16 @@ class BoostOverviewDataProvider(
     }
 
     private suspend fun computeBoostStatus(): BoostStatus {
-        val request = loop.lastRun?.request
+        // A result older than STALE_AFTER_MS is dropped, so a loop that has stopped (pump out of
+        // reach, phone asleep) shows no tier, dose or DynISF rather than the last ones as if current.
+        val now = dateUtil.now()
+        val lastRun = loop.lastRun
+        val request = lastRun?.request?.takeIf { now - lastRun.lastAPSRun < STALE_AFTER_MS }
         // The live RT is held inside the APSResult wrapper (DetermineBasalResult.rawData()); the
         // APSResult itself is NOT an RT (that legacy `request as? RT` cast could never succeed in 4.0
         // and is dropped). Pull rawData() first; AAPSClient fallback = NS-synced suggested RT.
-        val rt: RT? = (request?.rawData() as? RT) ?: processedDeviceStatusData.openAPSData.suggested
-        val json = try { request?.json() } catch (_: Exception) { null }
+        val rt: RT? = (request?.rawData() as? RT)
+            ?: processedDeviceStatusData.openAPSData.suggested?.takeIf { now - (it.timestamp ?: 0L) < STALE_AFTER_MS }
         val reason = request?.reason ?: rt?.reason?.toString() ?: ""
         val scriptDebug = request?.scriptDebug ?: rt?.consoleLog ?: emptyList()
         val debugText = scriptDebug.joinToString("\n")
@@ -82,18 +82,20 @@ class BoostOverviewDataProvider(
         val allText = "$debugText\n$reason"
 
         // Parse tier from all available text (e.g. "Tier 5 - Percent Scale")
-        val tierResult = parseTierFromText(allText) ?: Pair(BoostTier.REGULAR_OREF1, BoostTier.REGULAR_OREF1.label)
+        val tierResult = parseTierFromText(allText)
+            ?: if (request == null && rt == null) Pair(BoostTier.INACTIVE, NO_RECENT_RESULT)
+            else Pair(BoostTier.REGULAR_OREF1, BoostTier.REGULAR_OREF1.label)
         val tier = tierResult.first
         val tierLabel = tierResult.second
 
-        val deltaAccl = json?.optDouble("delta_accl", 0.0) ?: rt?.deltaAcceleration ?: 0.0
+        val deltaAccl = rt?.deltaAcceleration ?: 0.0
 
         // Parse activity/exercise mode from all text (e.g. "Inactive - 140% profile")
         val activityResult = parseActivityFromText(allText)
         val activityMode = activityResult.first
         val activityDetail = activityResult.second
 
-        val profilePct = json?.optInt("current_profile_percentage", 0) ?: rt?.boostProfileSwitch ?: 0
+        val profilePct = rt?.boostProfileSwitch ?: 0
         // Parse profile % from scriptDebug header: "Boost V2 (...) | Profile: 140%"
         val profileFromDebug = PROFILE_HEADER_REGEX.find(debugText)
             ?.groupValues?.get(1)?.toIntOrNull() ?: 0
@@ -253,6 +255,10 @@ class BoostOverviewDataProvider(
         /** Cache TTL — [getBoostStatus] returns cached result within this window */
         private const val CACHE_TTL_MS = 30_000L  // 30 seconds
 
+        /** Three missed 5-minute loop cycles. A modelling choice, not taken from AAPS. */
+        internal const val STALE_AFTER_MS = 15 * 60_000L
+        internal const val NO_RECENT_RESULT = "No loop result in 15 min"
+
         /**
          * Parse `boostV5_gateReduction` into displayable brakes. Pure/static so it is unit-testable.
          * Format is a comma-separated list of:
@@ -288,18 +294,6 @@ class BoostOverviewDataProvider(
             }
             // Hard gates first; among soft brakes, the strongest (lowest factor) first.
             return brakes.sortedWith(compareByDescending<BoostV5Brake> { it.isHard }.thenBy { it.factor })
-        }
-
-        /** org.json `optDouble`: the value as a number, or [default] when missing or not numeric. */
-        private fun JsonObject.optDouble(key: String, default: Double): Double {
-            val primitive = this[key] as? JsonPrimitive ?: return default
-            return primitive.doubleOrNull ?: default
-        }
-
-        /** org.json `optInt`: an integer, a number truncated to an integer, or [default]. */
-        private fun JsonObject.optInt(key: String, default: Int): Int {
-            val primitive = this[key] as? JsonPrimitive ?: return default
-            return primitive.intOrNull ?: primitive.doubleOrNull?.toInt() ?: default
         }
 
         // Pre-compiled regexes (avoid recompilation on every getBoostStatus() call)

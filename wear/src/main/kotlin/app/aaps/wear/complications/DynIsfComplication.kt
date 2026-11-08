@@ -13,7 +13,7 @@ import app.aaps.wear.data.ComplicationData as ComplicationStore
  *
  * Shows the current dynamic ISF, the variable_sens of the last APS run, formatted on the phone in
  * the user's profile units (mg/dl/U or mmol/L/U). Display only: this value never influences dosing.
- * Title is "ISF"; text is the value, or "--" when the phone has none.
+ * Title is "ISF"; text is the value, or "--" when the phone has none, is out of contact, or the BG is stale.
  * Tap opens the main menu.
  */
 class DynIsfComplication : ModernBaseComplicationProviderService() {
@@ -23,9 +23,26 @@ class DynIsfComplication : ModernBaseComplicationProviderService() {
         data: ComplicationStore,
         complicationPendingIntent: PendingIntent
     ): ComplicationData? {
+        return buildIsf(type, data.statusData.variableSens.ifEmpty { "--" }, complicationPendingIntent)
+    }
+
+    // The phone sends DynISF without a timestamp. When the phone is lost or the BG is stale, the loop
+    // cannot have run on current data, so "--" is shown instead of the last value as if current.
+    override fun buildNoSyncComplicationData(
+        type: ComplicationType,
+        data: ComplicationStore,
+        complicationPendingIntent: PendingIntent
+    ): ComplicationData? = buildIsf(type, "--", complicationPendingIntent)
+
+    override fun buildOutdatedComplicationData(
+        type: ComplicationType,
+        data: ComplicationStore,
+        complicationPendingIntent: PendingIntent
+    ): ComplicationData? = buildIsf(type, "--", complicationPendingIntent)
+
+    private fun buildIsf(type: ComplicationType, sens: String, complicationPendingIntent: PendingIntent): ComplicationData? {
         return when (type) {
             ComplicationType.SHORT_TEXT -> {
-                val sens = data.statusData.variableSens.ifEmpty { "--" }
                 ShortTextComplicationData.Builder(
                     text = PlainComplicationText.Builder(text = sens).build(),
                     contentDescription = PlainComplicationText.Builder(text = "DynISF $sens").build()

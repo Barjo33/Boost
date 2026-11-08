@@ -24,8 +24,8 @@ class BoostWidgetFormatTest {
         assertThat(BoostWidgetFormat.zoneColor(69.9)).isEqualTo(0xFFFF5722.toInt())
         assertThat(BoostWidgetFormat.zoneColor(54.0)).isEqualTo(0xFFFF5722.toInt())
         assertThat(BoostWidgetFormat.zoneColor(53.9)).isEqualTo(0xFFD50000.toInt())
-        // No reading draws the in-range green rather than a warning colour.
-        assertThat(BoostWidgetFormat.zoneColor(0.0)).isEqualTo(0xFF4CAF50.toInt())
+        // No reading draws grey, so an empty ring cannot pass for an in-range reading.
+        assertThat(BoostWidgetFormat.zoneColor(0.0)).isEqualTo(0xFF78909C.toInt())
     }
 
     @Test

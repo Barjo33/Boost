@@ -84,4 +84,13 @@ internal class SgvRangedComplicationTest {
         assertThat(sut.buildOutdatedComplicationData(ComplicationType.RANGED_VALUE, data, pi)).isInstanceOf(NoDataComplicationData::class.java)
         assertThat(sut.buildOutdatedComplicationData(ComplicationType.SHORT_TEXT, data, pi)).isInstanceOf(ShortTextComplicationData::class.java)
     }
+
+    @Test
+    fun `a watch out of contact with the phone gives no ranged value and keeps its text form`() {
+        val sut = sut()
+        val data = sut.getPreviewComplicationData()
+        val pi = PendingIntent.getActivity(sut, 0, Intent(), PendingIntent.FLAG_IMMUTABLE)
+        assertThat(sut.buildNoSyncComplicationData(ComplicationType.RANGED_VALUE, data, pi)).isInstanceOf(NoDataComplicationData::class.java)
+        assertThat(sut.buildNoSyncComplicationData(ComplicationType.SHORT_TEXT, data, pi)).isInstanceOf(ShortTextComplicationData::class.java)
+    }
 }

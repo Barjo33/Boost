@@ -1609,7 +1609,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 v6PreMealReason = "V6 pre-meal SUPPRESSED ($why); "
                 return@run
             }
-            val preMealTarget = preferences.getBoostDosing(DoubleKey.ApsBoostV6PreMealTargetMgdl)
+            val preMealTarget = profileUtil.convertToMgdlDetect(preferences.getBoostDosing(UnitDoubleKey.ApsBoostV6PreMealTargetMgdl, profileUtil))
             val mealClock = formatClockMin(hit.mode.centreMin)
             v6PreMealReason = if (preMealTarget < v6TargetBg) {   // lower-only
                 v6MinBg = minOf(v6MinBg, preMealTarget)
