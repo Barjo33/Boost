@@ -373,6 +373,8 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
         val result = InsulinNeedWatch.evaluate(days, MidnightTime.calcDaysBack(now, 1))
         replaceBreadcrumbToken(NDW_TOKEN, result.token())
         aapsLogger.info(LTag.APS, "BoostV5 insulin-need watch: ${result.token()}")
+        runCatching { checkNightInsulinNeed(now, result.status == InsulinNeedWatch.Status.PROFILE_CHANGED) }
+            .onFailure { aapsLogger.error(LTag.APS, "BoostV5 night need watch failed (non-fatal)", it) }
         val lastAbove = preferences.get(LongNonKey.ApsBoostNeedWatchLastAboveMs)
         val lastBelow = preferences.get(LongNonKey.ApsBoostNeedWatchLastBelowMs)
         if (!InsulinNeedWatch.shouldNotify(result, lastAbove, lastBelow, now)) return
@@ -386,6 +388,30 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
             if (result.status == InsulinNeedWatch.Status.ABOVE) LongNonKey.ApsBoostNeedWatchLastAboveMs else LongNonKey.ApsBoostNeedWatchLastBelowMs,
             now
         )
+    }
+
+    /**
+     * The night watch (`InsulinNeedWatch.evaluateNights`), in shadow: the ndn= breadcrumb token and a
+     * log line, no notification. A night is 00:00 to 06:00 local time.
+     */
+    // shortcut: fixed 00:00 to 06:00 night; offline used each person's quietest hours or the sleep
+    // detector, so move to those once the sleep record is long enough to score (about May 2027).
+    private suspend fun checkNightInsulinNeed(now: Long, profileChanged: Boolean) {
+        val hourMs = 60L * 60 * 1000
+        // The latest complete night ended at 06:00 today, or yesterday before 06:00.
+        val lastBack = if (now < MidnightTime.calc(now) + InsulinNeedWatch.NIGHT_HOURS * hourMs) 1L else 0L
+        val count = InsulinNeedWatch.NIGHT_WINDOW + InsulinNeedWatch.NIGHT_BASELINE
+        val nights = (count - 1 downTo 0).map { k ->
+            val start = MidnightTime.calcDaysBack(now, lastBack + k)
+            val end = start + InsulinNeedWatch.NIGHT_HOURS * hourMs
+            val insulin = tddCalculator.calculateInterval(start, end, allowMissingData = false)
+                ?.let { if (it.totalAmount > 0) it.totalAmount else it.basalAmount + it.bolusAmount }
+            val bgs = persistenceLayer.getBgReadingsDataFromTimeToTime(start, end, true).map { it.timestamp to it.value }
+            InsulinNeedWatch.Night(start, insulin, InsulinNeedWatch.nightMeanBg(bgs, start))
+        }
+        val night = InsulinNeedWatch.evaluateNights(nights, profileChanged)
+        replaceBreadcrumbToken(NDN_TOKEN, night.token())
+        aapsLogger.info(LTag.APS, "BoostV5 night need watch (shadow): ${night.token()}")
     }
 
     private fun notifyInsulinNeed(r: InsulinNeedWatch.Result, recentBg: Double, baseBg: Double) {
@@ -1454,4 +1480,5 @@ internal fun aggressiveEarlyConfirmAllowed(switchOn: Boolean, tbrBelow63Pct: Dou
 
 private const val NEED_WATCH_INTERVAL_MS = 24L * 60 * 60 * 1000
 private val NDW_TOKEN = Regex("ndw=[A-Z_]+(/[a-z]=[^,/]+)*")
+private val NDN_TOKEN = Regex("ndn=[A-Z_]+(/[a-z]=[^,/]+)*")
 private val SMBMIN_TOKEN = Regex("smbmin=[^,]*")

@@ -101,6 +101,78 @@ object InsulinNeedWatch {
         return Result(status, recent, mean, sd, baseline.size, windowStart, baselineStart)
     }
 
+    // The night watch (breadcrumb token ndn=), shadow only: it is logged and never notifies.
+    // Insulin from 00:00 to 06:00 over the last NIGHT_WINDOW nights against the NIGHT_BASELINE before,
+    // flagged when it is more than NIGHT_K_SD SDs of single nights above that mean and every window
+    // night's mean glucose is above the median of the baseline nights. Measured offline, with 2.05 SD
+    // chosen to match the whole-day watch's false-notice rate: on JAEB Loop the next week's nights
+    // stayed 7.3 mg/dL (6.2 to 8.3) higher after a notice. Excluding or clipping nights did not
+    // improve it.
+    const val NIGHT_WINDOW = 3
+    const val NIGHT_BASELINE = 14
+    const val NIGHT_MIN_BASELINE = 10
+    const val NIGHT_K_SD = 2.05
+    const val NIGHT_HOURS = 6
+    /** Five-minute slots with a glucose reading needed for a night's mean, of 72 (as offline). */
+    const val NIGHT_MIN_BG_SLOTS = 58
+
+    /** One night: its insulin and mean glucose, null when the record is missing or too thin. */
+    data class Night(val startMs: Long, val insulinU: Double?, val meanBgMgdl: Double?)
+
+    data class NightResult(
+        val status: Status,
+        val recentMeanU: Double = Double.NaN,
+        val baselineMeanU: Double = Double.NaN,
+        val baselineSdU: Double = Double.NaN,
+        val baselineNights: Int = 0,
+        val glucoseAbove: Boolean = false,
+    ) {
+        val z: Double get() = if (baselineSdU > 0) (recentMeanU - baselineMeanU) / baselineSdU else Double.NaN
+        val percent: Double get() = if (baselineMeanU > 0) 100.0 * (recentMeanU - baselineMeanU) / baselineMeanU else Double.NaN
+
+        /** e.g. ndn=ABOVE/z=2.3/p=+31/g=1/n=14. z and g are kept on WITHIN so the shadow can be rescored offline. */
+        fun token(): String = when (status) {
+            Status.FEW_DAYS        -> "ndn=FEW_DAYS/n=$baselineNights"
+            Status.PROFILE_CHANGED -> "ndn=PROFILE_CHANGED"
+            else                   -> "ndn=${status.name}/z=${fmt1(z)}/p=${signed(percent)}/g=${if (glucoseAbove) 1 else 0}/n=$baselineNights"
+        }
+    }
+
+    /**
+     * A night's mean glucose from native-cadence readings (time, mg/dL), or null under
+     * [NIGHT_MIN_BG_SLOTS] five-minute slots with a reading, so that a one-minute feed needs the same
+     * coverage as a five-minute one. Readings below 39 mg/dL are sensor errors and are dropped.
+     */
+    fun nightMeanBg(readings: List<Pair<Long, Double>>, startMs: Long): Double? {
+        val ok = readings.filter { it.second >= 39.0 && it.first >= startMs }
+        val slots = ok.map { (it.first - startMs) / (5L * 60 * 1000) }.distinct().size
+        return if (slots >= NIGHT_MIN_BG_SLOTS) ok.map { it.second }.average() else null
+    }
+
+    /**
+     * [nights] are the last [NIGHT_WINDOW] + [NIGHT_BASELINE] nights, oldest first, one entry per
+     * night with nulls for missing data. [profileChanged] is the whole-day watch's PROFILE_CHANGED,
+     * since a new basal profile moves night insulin by itself. Upward only: the rule is for rising need.
+     */
+    fun evaluateNights(nights: List<Night>, profileChanged: Boolean = false): NightResult {
+        if (nights.size < NIGHT_WINDOW + NIGHT_MIN_BASELINE) return NightResult(Status.FEW_DAYS)
+        val window = nights.takeLast(NIGHT_WINDOW)
+        val baseline = nights.dropLast(NIGHT_WINDOW).takeLast(NIGHT_BASELINE)
+        val base = baseline.mapNotNull { it.insulinU }
+        if (window.any { it.insulinU == null } || base.size < NIGHT_MIN_BASELINE)
+            return NightResult(Status.FEW_DAYS, baselineNights = base.size)
+        if (profileChanged) return NightResult(Status.PROFILE_CHANGED, baselineNights = base.size)
+        val recent = window.map { it.insulinU!! }.average()
+        val mean = base.average()
+        val sd = sqrt(base.sumOf { (it - mean) * (it - mean) } / (base.size - 1))
+        val baseBg = baseline.mapNotNull { it.meanBgMgdl }
+        val windowBg = window.map { it.meanBgMgdl }
+        val glucoseAbove = baseBg.size >= NIGHT_MIN_BASELINE && windowBg.all { it != null } &&
+            percentile(baseBg, 50.0).let { med -> windowBg.all { it!! > med } }
+        val status = if (sd > 0 && recent - mean > NIGHT_K_SD * sd && glucoseAbove) Status.ABOVE else Status.WITHIN
+        return NightResult(status, recent, mean, sd, base.size, glucoseAbove)
+    }
+
     /**
      * The profile's own daily basal from an effective profile switch. Its stored blocks already carry
      * the switch's percentage, so a temporary switch (an exercise 70% or a sick-day 120%) is divided
