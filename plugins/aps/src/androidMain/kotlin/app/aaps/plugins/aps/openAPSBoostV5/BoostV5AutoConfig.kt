@@ -24,6 +24,12 @@ import kotlin.math.min
  */
 object BoostV5AutoConfig {
 
+    /**
+     * The highest committed cap auto-config sets, at onboarding and in the weekly re-derivation. The
+     * setting itself goes up to 5.0, so a larger hold is possible, but only a person can set one.
+     */
+    const val COMMITTED_CAP_AUTO_MAX = 2.5
+
     // Minimum data before we'll auto-configure at all (else leave factory defaults).
     const val MIN_DAYS = 7
     const val MIN_BG_READINGS = 1500          // ~7 days of 5-min CGM minus gaps
@@ -180,9 +186,9 @@ object BoostV5AutoConfig {
         )
         reasons += "Confirmed cap ${confirmedCapU}U (≈ your biggest typical single dose)"
 
-        // Committed cap [0.25..2.5]: routine per-cycle hold = max(typical SMB p75, TDD/40), floored.
+        // Committed cap [0.25..COMMITTED_CAP_AUTO_MAX]: routine per-cycle hold = max(typical SMB p75, TDD/40), floored.
         val committedCapU = round2(
-            max(percentile(p.smbAmountsU, 75.0), p.tddMedianU / 40.0).coerceIn(0.25, 2.5)
+            max(percentile(p.smbAmountsU, 75.0), p.tddMedianU / 40.0).coerceIn(0.25, COMMITTED_CAP_AUTO_MAX)
         )
         reasons += "Committed cap ${committedCapU}U (max of your routine SMB size and TDD/40)"
 
