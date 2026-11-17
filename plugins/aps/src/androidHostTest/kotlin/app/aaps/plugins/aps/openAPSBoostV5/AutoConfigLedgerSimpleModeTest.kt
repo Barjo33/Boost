@@ -66,7 +66,7 @@ class AutoConfigLedgerSimpleModeTest {
                 daysWithData = 28, bgReadingCount = 6000, tddMedianU = 48.0,   // derived committedCap 1.2
                 manualBolusesU = List(20) { 4.0 }, smbAmountsU = List(200) { 0.3 },
                 tbrBelow70Pct = 1.0, timeBelow54Pct = 0.1, meanGlucoseMgdl = 130.0,
-                currentMaxIobU = 6.0, currentMaxBolusU = 2.5))!!
+                currentMaxBolusU = 2.5))!!
         val stored = mutableMapOf(DoubleKey.ApsBoostV5CommittedCapU to 1.0, DoubleKey.ApsBoostV5ConfirmedCapU to 3.0)
         val res = BoostV5AutoConfigApply.redrive(
             s, 1.0, 0.1,

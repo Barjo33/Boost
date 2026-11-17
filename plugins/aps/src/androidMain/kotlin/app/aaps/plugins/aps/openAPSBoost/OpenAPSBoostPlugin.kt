@@ -99,6 +99,7 @@ import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
 import app.aaps.plugins.aps.openAPSBoostV5.AutoConfigLedger
+import app.aaps.plugins.aps.openAPSBoostV5.BoostV5AutoConfigApply
 import app.aaps.plugins.aps.openAPSBoostV5.MealHypothesis
 
 /**
@@ -1623,6 +1624,11 @@ open class OpenAPSBoostPlugin @Inject constructor(
 
         // ---- Build the OapsProfileBoost ----
 
+        val maxIob = constraintsChecker.getMaxIOBAllowed().also { inputConstraints.copyReasons(it) }.value()
+        // The larger of the constrained and the set max IOB, so a first cycle in a constrained mode cannot hide an auto-config copy.
+        BoostV5AutoConfigApply.migrateBoostMaxIobToFollow(preferences, maxOf(maxIob, preferences.getIfExists(DoubleKey.ApsSmbMaxIob) ?: maxIob))?.let {
+            aapsLogger.info(LTag.APS, "Boost max IOB $it was not set by the user; it is now ${DoubleKey.ApsBoostMaxIob.max} and Boost uses max IOB")
+        }
         val oapsProfile = OapsProfileBoost(
             // variable_sens already carries the sensitivity adaptation: TDD when that is on, autosens
             // (autosensAdjustedIsf) when it is off. The engine must not divide by the ratio again.
@@ -1630,7 +1636,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
             // Standard oref1 fields
             dia = 0.0,
             min_5m_carbimpact = 0.0,
-            max_iob = constraintsChecker.getMaxIOBAllowed().also { inputConstraints.copyReasons(it) }.value(),
+            max_iob = maxIob,
             max_daily_basal = profile.getMaxDailyBasal(),
             max_basal = constraintsChecker.getMaxBasalAllowed(profile).also { inputConstraints.copyReasons(it) }.value(),
             min_bg = v6MinBg,
@@ -1688,7 +1694,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 aapsLogger.debug(LTag.APS, "Boost post-exercise recovery [$lastExerciseStateAtTransition]: boost_bolus $boostBolus → $scaled (scale=$activeRecoveryScale)")
                 scaled
             } else boostBolus,
-            boost_maxIOB = boostMaxIob,
+            // Both engines are held to max IOB anyway; passing the lower of the two makes V1's tier guards and the log show the real ceiling.
+            boost_maxIOB = minOf(boostMaxIob, maxIob),
             Boost_InsulinReq = boostInsulinReqPct,
             boost_scale = if (postExerciseRecoveryEnabled && now < recoveryWindowEnd) {
                 val scaled = boostScale * activeRecoveryScale

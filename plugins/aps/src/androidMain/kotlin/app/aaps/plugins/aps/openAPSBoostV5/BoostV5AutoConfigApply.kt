@@ -1,5 +1,6 @@
 package app.aaps.plugins.aps.openAPSBoostV5
 
+import app.aaps.core.keys.BooleanComposedKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringKey
@@ -7,6 +8,7 @@ import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.aps.getBoostDosing
 import org.json.JSONObject
 import kotlin.math.abs
+import kotlin.math.min
 
 /**
  * Pure helpers for applying a [BoostV5AutoConfig.V5Suggestion] to preferences while respecting any
@@ -110,7 +112,7 @@ internal object BoostV5AutoConfigApply {
      *  - boost_v5_committed_cap_u: 0.25 (introduced bcda0a68d4) → 0.5 (ae1f263a24)
      *  - boost_cumulative_smb_cap_60min: 1.5 (introduced 780f5769) → 6.0 (1114e387a9,
      *    Boost-ML-Beta-2 era) → 10.0 (20d7b8b54c)
-     * The other managed keys (Aggression 1.0, HypoCaution 1.0, MaxIob 1.0, Bolus 2.5) have never
+     * The other managed keys (Aggression 1.0, HypoCaution 1.0, Bolus 2.5) have never
      * changed default. A stored value matching ANY of these (±[DEFAULT_EPS]) is at-factory, i.e.
      * derivable — without this, a user whose old build persisted an old factory value reads as
      * "user-tuned" and is frozen at the tightest-ever values.
@@ -126,9 +128,9 @@ internal object BoostV5AutoConfigApply {
         listOf(key.defaultValue) + (historicalFactoryDefaults[key.key] ?: emptyList())
 
     /**
-     * The dose-cap knobs subject to the [TBR_RAISE_GUARD_PCT] raise-guard. MaxIob/Bolus are NOT
-     * here: they mirror the user's own existing AAPS constraints, so "raising" them only matches a
-     * limit the user already runs elsewhere.
+     * The dose-cap knobs subject to the [TBR_RAISE_GUARD_PCT] raise-guard. Bolus is NOT here: it
+     * mirrors the user's own existing AAPS constraint, so "raising" it only matches a limit the user
+     * already runs elsewhere. Boost max IOB is no longer managed: at its 12 U default Boost uses max IOB.
      */
     val doseCapKeys: Set<DoubleKey> = setOf(
         DoubleKey.ApsBoostV5ConfirmedCapU,
@@ -150,7 +152,6 @@ internal object BoostV5AutoConfigApply {
         DoubleKey.ApsBoostV5ConfirmedCapU,
         DoubleKey.ApsBoostV5CommittedCapU,
         DoubleKey.ApsBoostCumulativeSmbCap60Min,
-        DoubleKey.ApsBoostMaxIob,
         DoubleKey.ApsBoostBolus,
         DoubleKey.ApsBoostV5PrimerCapU,  // NOT raise-guarded — safety is the locked TBR delivery, see doseCapKeys
         DoubleKey.ApsBoostV5TrancheThreshold   // its own rules, see resolveTrancheThreshold
@@ -163,7 +164,6 @@ internal object BoostV5AutoConfigApply {
         DoubleKey.ApsBoostV5ConfirmedCapU to s.confirmedCapU,
         DoubleKey.ApsBoostV5CommittedCapU to s.committedCapU,
         DoubleKey.ApsBoostCumulativeSmbCap60Min to s.cumulativeSmbCap60MinU,
-        DoubleKey.ApsBoostMaxIob to s.maxIobU,
         DoubleKey.ApsBoostBolus to s.bolusCapU,
         DoubleKey.ApsBoostV5PrimerCapU to s.primerCapU,  // V1-acceleration primer
         // NaN when the evidence fell short: there is no suggestion, and resolveTrancheThreshold then
@@ -180,6 +180,48 @@ internal object BoostV5AutoConfigApply {
      */
     fun isUserTuned(key: DoubleKey, storedValue: Double?): Boolean =
         storedValue != null && factoryDefaults(key).none { abs(storedValue - it) <= DEFAULT_EPS }
+
+    /**
+     * Resolved-mark name of the one-time move of Boost max IOB to its new default.
+     * Auto-config no longer manages Boost max IOB. Its default is now the key maximum, 12 U: both
+     * engines hold every dose to max IOB, so Boost max IOB at or above max IOB acts as "use max IOB",
+     * and a copy of max IOB written once can no longer go stale. Builds before this one read 12 the
+     * same way, so going back to one is safe.
+     */
+    const val BOOST_MAX_IOB_FOLLOW_MARK = "boost_max_iob_follows_max_iob"
+
+    /** The factory default of Boost max IOB before 12 U replaced it. */
+    const val LEGACY_BOOST_MAX_IOB_DEFAULT = 1.0
+
+    /**
+     * Whether the one-time move should set a stored Boost max IOB to the new default. Only values
+     * nobody chose move: the old factory 1.0; the copy auto-config wrote ([lastWritten], from its
+     * written ledger, kept since 6.2.0); and, for onboarding before the ledger existed, a value equal
+     * to the copy auto-config would write today (max IOB rounded to 0.1, at most 12). Any other stored
+     * value is a limit the person set and is kept. A missing value already reads as the new default.
+     */
+    fun boostMaxIobShouldFollow(stored: Double?, lastWritten: Double?, currentMaxIob: Double): Boolean {
+        if (stored == null || stored >= DoubleKey.ApsBoostMaxIob.max - DEFAULT_EPS) return false
+        val copyToday = Math.round(min(currentMaxIob, DoubleKey.ApsBoostMaxIob.max) * 10) / 10.0
+        return abs(stored - LEGACY_BOOST_MAX_IOB_DEFAULT) <= DEFAULT_EPS ||
+            (lastWritten != null && abs(stored - lastWritten) <= DEFAULT_EPS) ||
+            abs(stored - copyToday) <= DEFAULT_EPS
+    }
+
+    /**
+     * Runs the one-time move, once per install (marked by [BOOST_MAX_IOB_FOLLOW_MARK]). Called by the
+     * engine before it builds its profile, so it runs whichever Boost plugin is active. Returns the
+     * value it replaced, or null when it changed nothing.
+     */
+    fun migrateBoostMaxIobToFollow(preferences: Preferences, currentMaxIob: Double): Double? {
+        if (preferences.get(BooleanComposedKey.BoostV5AutoConfigResolved, BOOST_MAX_IOB_FOLLOW_MARK)) return null
+        val stored = preferences.getIfExists(DoubleKey.ApsBoostMaxIob)
+        val written = AutoConfigLedger.read(preferences, StringKey.ApsBoostV5AutoConfigWritten)[DoubleKey.ApsBoostMaxIob.key]
+        val moved = if (boostMaxIobShouldFollow(stored, written, currentMaxIob)) stored else null
+        if (moved != null) preferences.put(DoubleKey.ApsBoostMaxIob, DoubleKey.ApsBoostMaxIob.max)
+        preferences.put(BooleanComposedKey.BoostV5AutoConfigResolved, BOOST_MAX_IOB_FOLLOW_MARK, value = true)
+        return moved
+    }
 
     /** How a knob was classified by [applyAutoConfig] this run. */
     enum class Outcome {
@@ -887,7 +929,6 @@ internal object BoostV5AutoConfigApply {
                 operative.getValue(DoubleKey.ApsBoostV5CommittedCapU)
             )
         )
-        resolve(DoubleKey.ApsBoostMaxIob, suggestion.maxIobU)
         resolve(DoubleKey.ApsBoostBolus, suggestion.bolusCapU)
         // V1-acceleration primer cap. NOT raise-guarded (see doseCapKeys): a hypo-prone user
         // must still be PROVISIONED a non-zero size, because their recommended delivery route — a

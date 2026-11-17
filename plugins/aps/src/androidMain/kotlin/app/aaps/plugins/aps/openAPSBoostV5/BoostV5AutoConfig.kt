@@ -120,7 +120,6 @@ object BoostV5AutoConfig {
         val tbrBelow70Pct: Double,
         val timeBelow54Pct: Double,
         val meanGlucoseMgdl: Double,
-        val currentMaxIobU: Double,           // the user's existing AAPS maxIOB
         val currentMaxBolusU: Double,         // the user's existing AAPS max bolus
         // Confirm-tranche threshold derivation over the person's own confirm episodes, gathered over
         // TrancheThresholdDeriver.LOOKBACK_DAYS rather than this profile's window. Null when the
@@ -135,7 +134,6 @@ object BoostV5AutoConfig {
         val confirmedCapU: Double,
         val committedCapU: Double,
         val cumulativeSmbCap60MinU: Double,
-        val maxIobU: Double,
         val bolusCapU: Double,
         val fastCarbConfirm: Boolean,
         // insulin-adding opt-in switches — enabled only for clearly well-controlled users.
@@ -196,9 +194,8 @@ object BoostV5AutoConfig {
         reasons += "Cumulative SMB cap/60min ${cumulativeSmbCap60MinU}U (limits dose frequency)"
 
         // Carry proven constraints.
-        val maxIobU = round1(p.currentMaxIobU.coerceIn(0.1, 12.0))
         val bolusCapU = round1(p.currentMaxBolusU.coerceIn(0.1, 10.0))
-        reasons += "maxIOB ${maxIobU}U / bolus cap ${bolusCapU}U carried from your AAPS settings"
+        reasons += "Bolus cap ${bolusCapU}U carried from your AAPS settings"
 
         // Fast-carb confirm: keep on unless markedly hypo-prone (then off for caution).
         val fastCarbConfirm = !hypoProne
@@ -269,7 +266,7 @@ object BoostV5AutoConfig {
             aggression = aggression, hypoCaution = hypoCaution,
             confirmedCapU = confirmedCapU, committedCapU = committedCapU,
             cumulativeSmbCap60MinU = cumulativeSmbCap60MinU,
-            maxIobU = maxIobU, bolusCapU = bolusCapU,
+            bolusCapU = bolusCapU,
             fastCarbConfirm = fastCarbConfirm,
             aggressiveEarlyConfirm = aggressiveEarlyConfirm,
             velocityBudgetFloor = velocityBudgetFloor,

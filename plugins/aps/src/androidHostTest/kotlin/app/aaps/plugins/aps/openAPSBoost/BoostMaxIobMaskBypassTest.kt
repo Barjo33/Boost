@@ -3,6 +3,7 @@ package app.aaps.plugins.aps.openAPSBoost
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.aps.getBoostDosing
+import app.aaps.plugins.aps.openAPSBoostV5.BoostV5AutoConfigApply
 import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.mock
@@ -31,8 +32,8 @@ class BoostMaxIobMaskBypassTest {
 
     @Test fun `masked boostMaxIOB 1_0 skips every base tier and clamps to zero`() {
         val prefs = mock<Preferences>()
-        // Simulate the masked read the way the bug behaved: the doser saw the factory default.
-        val maskedMaxIob = DoubleKey.ApsBoostMaxIob.defaultValue
+        // Simulate the masked read the way the bug behaved: the doser saw the factory default of the time.
+        val maskedMaxIob = BoostV5AutoConfigApply.LEGACY_BOOST_MAX_IOB_DEFAULT
         assertThat(maskedMaxIob).isEqualTo(1.0)
         val (fires, headroom) = tierFiresAndHeadroom(maskedMaxIob)
         assertThat(fires).isFalse()          // 1.04 < 1.0 == false → tier skipped
@@ -52,8 +53,8 @@ class BoostMaxIobMaskBypassTest {
     @Test fun `the guard outcome flips solely on the masked-vs-stored ceiling`() {
         val prefs = mock<Preferences>()
         whenever(prefs.getIfExists(DoubleKey.ApsBoostMaxIob)).thenReturn(8.0)
-        // Masked (get() in Simple Mode) → default 1.0 → tier skipped.
-        assertThat(tierFiresAndHeadroom(DoubleKey.ApsBoostMaxIob.defaultValue).first).isFalse()
+        // Masked (get() in Simple Mode) → the default of the time, 1.0 → tier skipped.
+        assertThat(tierFiresAndHeadroom(BoostV5AutoConfigApply.LEGACY_BOOST_MAX_IOB_DEFAULT).first).isFalse()
         // Fixed (getBoostDosing) → stored 8.0 → tier fires.
         assertThat(tierFiresAndHeadroom(prefs.getBoostDosing(DoubleKey.ApsBoostMaxIob)).first).isTrue()
     }

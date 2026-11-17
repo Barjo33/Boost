@@ -24,7 +24,7 @@ class RedriveLooseningGuardTest {
                 daysWithData = 28, bgReadingCount = 6000, tddMedianU = tdd,
                 manualBolusesU = List(20) { 4.0 }, smbAmountsU = List(200) { 0.3 },
                 tbrBelow70Pct = tbr70, timeBelow54Pct = sev54, meanGlucoseMgdl = 130.0,
-                currentMaxIobU = 6.0, currentMaxBolusU = 2.5
+                currentMaxBolusU = 2.5
             )
         )!!
 
@@ -40,7 +40,7 @@ class RedriveLooseningGuardTest {
                     daysWithData = 28, bgReadingCount = 6000, tddMedianU = tdd,
                     manualBolusesU = List(20) { 4.0 }, smbAmountsU = List(200) { 0.3 },
                     tbrBelow70Pct = tbr70, timeBelow54Pct = sev54, meanGlucoseMgdl = 130.0,
-                    currentMaxIobU = 6.0, currentMaxBolusU = 2.5))!!
+                    currentMaxBolusU = 2.5))!!
             return BoostV5AutoConfigApply.redrive(
                 s, tbr70, sev54,
                 storedValue = { stored[it] }, baselineValue = { baseline[it] }, pendingValue = { pending[it] },

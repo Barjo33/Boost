@@ -354,7 +354,7 @@ enum class DoubleKey(
 
     // Boost
     ApsBoostBolus(key = "boost_bolus_cap", defaultValue = 2.5, min = 0.1, max = 10.0, title = KeysStrings.pref_title_boost_bolus_cap, summary = KeysStrings.pref_summary_boost_bolus, defaultedBySM = true, unitType = UnitType.INSULIN),
-    ApsBoostMaxIob(key = "boost_max_iob", defaultValue = 1.0, min = 0.1, max = 12.0, title = KeysStrings.pref_title_boost_max_iob, summary = KeysStrings.pref_summary_boost_max_iob, defaultedBySM = true, unitType = UnitType.INSULIN),
+    ApsBoostMaxIob(key = "boost_max_iob", defaultValue = 12.0, min = 0.1, max = 12.0, title = KeysStrings.pref_title_boost_max_iob, summary = KeysStrings.pref_summary_boost_max_iob, defaultedBySM = true, unitType = UnitType.INSULIN),
     ApsBoostInsulinReqPct(key = "boost_insulin_req_pct", defaultValue = 50.0, min = 30.0, max = 100.0, title = KeysStrings.pref_title_boost_insulin_req_pct, summary = KeysStrings.pref_summary_boost_insulin_req_pct, defaultedBySM = true, unitType = UnitType.PERCENT),
     ApsBoostScale(key = "boost_scale_value", defaultValue = 1.0, min = 0.1, max = 3.0, title = KeysStrings.pref_title_boost_scale_value, summary = KeysStrings.pref_summary_boost_scale, defaultedBySM = true, unitType = UnitType.DOUBLE),
     ApsBoostPercentScale(key = "boost_percent_scale_factor", defaultValue = 200.0, min = 50.0, max = 500.0, title = KeysStrings.pref_title_boost_percent_scale_factor, summary = KeysStrings.pref_summary_boost_percent_scale, defaultedBySM = true, unitType = UnitType.PERCENT),

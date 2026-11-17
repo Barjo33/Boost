@@ -528,7 +528,7 @@
     <string name="pref_summary_boost_insulin_req_pct">Percentage of algorithm-determined insulin to deliver as SMB. Default: 50</string>
     <string name="pref_summary_boost_bolus">Maximum individual bolus from Boost. Default: 2.5 U</string>
     <string name="pref_summary_boost_scale">Multiplier for the Boost tier doses, scaled by the profile switch %. When the scaled value is 3 or more, the UAM Boost tiers (3 and 4) are off. Default: 1.0</string>
-    <string name="pref_summary_boost_max_iob">Maximum IOB for Boost doses. In Boost V1, regular oref1 is used above this. In V6, no V6 dose takes IOB above it. Default: 1.0 U</string>
+    <string name="pref_summary_boost_max_iob">Maximum IOB for Boost doses. At 12 U (the default) Boost uses your max IOB, and no more than 12 U when max IOB is higher. Set a lower value to keep Boost doses below it: above that value Boost V1 uses regular oref1 and no V6 dose takes IOB higher. Default: 12 U</string>
     <string name="pref_summary_boost_enable_circadian_isf">Applies time-of-day ISF adjustment based on circadian rhythm model</string>
     <string name="pref_summary_boost_allow_with_high_tt">Allow Boost when high temp target is active (exercise)</string>
     <string name="pref_summary_boost_use_tdd">Calculate ISF from Total Daily Dose using the logarithmic formula. When disabled, uses profile ISF directly</string>

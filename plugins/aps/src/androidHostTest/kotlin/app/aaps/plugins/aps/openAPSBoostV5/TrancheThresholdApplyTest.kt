@@ -27,7 +27,7 @@ class TrancheThresholdApplyTest {
                 daysWithData = 28, bgReadingCount = 6000, tddMedianU = 40.0,
                 manualBolusesU = List(20) { 4.0 }, smbAmountsU = List(200) { 0.3 },
                 tbrBelow70Pct = 1.0, timeBelow54Pct = 0.1, meanGlucoseMgdl = 130.0,
-                currentMaxIobU = 6.0, currentMaxBolusU = 2.5, tranche = d
+                currentMaxBolusU = 2.5, tranche = d
             )
         )!!
     }

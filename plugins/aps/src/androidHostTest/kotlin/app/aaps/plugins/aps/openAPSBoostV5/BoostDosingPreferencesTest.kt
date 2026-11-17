@@ -30,11 +30,11 @@ class BoostDosingPreferencesTest {
 
     // ── The read helper: stored value wins, bypassing the Simple-Mode mask ──
 
-    @Test fun `maxIOB reads the stored 8, not the masked factory default 1`() {
+    @Test fun `maxIOB reads the stored 8, not the masked factory default`() {
         val prefs = mock<Preferences>()
-        whenever(prefs.getIfExists(DoubleKey.ApsBoostMaxIob)).thenReturn(8.0)   // user/auto-config stored value
-        // Sanity: the factory default that Simple Mode would have masked to is 1.0.
-        assertThat(DoubleKey.ApsBoostMaxIob.defaultValue).isEqualTo(1.0)
+        whenever(prefs.getIfExists(DoubleKey.ApsBoostMaxIob)).thenReturn(8.0)   // user stored value
+        // Sanity: the factory default Simple Mode masks to is 12 (Boost uses max IOB); it was 1.0.
+        assertThat(DoubleKey.ApsBoostMaxIob.defaultValue).isEqualTo(12.0)
         assertThat(prefs.getBoostDosing(DoubleKey.ApsBoostMaxIob)).isEqualTo(8.0)
     }
 
@@ -51,7 +51,7 @@ class BoostDosingPreferencesTest {
     @Test fun `never-set key falls back to the factory default`() {
         val prefs = mock<Preferences>()
         whenever(prefs.getIfExists(DoubleKey.ApsBoostMaxIob)).thenReturn(null)   // getIfExists null == never persisted
-        assertThat(prefs.getBoostDosing(DoubleKey.ApsBoostMaxIob)).isEqualTo(1.0)   // == defaultValue
+        assertThat(prefs.getBoostDosing(DoubleKey.ApsBoostMaxIob)).isEqualTo(12.0)   // == defaultValue, Boost uses max IOB
     }
 
     // ── UnitDouble overload: the fallback default MUST be unit-converted (mmol night-mode bug) ──

@@ -747,7 +747,6 @@ open class OpenAPSBoostV5Plugin @Inject constructor(
                 daysWithData = tddValues.size, bgReadingCount = n, tddMedianU = tddMedian,
                 manualBolusesU = manual, smbAmountsU = smb,
                 tbrBelow70Pct = tbr70, timeBelow54Pct = sev54, meanGlucoseMgdl = meanBg,
-                currentMaxIobU = constraintsChecker.getMaxIOBAllowed().value(),
                 currentMaxBolusU = constraintsChecker.getMaxBolusAllowed().value(),
                 tranche = runCatching { gatherTrancheDerivation(now) }
                     .onFailure { aapsLogger.error(LTag.APS, "BoostV5 tranche derivation failed (non-fatal)", it) }

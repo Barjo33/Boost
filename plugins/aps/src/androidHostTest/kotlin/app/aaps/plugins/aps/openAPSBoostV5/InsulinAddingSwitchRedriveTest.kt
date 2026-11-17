@@ -135,7 +135,7 @@ class InsulinAddingSwitchRedriveTest {
                 daysWithData = 28, bgReadingCount = 6000, tddMedianU = 40.0,
                 manualBolusesU = List(20) { 4.0 }, smbAmountsU = List(200) { 0.3 },
                 tbrBelow70Pct = tbr70, timeBelow54Pct = sev54, meanGlucoseMgdl = 130.0,
-                currentMaxIobU = 6.0, currentMaxBolusU = 2.5))!!
+                currentMaxBolusU = 2.5))!!
         // Aggressive early confirm: the strict well-controlled cut.
         assertThat(s(1.0, 0.1).aggressiveEarlyConfirm).isTrue()
         assertThat(s(2.0, 0.1).aggressiveEarlyConfirm).isFalse()
