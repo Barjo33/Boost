@@ -80,6 +80,12 @@ fun typographyScaleFor(shortSideDp: Int, longSideDp: Int): Float {
 val LocalAapsScale = compositionLocalOf { 1f }
 
 /**
+ * Whether [AapsTheme] resolved to dark, from the AAPS colour scheme setting. For screens with their
+ * own palette (the Boost overview), so they follow the same setting as the rest of the app.
+ */
+val LocalAapsIsDark = compositionLocalOf { true }
+
+/**
  * CompositionLocal providing access to user preferences for theme configuration.
  * Used to retrieve dark mode setting and react to preference changes.
  */
@@ -351,6 +357,7 @@ fun AapsTheme(
         LocalGeneralColors provides generalColors,
         LocalSnackbarColors provides snackbarColors,
         LocalAapsScale provides typographyScale,
+        LocalAapsIsDark provides isDark,
     ) {
         MaterialTheme(
             colorScheme = scheme,

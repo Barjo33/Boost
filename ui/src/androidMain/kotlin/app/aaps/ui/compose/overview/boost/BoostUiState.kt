@@ -1,7 +1,6 @@
 package app.aaps.ui.compose.overview.boost
 
 import androidx.compose.runtime.Immutable
-import androidx.compose.ui.graphics.Color
 import app.aaps.core.data.model.TrendArrow
 import app.aaps.core.interfaces.overview.ActivityMode
 import app.aaps.core.interfaces.overview.BoostTier
@@ -25,8 +24,7 @@ enum class AidStatus {
  *
  * All numeric values are pre-formatted [String]s; classification lives in the domain enums
  * ([BoostTier] / [BoostV5State] / [ActivityMode]) so the Compose layer can map them to theme
- * colours. Two convenience [Color] slots (profile / target) are kept from the preview version;
- * new code should prefer classifying via the enums and theming in the UI layer.
+ * colours.
  *
  * Extends the AAPS-v4-preview BoostUiState to cover the full V2 data set:
  *  - pump column (reservoir / battery / cannula & sensor age)
@@ -91,12 +89,10 @@ data class BoostUiState(
     val profileName: String = "---",
     val profilePct: Int = 100,
     val profileModified: Boolean = false,
-    val profileColor: Color = Color(0xFF4CAF50),
 
     // ── Target ──
     val targetDisplay: String = "---",
     val targetIsTempTarget: Boolean = false,
-    val targetColor: Color = Color(0xFF4CAF50),
 
     // ── Activity / Exercise ──
     val activityMode: ActivityMode = ActivityMode.NORMAL,

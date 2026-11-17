@@ -41,7 +41,7 @@ fun BoostBgBobble(
 ) {
     val density = LocalDensity.current
     val bgMgdl = uiState.bgValueMgdl
-    val zoneColor = bgZoneColor(bgMgdl)
+    val zoneColor = BoostV2Colors.bgZoneColor(bgMgdl)
     val (trendAngle, chevronRotation) = trendToAngles(uiState.trendArrow)
 
     val bgText = uiState.bgDisplay

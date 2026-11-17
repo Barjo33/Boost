@@ -118,9 +118,12 @@ fun BoostV2Screen(
     var activePanel: BoostV2Panel? by remember { mutableStateOf(null) }
 
     Column(
-        modifier = modifier
+        // Background before the caller's system bar padding, so the bars sit on the overview colour
+        // and not on the window background, which follows the phone's light or dark mode.
+        modifier = Modifier
             .fillMaxSize()
             .background(BoostV2Colors.background)
+            .then(modifier)
     ) {
         TopNavBar(
             uiState,
@@ -253,7 +256,7 @@ private fun TopNavBar(uiState: BoostUiState, searchActive: Boolean, searchBar: @
                 Box(
                     Modifier
                         .size(6.dp)
-                        .background(aidStatusColorV2(uiState.aidStatus))
+                        .background(BoostV2Colors.aidStatusColorV2(uiState.aidStatus))
                 )
             }
         }
@@ -309,7 +312,7 @@ private fun HeroSection(uiState: BoostUiState, onTempTarget: () -> Unit, onExerc
             )
             Text(
                 text = uiState.activityDetail,
-                color = activityModeColorV2(uiState.activityMode),
+                color = BoostV2Colors.activityModeColorV2(uiState.activityMode),
                 fontSize = 11.sp,
                 modifier = Modifier
                     .padding(top = 4.dp)
@@ -324,7 +327,7 @@ private fun PumpColumn(uiState: BoostUiState, modifier: Modifier = Modifier) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier) {
         CaptionLabel(stringResource(UiStrings.boost_v2_pump))
         // Reservoir — cartridge icon + large value.
-        val reservoirColor = statusLevelColorV2(uiState.reservoirLevel)
+        val reservoirColor = BoostV2Colors.statusLevelColorV2(uiState.reservoirLevel)
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
             Text(
                 text = uiState.reservoirDisplay,
@@ -333,9 +336,9 @@ private fun PumpColumn(uiState: BoostUiState, modifier: Modifier = Modifier) {
                 fontSize = 22.sp
             )
         }
-        PumpStatLine(IcPumpBattery, uiState.batteryDisplay, statusLevelColorV2(uiState.batteryLevel))
-        PumpStatLine(IcCannulaChange, uiState.cannulaAgeDisplay, statusLevelColorV2(uiState.cannulaAgeLevel))
-        PumpStatLine(IcCgmInsert, uiState.sensorAgeDisplay, statusLevelColorV2(uiState.sensorAgeLevel))
+        PumpStatLine(IcPumpBattery, uiState.batteryDisplay, BoostV2Colors.statusLevelColorV2(uiState.batteryLevel))
+        PumpStatLine(IcCannulaChange, uiState.cannulaAgeDisplay, BoostV2Colors.statusLevelColorV2(uiState.cannulaAgeLevel))
+        PumpStatLine(IcCgmInsert, uiState.sensorAgeDisplay, BoostV2Colors.statusLevelColorV2(uiState.sensorAgeLevel))
     }
 }
 
