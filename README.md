@@ -4,8 +4,13 @@ Boost is an independently maintained variant of [AAPS](https://github.com/nights
 4.0.0 that adds the Boost APS plugin. It is not a release of, or supported by, the AAPS project.
 You build it yourself and you are responsible for how you use it. AGPL-3.0, as AAPS.
 
-This line is Boost 6.3.2: the V6 meal logic and the Boost high temp, with each SMB sized by the
+This line is Boost 6.3.3: the V6 meal logic and the Boost high temp, with each SMB sized by the
 Boost tiers as in Boost 6.2.0 for AAPS 3.4.2.6.
+
+6.3.3 changes the default of Boost max IOB to 12 U, which makes Boost use your max IOB (up to 12 U), and stops
+auto-config copying max IOB into it. A value you set lower is kept. It also lets the committed cap go
+up to 5.0 U, adds a light version of the Boost overview, and logs a night insulin-need check that
+never notifies. It otherwise doses as 6.3.2.
 
 6.3.2 sets the two SMB minutes settings to 15 (standard) and 20 (UAM) once, the first time Boost
 runs, and then leaves them to you. 6.3.1 lowered a higher value on every loop cycle, so neither
@@ -47,6 +52,13 @@ otherwise doses as 6.3.1.
   been committed.
 - RECOVERING is capped at the committed cap, so it never gives more in one cycle than the meal state
   does.
+- Boost max IOB defaults to 12 U, its maximum. Every Boost dose is already held to your max IOB, so at
+  12 Boost uses your max IOB and follows it when it changes, stopping at 12 U when max IOB is higher.
+  Set a lower value to keep Boost doses below it. Auto-config no longer copies max IOB into it. When you install this, a value nobody chose
+  is moved to 12 once: the old default of 1.0, or the copy auto-config made. Any other value is kept.
+  For anyone who had 1.0 or an old copy, Boost can now give more insulin, up to their max IOB.
+- The committed cap can be set up to 5.0 U, where it stopped at 2.5 U. Auto-config still sets it no
+  higher than 2.5 U, so only you can set a larger value. Its default (0.5 U) is unchanged.
 
 ## Other changes
 
@@ -62,6 +74,9 @@ otherwise doses as 6.3.1.
 - On the watch, the ranged glucose and DynISF complications go blank when the phone is out of
   contact or the reading is old.
 - "Meal-detection Sensitivity" is renamed "Insulin budget scale". It works as before.
+- The Boost overview has a light version, which follows the AAPS colour scheme setting.
+- The insulin-need watch also checks insulin from midnight to 6 am over the last 3 nights against the
+  14 before. It only writes the result to the log (ndn= in the reason) and never notifies.
 
 ## Installing over your current build
 

@@ -8,9 +8,10 @@ on:
       tagName:
         description: 'Select Boost release'
         required: true
-        default: '4.0.0-boost-6.3.2'
+        default: '4.0.0-boost-6.3.3'
         type: choice
         options:
+          - 4.0.0-boost-6.3.3
           - 4.0.0-boost-6.3.2
           - 4.0.0-boost-6.3.2.E
           - 4.0.0-boost-6.2.0
