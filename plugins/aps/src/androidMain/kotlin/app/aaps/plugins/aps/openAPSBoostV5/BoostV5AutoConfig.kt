@@ -1,5 +1,6 @@
 package app.aaps.plugins.aps.openAPSBoostV5
 
+import app.aaps.core.keys.DoubleKey
 import kotlin.math.max
 import kotlin.math.min
 
@@ -23,12 +24,6 @@ import kotlin.math.min
  *    V1/V5 cycles); the day-1 value is a gentle starting point, intentionally on the cautious side.
  */
 object BoostV5AutoConfig {
-
-    /**
-     * The highest committed cap auto-config sets, at onboarding and in the weekly re-derivation. The
-     * setting itself goes up to 5.0, so a larger hold is possible, but only a person can set one.
-     */
-    const val COMMITTED_CAP_AUTO_MAX = 2.5
 
     // Minimum data before we'll auto-configure at all (else leave factory defaults).
     const val MIN_DAYS = 7
@@ -141,6 +136,9 @@ object BoostV5AutoConfig {
         val velocityBudgetFloor: Boolean,
         // V1-acceleration primer: per-user fizzle-safe base (0 = off) + delivery routing.
         val primerCapU: Double,
+        // The policy fraction of the committed cap. primerCapU / committedCapU differs from it once the
+        // primer is held to its own max, so the re-derivation takes this instead.
+        val primerFrac: Double,
         val primerTbrFallback: Boolean,
         val rationale: List<String>,
         // Confirm-tranche release threshold derived from the person's own episodes, or null when the
@@ -184,9 +182,9 @@ object BoostV5AutoConfig {
         )
         reasons += "Confirmed cap ${confirmedCapU}U (≈ your biggest typical single dose)"
 
-        // Committed cap [0.25..COMMITTED_CAP_AUTO_MAX]: routine per-cycle hold = max(typical SMB p75, TDD/40), floored.
+        // Committed cap [0.25..the setting's max, 5.0]: routine per-cycle hold = max(typical SMB p75, TDD/40), floored.
         val committedCapU = round2(
-            max(percentile(p.smbAmountsU, 75.0), p.tddMedianU / 40.0).coerceIn(0.25, COMMITTED_CAP_AUTO_MAX)
+            max(percentile(p.smbAmountsU, 75.0), p.tddMedianU / 40.0).coerceIn(0.25, DoubleKey.ApsBoostV5CommittedCapU.max)
         )
         reasons += "Committed cap ${committedCapU}U (max of your routine SMB size and TDD/40)"
 
@@ -239,8 +237,9 @@ object BoostV5AutoConfig {
         // the primer is an advance on the CONFIRMED shot, so it should never exceed the shot it advances.
         // primerFrac is <= 0.75, so this clamp is a belt-and-braces invariant rather than a cutoff, and
         // it scales in the user's OWN units (committedCapU is derived from their own SMB distribution, so
-        // U200 users are already handled). Matches DoubleKey.ApsBoostV5PrimerCapU's max of 2.5.
-        val primerCapU = round2((committedCapU * primerFrac).coerceIn(0.0, committedCapU))
+        // U200 users are already handled). A committed cap above 3.33 would derive a primer past the
+        // primer setting's own max of 2.5, so the primer is held to that as well.
+        val primerCapU = round2((committedCapU * primerFrac).coerceIn(0.0, min(committedCapU, DoubleKey.ApsBoostV5PrimerCapU.max)))
         // Route only CLEARLY well-controlled users to the bolus; everyone else gets the retractable
         // temp-basal (safe-by-unwinding). The bolus is thus inherently TBR-safe (well-controlled only),
         // so the primer cap is NOT raise-guarded — the delivery routing is the safety differentiator.
@@ -271,6 +270,7 @@ object BoostV5AutoConfig {
             aggressiveEarlyConfirm = aggressiveEarlyConfirm,
             velocityBudgetFloor = velocityBudgetFloor,
             primerCapU = primerCapU,
+            primerFrac = primerFrac,
             primerTbrFallback = primerTbrFallback,
             rationale = reasons,
             trancheThreshold = trancheThreshold,

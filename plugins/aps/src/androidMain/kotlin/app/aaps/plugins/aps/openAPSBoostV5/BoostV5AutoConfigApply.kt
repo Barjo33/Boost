@@ -674,10 +674,6 @@ internal object BoostV5AutoConfigApply {
                 else                            -> rawProposed
             }
             var proposed = round2(bounded.coerceIn(key.min, key.max))
-            // The committed cap is never auto-raised above the onboarding ceiling. A value above it
-            // (which only the person can have set) is not raised further.
-            if (key == DoubleKey.ApsBoostV5CommittedCapU && proposed > current + DEFAULT_EPS)
-                proposed = min(proposed, maxOf(current, BoostV5AutoConfig.COMMITTED_CAP_AUTO_MAX))
             // Aggression is never auto-raised above neutral. A raise stops at 1.0, and from a value
             // already at or above 1.0 (which only the user can have set) it does not move at all.
             // The baseline is not advanced, so the withheld movement stays available if the
@@ -789,7 +785,7 @@ internal object BoostV5AutoConfigApply {
         // hypo-prone / well-controlled policy is never duplicated here.
         val primer = DoubleKey.ApsBoostV5PrimerCapU
         if (suggestion.committedCapU > 0.0) {
-            val frac = suggestion.primerCapU / suggestion.committedCapU
+            val frac = suggestion.primerFrac
             val curPrimer = operative.getValue(primer)
             val newPrimer = round2((operative.getValue(DoubleKey.ApsBoostV5CommittedCapU) * frac)
                                        .coerceIn(primer.min, primer.max))

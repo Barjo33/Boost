@@ -84,7 +84,7 @@ class BoostV5AutoConfigTest {
         assertThat(s.confirmedCapU).isAtLeast(1.5)
         assertThat(s.confirmedCapU).isAtMost(7.5)
         assertThat(s.committedCapU).isAtLeast(0.25)
-        assertThat(s.committedCapU).isAtMost(2.5)
+        assertThat(s.committedCapU).isAtMost(DoubleKey.ApsBoostV5CommittedCapU.max)
         assertThat(s.cumulativeSmbCap60MinU).isAtLeast(1.0)
         assertThat(s.cumulativeSmbCap60MinU).isAtMost(BoostV5AutoConfig.CUMULATIVE_CAP_MAX_U)
         // cumulative cap is never below a single confirm shot (it must allow ≥1 confirm)

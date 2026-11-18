@@ -156,5 +156,7 @@ Low: `_docs/`, this file and other documents. The items below on personal data.
 | SMB minutes ceiling read a Simple Mode mask of 30, rewrote every cycle and stacked notices; 4.0 defaults differ from 3.4 | Nothing automated for the Simple Mode read; emulator check in Simple Mode |
 | The same ceiling locked both SMB minutes settings at 15 and 20, when they were meant only as the values a person starts Boost with | `SmbBasalMinutesSeedTest` (stored values kept, a second run writes nothing); nothing tests that the plugin reads with `getIfExists` |
 | The Boost overview and widget showed the last loop result with no age check | `BoostOverviewDataProviderTest` |
+| Without a heart-rate feed the sleep detector qualified 90 min before night start, so evening meals ran as SLEEPING with V6 and the Boost tiers off | `SleepNoHrFeedTest`; nothing tests the plugin's 24 h feed lookup or its cached answer |
+| Re-derivation took the primer fraction as primer / committed cap, which stops being the fraction once the primer is held to its 2.5 U max | `RedriveCommittedCapCeilingTest` (primer follows a rising cap at the policy fraction) |
 
 A new correction in this repository adds a row here naming its check, or "nothing yet".

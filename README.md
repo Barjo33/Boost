@@ -58,8 +58,12 @@ otherwise doses as 6.3.1.
   Set a lower value to keep Boost doses below it. Auto-config no longer copies max IOB into it. When you install this, a value nobody chose
   is moved to 12 once: the old default of 1.0, or the copy auto-config made. Any other value is kept.
   For anyone who had 1.0 or an old copy, Boost can now give more insulin, up to their max IOB.
-- The committed cap can be set up to 5.0 U, where it stopped at 2.5 U. Auto-config still sets it no
-  higher than 2.5 U, so only you can set a larger value. Its default (0.5 U) is unchanged.
+- The committed cap can be set up to 5.0 U, where it stopped at 2.5 U, and auto-config uses the same
+  range. Auto-config sets it from your history as the larger of your typical SMB and a fortieth of
+  your total daily dose, so it goes above 2.5 U only when your daily dose is above about 100 U or
+  your typical SMB is above 2.5 U. The weekly re-derivation moves the cap you have, including one you
+  set, with changes in that derivation, up to 5.0 U at most. The primer stays at 2.5 U at most. Its
+  default (0.5 U) is unchanged.
 - Without heart rate (no reading in the last 24 hours), the sleep detector starts sleep no earlier than
   your night start. In 6.3.2 it could start up to 90 minutes before it, through an evening meal, and
   while it reads sleeping the V6 meal logic and the Boost tiers do not dose. A bedtime learned from
