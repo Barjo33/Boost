@@ -236,6 +236,35 @@ open class OpenAPSBoostPlugin @Inject constructor(
 
     companion object {
         /**
+         * Clamp a learned minute-of-day to within ±[bandMin] of the configured minute-of-day, on the
+         * 24h circle. Returns [configured] when [learned] is null (no/insufficient learned data). This
+         * caps how far the learned sleep window can drift from the user's configured times — the safety
+         * bound that, with the genuine-wake-only training in SleepHistoryTracker, stops the night-window
+         * collapse (each night ratcheting the wake earlier).
+         */
+        internal fun clampToConfiguredBand(learned: Int?, configured: Int, bandMin: Int, allowEarlier: Boolean = true): Int {
+            if (learned == null) return configured
+            // signed circular delta in [-720, 719] (positive = learned is LATER than configured)
+            val delta = ((learned - configured + 1440 + 720) % 1440) - 720
+            // allowEarlier=false makes the nudge one-sided: learning may only move the bound LATER than the
+            // configured time, never earlier. Used for night-END (wake), where moving earlier would lift
+            // sleep protection before the user's own setting — the unsafe direction — and is a poor fit for a
+            // highly-variable waker (learned point-mean sits early; real-time detection catches genuine early
+            // wakes anyway). Night-START keeps the symmetric band (later-to-bed drift is expected + safe).
+            val loBand = if (allowEarlier) -bandMin else 0
+            val clamped = delta.coerceIn(loBand, bandMin)
+            return ((configured + clamped) % 1440 + 1440) % 1440
+        }
+
+        /**
+         * Night start for the detector. Without an HR feed the learned start may not move it earlier:
+         * those sessions began on the clock fallback, not on observed sleep, so an early learned start
+         * would reopen sleep during the evening.
+         */
+        internal fun effectiveNightStartMin(learned: Int?, configured: Int, bandMin: Int, hrFeedPresent: Boolean): Int =
+            clampToConfiguredBand(learned, configured, bandMin, allowEarlier = hrFeedPresent)
+
+        /**
          * Picks the sensitivity ratio that scales basal / targets / CR in determine_basal.
          * TDD-DynISF and traditional oref autosens are alternative adaptation mechanisms — never both:
          *  - useTdd ON  → the TDD model (isfResultRatio = 24H/7D) owns sensitivity.
@@ -1252,29 +1281,9 @@ open class OpenAPSBoostPlugin @Inject constructor(
     private fun parseTimeToMinutesOfDayOrDefault(timeStr: String, defaultStr: String): Int =
         (parseTimeToMillisOrDefault(timeStr, defaultStr) / 60_000L).toInt()
 
-    /**
-     * Clamp a learned minute-of-day to within ±[bandMin] of the configured minute-of-day, on the
-     * 24h circle. Returns [configured] when [learned] is null (no/insufficient learned data). This
-     * caps how far the learned sleep window can drift from the user's configured times — the safety
-     * bound that, with the genuine-wake-only training in SleepHistoryTracker, stops the night-window
-     * collapse (each night ratcheting the wake earlier).
-     */
     /** Max minutes the learned sleep window may move from the configured night start/end. */
     private val LEARNED_WINDOW_BAND_MIN = 90
 
-    private fun clampToConfiguredBand(learned: Int?, configured: Int, bandMin: Int, allowEarlier: Boolean = true): Int {
-        if (learned == null) return configured
-        // signed circular delta in [-720, 719] (positive = learned is LATER than configured)
-        val delta = ((learned - configured + 1440 + 720) % 1440) - 720
-        // allowEarlier=false makes the nudge one-sided: learning may only move the bound LATER than the
-        // configured time, never earlier. Used for night-END (wake), where moving earlier would lift
-        // sleep protection before the user's own setting — the unsafe direction — and is a poor fit for a
-        // highly-variable waker (learned point-mean sits early; real-time detection catches genuine early
-        // wakes anyway). Night-START keeps the symmetric band (later-to-bed drift is expected + safe).
-        val loBand = if (allowEarlier) -bandMin else 0
-        val clamped = delta.coerceIn(loBand, bandMin)
-        return ((configured + clamped) % 1440 + 1440) % 1440
-    }
 
     /** Format a minute-of-day [0..1439] as "HH:mm" for telemetry. */
     private fun formatClockMin(min: Int): String {
@@ -2549,6 +2558,26 @@ open class OpenAPSBoostPlugin @Inject constructor(
     // mlMealLikely from the previous cycle: the sleep evaluation now runs before this cycle's is
     // computed. It gates sleep ENTRY only (< 0.30), so a five-minute-old value is enough.
     @Volatile private var lastMlMealLikely: Double? = null
+    @Volatile private var hrFeedCheckedAtMs: Long = 0L
+    @Volatile private var hrFeedPresentCached: Boolean = true
+
+    /** Any valid HR in the last [SleepStateDetector.HR_FEED_LOOKBACK_HOURS]; the day's query runs at most every 30 min. */
+    private suspend fun hrFeedPresent(now: Long, recent: List<HR>): Boolean {
+        if (recent.any { hr -> hr.isValid }) {
+            hrFeedPresentCached = true
+            hrFeedCheckedAtMs = now
+        } else if (now - hrFeedCheckedAtMs >= 30 * 60_000L) {
+            // A failed query keeps the cached answer rather than failing the sleep evaluation.
+            try {
+                hrFeedPresentCached = persistenceLayer.getHeartRatesFromTime(now - SleepStateDetector.HR_FEED_LOOKBACK_HOURS * 3_600_000L)
+                    .any { hr -> hr.isValid }
+                hrFeedCheckedAtMs = now
+            } catch (t: Throwable) {
+                aapsLogger.error(LTag.APS, "HR feed check failed", t)
+            }
+        }
+        return hrFeedPresentCached
+    }
 
     /**
      * Evaluate the sleep state for this cycle and update [sleepStateCached] and the sleep history.
@@ -2572,7 +2601,10 @@ open class OpenAPSBoostPlugin @Inject constructor(
             // learning can move them — preventing the self-reinforcing earlier-every-night
             // collapse seen when the hard-exit fed its own learned wake. No/insufficient data
             // → effective == configured.
-            val effectiveNightStartMin = clampToConfiguredBand(agg.sleepStartMinAvg, configuredNightStartMin, LEARNED_WINDOW_BAND_MIN)
+            // 30-min window for HR — sufficient for both 5-min and 15-min avgs and sleep eval.
+            val hrReadingsForSleep = persistenceLayer.getHeartRatesFromTime(now - 30 * 60_000L)
+            val hrFeed = hrFeedPresent(now, hrReadingsForSleep)
+            val effectiveNightStartMin = effectiveNightStartMin(agg.sleepStartMinAvg, configuredNightStartMin, LEARNED_WINDOW_BAND_MIN, hrFeed)
             // wake side: one-sided — learning may only push the night-end LATER than configured, never
             // earlier (never lift protection before the user's set wake). See clampToConfiguredBand.
             val effectiveNightEndMin = clampToConfiguredBand(agg.wakeMinAvg, configuredNightEndMin, LEARNED_WINDOW_BAND_MIN, allowEarlier = false)
@@ -2580,8 +2612,6 @@ open class OpenAPSBoostPlugin @Inject constructor(
             // for sleep state evaluation; fallback is the existing user-set hrRestingBpm.
             val effectiveHrResting = agg.restingHrBpm ?: hrRestingBpm
 
-            // 30-min window for HR — sufficient for both 5-min and 15-min avgs and sleep eval.
-            val hrReadingsForSleep = persistenceLayer.getHeartRatesFromTime(now - 30 * 60_000L)
             // Lump-tolerant wake evidence: the detector needs today's CUMULATIVE
             // steps — wear-bridge steps arrive in batches the phone's 15-min bucket never sees (the
             // phone is not carried overnight), so wakes were missed and boundary-forced.
@@ -2614,7 +2644,8 @@ open class OpenAPSBoostPlugin @Inject constructor(
                 sleepInStepsThreshold = sleepInSteps,
                 sleepInWindowMin = (sleepInHours * 60.0).toInt(),
                 cycleSpacingMinutes = iobCobCalculator.ads.detectedCadenceMinutes,
-                stepsTodayPhone = phoneStepsToday
+                stepsTodayPhone = phoneStepsToday,
+                hrFeedPresent = hrFeed
             )
             val sleepResult = SleepStateDetector.evaluate(
                 prev = livePrevSleep,

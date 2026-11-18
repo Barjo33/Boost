@@ -29,6 +29,8 @@ import org.json.JSONObject
  *       step + meal gates — so a degraded overnight feed still reaches SLEEPING on the clock
  *       (reason "drought" if fully dead, "time" if intermittent). fixes the stuck-in-PRE_SLEEP
  *       nights where ~1 stray HR sample/15-20min defeated both the old avgHr==null gate and the HR qualifier.
+ *   With no HR feed at all (no valid sample in [HR_FEED_LOOKBACK_HOURS], [Inputs.hrFeedPresent] false)
+ *   the early candidacy window does not apply and (b) can qualify only from nightStart.
  *
  * Exit SLEEPING (to AWAKE) — BG trend alone NEVER wakes. Any of:
  *   1. Gentle (HR + steps), trusted only within [SLEEP_SCHEDULE_TOLERANCE_MIN] of scheduled wake:
@@ -135,6 +137,12 @@ object SleepStateDetector {
      * only within this long of nightEnd (earlier genuine rising is caught by [WAKE_STEP_STRONG_THRESHOLD]).
      */
     const val SLEEP_SCHEDULE_TOLERANCE_MIN = 90
+
+    /**
+     * Hours without any valid HR after which the user is treated as having no HR feed. A day covers a
+     * watch that only uploads in batches or stops overnight, which still counts as a feed.
+     */
+    const val HR_FEED_LOOKBACK_HOURS = 24
 
     /**
      * Steps (in the 15-min bucket, or cumulative growth over [WAKE_STEP_LOOKBACK_MIN]) that must
@@ -334,7 +342,13 @@ object SleepStateDetector {
          * on hosts that have one source). -1 when the host does not supply it. LAST for the same
          * positional-construction reason as [cycleSpacingMinutes].
          */
-        val stepsTodayPhone: Int = -1
+        val stepsTodayPhone: Int = -1,
+        /**
+         * False when the host has seen no valid HR in [HR_FEED_LOOKBACK_HOURS]. Without a feed the HR
+         * rules do not apply: sleep can start only from nightStart, on the clock with the step and meal
+         * gates. LAST for the same positional-construction reason as [cycleSpacingMinutes].
+         */
+        val hrFeedPresent: Boolean = true
     )
 
     /**
@@ -396,7 +410,11 @@ object SleepStateDetector {
         // nightStart) through nightEnd — an unusually-early onset up to 90 min pre-nightStart is
         // detected promptly regardless of the (SMB-pre-warm) preSleepLead. And the gentle HR+steps
         // wake is trusted only within SLEEP_SCHEDULE_TOLERANCE_MIN of nightEnd.
-        val sleepCandStart = (inputs.nightStartMin - SLEEP_SCHEDULE_TOLERANCE_MIN + 1440) % 1440
+        // The early start exists because HR can corroborate an early onset. Without an HR feed nothing
+        // separates an evening on the sofa from sleep, so candidacy waits for nightStart.
+        val sleepCandStart = if (inputs.hrFeedPresent)
+            (inputs.nightStartMin - SLEEP_SCHEDULE_TOLERANCE_MIN + 1440) % 1440
+        else inputs.nightStartMin
         val inSleepCandidateWindow = minuteInWrappedRange(inputs.minuteOfDay, sleepCandStart, inputs.nightEndMin)
         val wakeGraceStart = (inputs.nightEndMin - SLEEP_SCHEDULE_TOLERANCE_MIN + 1440) % 1440
         val nearScheduledWake = minuteInWrappedRange(inputs.minuteOfDay, wakeGraceStart, inputs.nightEndMin)
@@ -472,6 +490,7 @@ object SleepStateDetector {
             .append(" drought=${if (droughtMinutes == Int.MAX_VALUE) "∞" else "${droughtMinutes}m"}")
             .append(" freshN15=$freshSamplesInLast15Min")
             .append(" stepsLB=$stepsInLookback(w$stepsLbWatch,p$stepsLbPhone) hrStreak=${newState.hrHighStreak} lieIn=$inLieIn")
+            .append(" hrFeed=${inputs.hrFeedPresent}")
 
         // / drought-qualified candidacy. When the HR feed is UNRELIABLE
         // (dead OR intermittent — freshSamplesInLast15Min below the reliable floor) AND drought is
@@ -571,7 +590,9 @@ object SleepStateDetector {
                                      phoneStepSamples = newState.phoneStepSamples)
                     transitioned = true
                     debug.append(" | →AWAKE (left window without sleeping)")
-                } else if (anyQualifies) {
+                // PRE_SLEEP starts preSleepLeadMin before nightStart and does not check the candidacy
+                // window; without an HR feed it must, or the clock qualifier starts sleep in the lead.
+                } else if (anyQualifies && (inputs.hrFeedPresent || inSleepCandidateWindow)) {
                     if (newState.sleepCandidateSinceMs == null) {
                         newState.sleepCandidateSinceMs = inputs.nowMs
                         debug.append(" | sleep-candidate-started${if (droughtQualifies && !hrQualifies) " (drought)" else ""}")
