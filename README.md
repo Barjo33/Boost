@@ -9,8 +9,9 @@ Boost tiers as in Boost 6.2.0 for AAPS 3.4.2.6.
 
 6.3.3 changes the default of Boost max IOB to 12 U, which makes Boost use your max IOB (up to 12 U), and stops
 auto-config copying max IOB into it. A value you set lower is kept. It also lets the committed cap go
-up to 5.0 U, adds a light version of the Boost overview, and logs a night insulin-need check that
-never notifies. It otherwise doses as 6.3.2.
+up to 5.0 U, keeps the sleep detector from starting sleep before your night start when no heart rate
+reaches the phone, adds a light version of the Boost overview, and logs a night insulin-need check
+that never notifies. It otherwise doses as 6.3.2.
 
 6.3.2 sets the two SMB minutes settings to 15 (standard) and 20 (UAM) once, the first time Boost
 runs, and then leaves them to you. 6.3.1 lowered a higher value on every loop cycle, so neither
@@ -59,6 +60,10 @@ otherwise doses as 6.3.1.
   For anyone who had 1.0 or an old copy, Boost can now give more insulin, up to their max IOB.
 - The committed cap can be set up to 5.0 U, where it stopped at 2.5 U. Auto-config still sets it no
   higher than 2.5 U, so only you can set a larger value. Its default (0.5 U) is unchanged.
+- Without heart rate (no reading in the last 24 hours), the sleep detector starts sleep no earlier than
+  your night start. In 6.3.2 it could start up to 90 minutes before it, through an evening meal, and
+  while it reads sleeping the V6 meal logic and the Boost tiers do not dose. A bedtime learned from
+  past nights can still move night start later, but not earlier. With heart rate it works as before.
 
 ## Other changes
 
